@@ -1,17 +1,15 @@
-@import url('https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200&display=swap');
-
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 :root {
-  color-scheme: light;
+  color-scheme: dark;
 }
 
 html,
 body,
 #root {
-  min-height: 100%;
+  height: 100%;
 }
 
 body {
@@ -21,57 +19,45 @@ body {
   text-rendering: optimizeLegibility;
 }
 
-.material-symbols-outlined {
-  font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+/* App background — deep gradient + subtle aurora blobs. Theme-aware. */
+.app-bg {
+  background:
+    radial-gradient(1200px 600px at 15% -10%, rgba(124, 92, 255, 0.18), transparent 60%),
+    radial-gradient(900px 500px at 100% 0%, rgba(75, 155, 255, 0.14), transparent 55%),
+    #070710;
+}
+:root:not(.dark) .app-bg {
+  background:
+    radial-gradient(1100px 600px at 12% -10%, rgba(124, 92, 255, 0.16), transparent 60%),
+    radial-gradient(900px 500px at 100% 0%, rgba(75, 155, 255, 0.12), transparent 55%),
+    #f6f7fb;
 }
 
-.material-symbols-outlined.fill {
-  font-variation-settings: 'FILL' 1, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+/* Glassmorphism surface used by cards. */
+.glass {
+  background: rgba(255, 255, 255, 0.04);
+  backdrop-filter: blur(16px) saturate(140%);
+  -webkit-backdrop-filter: blur(16px) saturate(140%);
+  border: 1px solid rgba(255, 255, 255, 0.08);
 }
-
-.glass-panel {
+:root:not(.dark) .glass {
   background: rgba(255, 255, 255, 0.7);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
-  border: 1px solid rgba(255, 255, 255, 0.5);
+  border: 1px solid rgba(17, 17, 31, 0.06);
 }
 
-.bg-grid-pattern {
-  background-image:
-    linear-gradient(to right, #e2e8f8 1px, transparent 1px),
-    linear-gradient(to bottom, #e2e8f8 1px, transparent 1px);
-  background-size: 40px 40px;
+/* Animated gradient text for the headline. */
+.gradient-text {
+  background: linear-gradient(120deg, #9b7cff, #c44bff, #4b9bff, #9b7cff);
+  background-size: 200% auto;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: gradient-pan 6s ease infinite;
 }
 
-.progress-ring {
-  transition: stroke-dashoffset 0.35s;
-  transform: rotate(-90deg);
-  transform-origin: 50% 50%;
-}
-
-.pulse-animation {
-  animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
-}
-
-.stitch-page a[data-route],
-.stitch-page [data-route] {
-  cursor: pointer;
-}
-
-.stitch-static-prose h2 {
-  @apply font-headline-md text-headline-md text-on-surface mt-8 mb-3;
-}
-
-.stitch-static-prose p {
-  @apply font-body-md text-body-md text-on-surface-variant mb-4;
-}
-
-.stitch-static-prose ul {
-  @apply list-disc ml-6 mb-4 space-y-2 font-body-md text-body-md text-on-surface-variant;
-}
-
-.stitch-static-prose a {
-  @apply text-primary hover:underline;
+/* Primary CTA gradient button. */
+.btn-gradient {
+  background-image: linear-gradient(120deg, #7c5cff 0%, #c44bff 50%, #4b9bff 100%);
 }
 
 .sr-only {
