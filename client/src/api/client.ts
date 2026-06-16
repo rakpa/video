@@ -1,32 +1,42 @@
 import type { CodecMode, ProgressUpdate, QualityId, VideoInfo } from '../types';
+import { API_NOT_CONFIGURED_MSG, API_UNREACHABLE_MSG, apiUrl, isApiConfigured } from '../config/api';
 
 /** Thrown for any non-2xx API response, carrying the friendly server message. */
 export class ApiError extends Error {}
 
 async function postJson<T>(path: string, body: unknown): Promise<T> {
+  if (!isApiConfigured()) {
+    throw new ApiError(API_NOT_CONFIGURED_MSG);
+  }
+
   let res: Response;
   try {
-    res = await fetch(path, {
+    res = await fetch(apiUrl(path), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
     });
   } catch {
-    throw new ApiError('Could not reach the server. Is the backend running?');
+    throw new ApiError(API_UNREACHABLE_MSG);
   }
 
-  // The Vite proxy returns a non-JSON HTML page when the backend is down, so
-  // guard the parse and surface a clear, actionable message in that case.
   const isJson = res.headers.get('content-type')?.includes('application/json');
   const data = (isJson ? await res.json().catch(() => ({})) : {}) as { error?: string };
 
   if (!res.ok) {
     if (data.error) throw new ApiError(data.error);
-    if (res.status >= 500 && !isJson) {
-      throw new ApiError('Can’t reach the download service. Make sure the backend is running (cd server && npm run dev).');
+    if (!isJson) {
+      throw new ApiError(
+        import.meta.env.PROD ? API_UNREACHABLE_MSG : 'Can’t reach the download service. Run the backend (cd server && npm run dev).',
+      );
     }
     throw new ApiError('Something went wrong. Please try again.');
   }
+
+  if (!isJson) {
+    throw new ApiError(import.meta.env.PROD ? API_NOT_CONFIGURED_MSG : API_UNREACHABLE_MSG);
+  }
+
   return data as T;
 }
 
@@ -37,9 +47,11 @@ export function fetchVideoInfo(url: string): Promise<VideoInfo> {
 
 /** Fast preview (title + thumbnail). YouTube only; returns null when unavailable. */
 export async function fetchVideoPreview(url: string): Promise<VideoInfo | null> {
+  if (!isApiConfigured()) return null;
+
   let res: Response;
   try {
-    res = await fetch('/api/info/preview', {
+    res = await fetch(apiUrl('/api/info/preview'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ url }),
@@ -49,6 +61,8 @@ export async function fetchVideoPreview(url: string): Promise<VideoInfo | null> 
   }
   if (res.status === 204) return null;
   if (!res.ok) return null;
+  const isJson = res.headers.get('content-type')?.includes('application/json');
+  if (!isJson) return null;
   return res.json() as Promise<VideoInfo>;
 }
 
@@ -75,7 +89,8 @@ export interface BillingConfig {
 }
 
 export async function fetchBillingConfig(): Promise<BillingConfig> {
-  const res = await fetch('/api/billing/config');
+  if (!isApiConfigured()) throw new ApiError(API_NOT_CONFIGURED_MSG);
+  const res = await fetch(apiUrl('/api/billing/config'));
   if (!res.ok) throw new ApiError('Could not load pricing.');
   return res.json();
 }
@@ -109,7 +124,7 @@ export interface ProgressHandlers {
  * Returns an unsubscribe function.
  */
 export function subscribeProgress(jobId: string, handlers: ProgressHandlers): () => void {
-  const es = new EventSource(`/api/progress/${jobId}`);
+  const es = new EventSource(apiUrl(`/api/progress/${jobId}`));
 
   es.addEventListener('progress', (e) => {
     try {
@@ -125,7 +140,6 @@ export function subscribeProgress(jobId: string, handlers: ProgressHandlers): ()
   });
 
   es.addEventListener('error', (e) => {
-    // Distinguish an application error frame from a transport drop.
     const data = (e as MessageEvent).data;
     if (data) {
       try {
@@ -148,7 +162,7 @@ export function subscribeProgress(jobId: string, handlers: ProgressHandlers): ()
  */
 export function triggerFileDownload(jobId: string): void {
   const a = document.createElement('a');
-  a.href = `/api/file/${jobId}`;
+  a.href = apiUrl(`/api/file/${jobId}`);
   a.rel = 'noopener';
   document.body.appendChild(a);
   a.click();

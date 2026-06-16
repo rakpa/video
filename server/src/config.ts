@@ -8,7 +8,10 @@ import path from 'node:path';
  */
 export const config = {
   port: Number(process.env.PORT ?? 3081),
-  clientOrigin: process.env.CLIENT_ORIGIN ?? 'http://localhost:3080',
+  clientOrigin: (process.env.CLIENT_ORIGIN ?? 'http://localhost:3080')
+    .split(',')
+    .map((o) => o.trim())
+    .filter(Boolean),
 
   ytdlpPath: process.env.YTDLP_PATH ?? 'yt-dlp',
   ffmpegPath: process.env.FFMPEG_PATH ?? 'ffmpeg',
