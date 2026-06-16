@@ -1,0 +1,57 @@
+import type { PlatformId } from './platform.js';
+import type { VideoInfo } from './ytdlp.js';
+
+interface OEmbedResponse {
+  title?: string;
+  author_name?: string;
+  thumbnail_url?: string;
+}
+
+/** Pull a YouTube video id from common URL shapes. */
+export function extractYoutubeId(url: string): string | null {
+  try {
+    const u = new URL(url);
+    if (u.hostname.replace(/^www\./, '') === 'youtu.be') {
+      return u.pathname.slice(1).split('/')[0] || null;
+    }
+    const v = u.searchParams.get('v');
+    if (v) return v;
+    const embed = u.pathname.match(/\/embed\/([^/?]+)/);
+    if (embed) return embed[1];
+    const shorts = u.pathname.match(/\/shorts\/([^/?]+)/);
+    if (shorts) return shorts[1];
+  } catch {
+    /* invalid URL */
+  }
+  return null;
+}
+
+/**
+ * Near-instant YouTube preview via the public oEmbed endpoint (~200ms).
+ * Full format data still comes from yt-dlp on /api/info.
+ */
+export async function fetchYoutubePreview(url: string): Promise<VideoInfo | null> {
+  const id = extractYoutubeId(url);
+  if (!id) return null;
+
+  const res = await fetch(
+    `https://www.youtube.com/oembed?url=${encodeURIComponent(url)}&format=json`,
+    { signal: AbortSignal.timeout(4000) },
+  );
+  if (!res.ok) return null;
+
+  const data = (await res.json()) as OEmbedResponse;
+  return {
+    id,
+    title: data.title ?? 'Untitled video',
+    author: data.author_name ?? 'Unknown',
+    durationSeconds: null,
+    thumbnail: data.thumbnail_url ?? `https://i.ytimg.com/vi/${id}/hqdefault.jpg`,
+    formats: [],
+  };
+}
+
+export async function fetchPreview(url: string, platform: PlatformId): Promise<VideoInfo | null> {
+  if (platform === 'youtube') return fetchYoutubePreview(url);
+  return null;
+}

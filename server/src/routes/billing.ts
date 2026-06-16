@@ -1,0 +1,119 @@
+import { Router } from 'express';
+import Stripe from 'stripe';
+import { config } from '../config.js';
+import { signLicense, type Plan } from '../services/license.js';
+import { logger } from '../utils/logger.js';
+
+export const billingRouter = Router();
+
+let stripe: Stripe | null = null;
+function getStripe(): Stripe | null {
+  if (!config.stripeSecret) return null;
+  if (!stripe) stripe = new Stripe(config.stripeSecret);
+  return stripe;
+}
+
+/** GET /api/billing/config → public pricing info for the pricing page. */
+billingRouter.get('/billing/config', (_req, res) => {
+  res.json({
+    enabled: Boolean(config.stripeSecret),
+    plans: {
+      monthly: { cents: config.priceMonthlyCents, label: 'Monthly', interval: 'month' },
+      lifetime: { cents: config.priceLifetimeCents, label: 'Lifetime', interval: null },
+    },
+    freeMaxHeight: config.freeMaxHeight,
+  });
+});
+
+/** POST /api/billing/checkout { plan } → { url } Stripe Checkout URL. */
+billingRouter.post('/billing/checkout', async (req, res) => {
+  const s = getStripe();
+  if (!s) return res.status(503).json({ error: 'Payments are not configured yet.' });
+
+  const plan = String(req.body?.plan ?? '') as Plan;
+  if (plan !== 'monthly' && plan !== 'lifetime') {
+    return res.status(400).json({ error: 'Please choose a valid plan.' });
+  }
+
+  const isSub = plan === 'monthly';
+  const amount = isSub ? config.priceMonthlyCents : config.priceLifetimeCents;
+
+  try {
+    const session = await s.checkout.sessions.create({
+      mode: isSub ? 'subscription' : 'payment',
+      line_items: [
+        {
+          quantity: 1,
+          price_data: {
+            currency: 'usd',
+            unit_amount: amount,
+            ...(isSub ? { recurring: { interval: 'month' as const } } : {}),
+            product_data: {
+              name: isSub ? 'ClipVault Pro — Monthly' : 'ClipVault Pro — Lifetime',
+              description: 'Unlocks HD, 2K and 4K downloads with sound.',
+            },
+          },
+        },
+      ],
+      allow_promotion_codes: true,
+      success_url: `${config.clientOrigin}/?status=success&session_id={CHECKOUT_SESSION_ID}`,
+      cancel_url: `${config.clientOrigin}/?status=cancel`,
+    });
+    return res.json({ url: session.url });
+  } catch (err) {
+    logger.error('Stripe checkout error:', (err as Error).message);
+    return res.status(502).json({ error: 'Could not start checkout. Please try again.' });
+  }
+});
+
+/**
+ * POST /api/billing/redeem { session_id } → { token, email, plan, expiresAt }
+ * Called after Stripe redirects back. Confirms the session is paid and mints a
+ * signed Pro license the client stores locally.
+ */
+billingRouter.post('/billing/redeem', async (req, res) => {
+  const s = getStripe();
+  if (!s) return res.status(503).json({ error: 'Payments are not configured yet.' });
+
+  const sessionId = String(req.body?.session_id ?? '');
+  if (!sessionId) return res.status(400).json({ error: 'Missing session.' });
+
+  try {
+    const session = await s.checkout.sessions.retrieve(sessionId);
+    if (session.payment_status !== 'paid') {
+      return res.status(402).json({ error: 'Payment not completed.' });
+    }
+
+    const email = session.customer_details?.email ?? session.customer_email ?? 'unknown';
+    const plan: Plan = session.mode === 'subscription' ? 'monthly' : 'lifetime';
+
+    let exp: number | null = null;
+    if (plan === 'monthly' && session.subscription) {
+      const sub = await s.subscriptions.retrieve(String(session.subscription));
+      exp = sub.current_period_end * 1000;
+    }
+
+    const token = signLicense({ email, plan, exp });
+    return res.json({ token, email, plan, expiresAt: exp });
+  } catch (err) {
+    logger.error('Stripe redeem error:', (err as Error).message);
+    return res.status(502).json({ error: 'Could not verify your payment.' });
+  }
+});
+
+/**
+ * POST /api/billing/webhook — verifies Stripe signature. Mounted with a raw
+ * body parser in index.ts. Kept minimal here; extend to revoke on cancellation.
+ */
+export function handleWebhook(rawBody: Buffer, signature: string): { ok: boolean } {
+  const s = getStripe();
+  if (!s || !config.stripeWebhookSecret) return { ok: false };
+  try {
+    const event = s.webhooks.constructEvent(rawBody, signature, config.stripeWebhookSecret);
+    logger.info(`Stripe webhook: ${event.type}`);
+    return { ok: true };
+  } catch (err) {
+    logger.warn('Stripe webhook signature failed:', (err as Error).message);
+    return { ok: false };
+  }
+}
