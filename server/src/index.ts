@@ -1,5 +1,8 @@
 import express from 'express';
 import cors from 'cors';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { existsSync } from 'node:fs';
 import { config } from './config.js';
 import { logger } from './utils/logger.js';
 import { startSweeper } from './jobManager.js';
@@ -8,6 +11,9 @@ import { downloadRouter } from './routes/download.js';
 import { progressRouter } from './routes/progress.js';
 import { fileRouter } from './routes/file.js';
 import { billingRouter, handleWebhook } from './routes/billing.js';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const clientDist = path.resolve(__dirname, '../../client/dist');
 
 const app = express();
 
@@ -40,9 +46,20 @@ app.use((err: Error, _req: express.Request, res: express.Response, _next: expres
   res.status(500).json({ error: 'Unexpected server error.' });
 });
 
+const serveClient = process.env.SERVE_CLIENT === 'true' && existsSync(clientDist);
+if (serveClient) {
+  app.use(express.static(clientDist));
+  app.get('*', (req, res, next) => {
+    if (req.path.startsWith('/api')) return next();
+    res.sendFile(path.join(clientDist, 'index.html'));
+  });
+  logger.info(`Serving client from ${clientDist}`);
+}
+
 startSweeper();
 
 app.listen(config.port, () => {
-  logger.info(`ClipVault API listening on http://localhost:${config.port}`);
+  logger.info(`ClipVault API listening on port ${config.port}`);
   logger.info(`Using yt-dlp: ${config.ytdlpPath} | ffmpeg: ${config.ffmpegPath}`);
+  logger.info(`CORS origins: ${config.clientOrigin.join(', ')}`);
 });

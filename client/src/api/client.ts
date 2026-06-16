@@ -1,14 +1,10 @@
 import type { CodecMode, ProgressUpdate, QualityId, VideoInfo } from '../types';
-import { API_NOT_CONFIGURED_MSG, API_UNREACHABLE_MSG, apiUrl, isApiConfigured } from '../config/api';
+import { API_NOT_CONFIGURED_MSG, API_UNREACHABLE_MSG, apiUrl } from '../config/api';
 
 /** Thrown for any non-2xx API response, carrying the friendly server message. */
 export class ApiError extends Error {}
 
 async function postJson<T>(path: string, body: unknown): Promise<T> {
-  if (!isApiConfigured()) {
-    throw new ApiError(API_NOT_CONFIGURED_MSG);
-  }
-
   let res: Response;
   try {
     res = await fetch(apiUrl(path), {
@@ -27,7 +23,11 @@ async function postJson<T>(path: string, body: unknown): Promise<T> {
     if (data.error) throw new ApiError(data.error);
     if (!isJson) {
       throw new ApiError(
-        import.meta.env.PROD ? API_UNREACHABLE_MSG : 'Can’t reach the download service. Run the backend (cd server && npm run dev).',
+        import.meta.env.PROD && !import.meta.env.VITE_API_URL
+          ? API_NOT_CONFIGURED_MSG
+          : import.meta.env.PROD
+            ? API_UNREACHABLE_MSG
+            : 'Can’t reach the download service. Run the backend (cd server && npm run dev).',
       );
     }
     throw new ApiError('Something went wrong. Please try again.');
@@ -47,8 +47,6 @@ export function fetchVideoInfo(url: string): Promise<VideoInfo> {
 
 /** Fast preview (title + thumbnail). YouTube only; returns null when unavailable. */
 export async function fetchVideoPreview(url: string): Promise<VideoInfo | null> {
-  if (!isApiConfigured()) return null;
-
   let res: Response;
   try {
     res = await fetch(apiUrl('/api/info/preview'), {
@@ -89,7 +87,6 @@ export interface BillingConfig {
 }
 
 export async function fetchBillingConfig(): Promise<BillingConfig> {
-  if (!isApiConfigured()) throw new ApiError(API_NOT_CONFIGURED_MSG);
   const res = await fetch(apiUrl('/api/billing/config'));
   if (!res.ok) throw new ApiError('Could not load pricing.');
   return res.json();

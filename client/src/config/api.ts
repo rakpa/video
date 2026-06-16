@@ -1,21 +1,16 @@
 /**
- * API base URL for production. Leave empty in dev — Vite proxies /api to the backend.
- * On Vercel, set VITE_API_URL to your deployed server origin (no trailing slash).
- * Example: https://clipvault-api.up.railway.app
+ * API base URL for production split deploy (Vercel UI + external API).
+ * Leave empty to use same-origin relative /api paths (local dev proxy or unified deploy).
  */
 const raw = import.meta.env.VITE_API_URL?.trim() ?? '';
 export const API_BASE = raw.replace(/\/$/, '');
 
 export function apiUrl(path: string): string {
-  return `${API_BASE}${path}`;
-}
-
-export function isApiConfigured(): boolean {
-  return Boolean(API_BASE) || import.meta.env.DEV;
+  return API_BASE ? `${API_BASE}${path}` : path;
 }
 
 export const API_NOT_CONFIGURED_MSG =
-  'Download service is not connected. Deploy the ClipVault API server and set VITE_API_URL in Vercel to its URL.';
+  'Download service is not connected. The API server must be deployed and VITE_API_URL set in Vercel (see render.yaml in the repo).';
 
 export const API_UNREACHABLE_MSG =
-  'Could not reach the download service. Check that the API server is running and CLIENT_ORIGIN allows this site.';
+  'Could not reach the download service. If you just deployed, wait a minute for the API to wake up (free tier) and try again.';

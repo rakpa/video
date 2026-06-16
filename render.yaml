@@ -1,0 +1,28 @@
+# Deploy on Render: https://render.com → New + → Blueprint → connect github.com/rakpa/video
+# After deploy, set Vercel env VITE_API_URL to the Render service URL shown below.
+services:
+  - type: web
+    name: clipvault-api
+    runtime: docker
+    plan: free
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: SERVE_CLIENT
+        value: 'false'
+      - key: PORT
+        value: 10000
+      - key: CLIENT_ORIGIN
+        value: https://video-beige-five.vercel.app
+      - key: YTDLP_PATH
+        value: yt-dlp
+      - key: FFMPEG_PATH
+        value: ffmpeg
+      - key: TMP_TTL_MINUTES
+        value: 30
+      - key: MAX_DURATION_MINUTES
+        value: 180
+      - key: LICENSE_SECRET
+        generateValue: true
