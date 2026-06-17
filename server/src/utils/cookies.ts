@@ -1,4 +1,6 @@
 import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import { config } from '../config.js';
 import { logger } from './logger.js';
 
@@ -30,6 +32,39 @@ export function getCookiesStatus(): CookiesStatus {
   } catch {
     return { path: cookiesPath, exists: false, lines: 0, hasYoutube: false, hasGoogle: false };
   }
+}
+
+/**
+ * yt-dlp rewrites the cookies file when it closes (to persist refreshed
+ * session tokens). On Render, Secret Files are mounted READ-ONLY at
+ * /etc/secrets, so that write throws `OSError: Read-only file system` and
+ * crashes yt-dlp on exit — even after extraction succeeded. To avoid this we
+ * copy the configured cookies to a writable temp file once and hand yt-dlp
+ * that copy instead. The path lives OUTSIDE config.tmpRoot so the temp sweeper
+ * never deletes it.
+ */
+let writableCookiesPath: string | null | undefined;
+
+export function getUsableCookiesPath(): string | null {
+  if (writableCookiesPath !== undefined) return writableCookiesPath;
+
+  const src = config.ytdlpCookies;
+  if (!src) {
+    writableCookiesPath = null;
+    return null;
+  }
+  try {
+    const dest = path.join(os.tmpdir(), 'clipvault-cookies.txt');
+    fs.copyFileSync(src, dest);
+    fs.chmodSync(dest, 0o600);
+    writableCookiesPath = dest;
+    logger.info(`yt-dlp cookies: copied to writable ${dest}`);
+  } catch (err) {
+    // Fall back to the original path — better degraded auth than no cookies.
+    logger.warn(`yt-dlp cookies: could not create writable copy (${(err as Error).message}); using ${src}`);
+    writableCookiesPath = src;
+  }
+  return writableCookiesPath;
 }
 
 /** Log cookies status once at startup (no secret values). */

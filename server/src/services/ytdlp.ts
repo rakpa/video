@@ -2,7 +2,7 @@ import { spawn } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { config } from '../config.js';
-import { getCookiesStatus } from '../utils/cookies.js';
+import { getCookiesStatus, getUsableCookiesPath } from '../utils/cookies.js';
 import { QUALITIES, buildSelector, type CodecMode, type QualityDef, type QualityId } from './formats.js';
 import { detectPlatform } from './platform.js';
 import { logger } from '../utils/logger.js';
@@ -117,7 +117,10 @@ function youtubeClientsToTry(hasCookies: boolean): readonly string[] {
  */
 function youtubeHardeningArgs(playerClient: string): string[] {
   const args = ['--extractor-args', `youtube:${youtubeExtractorArgValue(playerClient)}`];
-  if (config.ytdlpCookies) args.push('--cookies', config.ytdlpCookies);
+  // Use a writable copy: yt-dlp rewrites the cookies file on exit and Render's
+  // secret mount is read-only (crashes the process otherwise).
+  const cookiesPath = getUsableCookiesPath();
+  if (cookiesPath) args.push('--cookies', cookiesPath);
   // A proxy routes every request through a trusted IP — the most effective
   // fix for "Sign in to confirm you're not a bot" on blocked datacenter IPs.
   if (config.ytdlpProxy) args.push('--proxy', config.ytdlpProxy);
