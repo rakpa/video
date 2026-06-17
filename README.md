@@ -6,6 +6,26 @@ A polished, production-ready web app to download videos from **YouTube, Facebook
 
 ---
 
+## ☁️ Deploy (frontend on Vercel + backend on Render)
+
+This app has **two halves**: a static **frontend** (Vercel) and a **download backend** that runs `yt-dlp` + `ffmpeg` (must run on a real server — **not** Vercel). The backend is pre-configured for Render via `render.yaml`.
+
+### 1. Deploy the backend to Render (one click)
+
+[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/rakpa/video)
+
+This reads `render.yaml`, creates the `clipvault-api` Web Service (Docker, Free plan), and installs `ffmpeg` + `yt-dlp` from the `Dockerfile`. Auto-deploys on every push to the connected branch. Copy the URL it gives you (e.g. `https://clipvault-api-xxxx.onrender.com`).
+
+> Free tier sleeps after ~15 min idle; the first request then takes ~50s to wake — that's the "wait a minute for the API to wake up" notice in the UI.
+
+### 2. Point the frontend at it (Vercel)
+
+1. Vercel → project → **Settings → Environment Variables** → set `VITE_API_URL` to your Render URL (no trailing slash).
+2. **Redeploy** on Vercel (Vite bakes env vars in at build time).
+3. On Render, ensure `CLIENT_ORIGIN` equals your exact Vercel domain (else CORS blocks requests).
+
+---
+
 ## ✨ Features
 
 - Paste-a-URL flow with **auto platform detection** (icon appears as you type).
