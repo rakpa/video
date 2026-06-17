@@ -87,15 +87,21 @@ function youtubeExtractorArgValue(playerClient: string): string {
 
 /** Resolve which YouTube player client(s) to try for info/download. */
 function youtubeClientsToTry(hasCookies: boolean): readonly string[] {
-  if (config.ytdlpPoToken) {
-    const client =
-      config.youtubePlayerClient !== 'default' ? config.youtubePlayerClient : YOUTUBE_PO_TOKEN_CLIENT;
-    return [client];
-  }
-  if (config.youtubePlayerClient !== 'default') {
-    return [config.youtubePlayerClient];
-  }
-  return hasCookies ? YOUTUBE_COOKIES_CLIENTS : YOUTUBE_PLAYER_CLIENTS;
+  // Base fallback list, best-first, for the current auth situation.
+  const base = config.ytdlpPoToken
+    ? [YOUTUBE_PO_TOKEN_CLIENT, ...YOUTUBE_COOKIES_CLIENTS]
+    : hasCookies
+      ? YOUTUBE_COOKIES_CLIENTS
+      : YOUTUBE_PLAYER_CLIENTS;
+
+  // An explicitly configured client is tried first, but we still fall back to
+  // the rest of the list so one failing client can't break every download.
+  const ordered =
+    config.youtubePlayerClient !== 'default'
+      ? [config.youtubePlayerClient, ...base]
+      : [...base];
+
+  return [...new Set(ordered)];
 }
 
 /**

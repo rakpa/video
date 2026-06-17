@@ -3,6 +3,17 @@ import os from 'node:os';
 import path from 'node:path';
 
 /**
+ * A real yt-dlp PO token is a single opaque value (optionally CLIENT.CONTEXT+TOKEN)
+ * — base64-ish, no whitespace, braces, quotes or colons. Reject anything else so a
+ * malformed env value (e.g. a pasted JSON snippet) is treated as "no token".
+ */
+function cleanPoToken(raw: string | undefined): string {
+  const t = (raw ?? '').trim();
+  if (!t || /[\s{}":]/.test(t)) return '';
+  return t;
+}
+
+/**
  * Centralised, typed configuration sourced from environment variables.
  * Every value has a sensible default so the app runs with zero config.
  */
@@ -23,7 +34,9 @@ export const config = {
   ytdlpCookies: (process.env.YTDLP_COOKIES ?? '').trim(),
   // YouTube PO Token for yt-dlp (e.g. mweb.gvs.TOKEN). See yt-dlp PO Token Guide.
   // Tokens may expire and can be per-video; a PO Token Provider plugin is better long-term.
-  ytdlpPoToken: (process.env.YTDLP_PO_TOKEN ?? '').trim(),
+  // Sanitised: a malformed value (e.g. JSON pasted by mistake) is dropped so it
+  // can't pin yt-dlp to a single failing client and break extraction.
+  ytdlpPoToken: cleanPoToken(process.env.YTDLP_PO_TOKEN),
   // YouTube player client(s) yt-dlp uses. 'default' lets yt-dlp pick its tuned,
   // up-to-date set; use 'mweb' when YTDLP_PO_TOKEN is set. Override e.g. 'web_safari'.
   youtubePlayerClient: (process.env.YTDLP_PLAYER_CLIENT ?? 'default').trim(),

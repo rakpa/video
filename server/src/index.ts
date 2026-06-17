@@ -18,8 +18,27 @@ const clientDist = path.resolve(__dirname, '../../client/dist');
 
 const app = express();
 
-const corsOrigin: cors.CorsOptions['origin'] =
-  config.clientOrigin.includes('*') ? true : config.clientOrigin;
+// Normalise an origin to a scheme-less, lowercase host (no trailing slash) so a
+// configured CLIENT_ORIGIN that omits "https://" (a very common mistake) still
+// matches the real browser Origin header. The `cors` package otherwise does an
+// exact string compare, which silently drops the Access-Control-Allow-Origin
+// header and makes every browser request fail with "could not reach".
+const normaliseOrigin = (o: string): string =>
+  o.trim().replace(/^https?:\/\//i, '').replace(/\/+$/, '').toLowerCase();
+
+const allowAllOrigins = config.clientOrigin.includes('*');
+const allowedHosts = new Set(config.clientOrigin.map(normaliseOrigin));
+
+const corsOrigin: cors.CorsOptions['origin'] = allowAllOrigins
+  ? true
+  : (origin, callback) => {
+      // No Origin header → non-browser client (curl, server-to-server, health
+      // checks) or same-origin navigation; allow it.
+      if (!origin || allowedHosts.has(normaliseOrigin(origin))) {
+        return callback(null, true);
+      }
+      return callback(null, false);
+    };
 app.use(cors({ origin: corsOrigin }));
 
 // Stripe webhook needs the RAW body for signature verification, so it must be
