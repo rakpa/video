@@ -9,6 +9,11 @@ export function apiUrl(path: string): string {
   return API_BASE ? `${API_BASE}${path}` : path;
 }
 
+/** True when the client can reach an API (dev proxy or production VITE_API_URL). */
+export function isApiConfigured(): boolean {
+  return Boolean(API_BASE) || import.meta.env.DEV;
+}
+
 export const API_NOT_CONFIGURED_MSG =
   'Download service is not connected. The API server must be deployed and VITE_API_URL set in Vercel (see render.yaml in the repo).';
 

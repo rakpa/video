@@ -98,7 +98,12 @@ function runJson(args: readonly string[]): Promise<string> {
     child.on('close', (code) => {
       if (code === 0) return resolve(stdout);
       logger.warn('yt-dlp info failed:', stderr.slice(0, 500));
-      reject(new YtDlpError('Could not read that video. It may be private, removed, or region-locked.', 'UNAVAILABLE'));
+      const s = stderr.toLowerCase();
+      const message =
+        s.includes("sign in to confirm you're not a bot") || s.includes('not a bot') || s.includes('bot detected')
+          ? 'YouTube blocked automated access from this server. Add a cookies.txt on Render (secret file) and set YTDLP_COOKIES, then redeploy.'
+          : 'Could not read that video. It may be private, removed, or region-locked.';
+      reject(new YtDlpError(message, 'UNAVAILABLE'));
     });
   });
 }

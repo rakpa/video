@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { validateUrl } from '../utils/validate.js';
+import { readJsonBody } from '../utils/body.js';
 import { fetchInfo, YtDlpError } from '../services/ytdlp.js';
 import { detectPlatform } from '../services/platform.js';
 import { fetchPreview } from '../services/preview.js';
@@ -9,7 +10,7 @@ export const infoRouter = Router();
 
 /** POST /api/info/preview { url } → fast title/thumbnail (YouTube oEmbed). */
 infoRouter.post('/info/preview', async (req, res) => {
-  const { url } = req.body ?? {};
+  const { url } = readJsonBody(req);
 
   const v = validateUrl(url);
   if (!v.ok) {
@@ -30,7 +31,7 @@ infoRouter.post('/info/preview', async (req, res) => {
 
 /** POST /api/info { url } → video metadata + quality cards. */
 infoRouter.post('/info', async (req, res) => {
-  const { url } = req.body ?? {};
+  const { url } = readJsonBody(req);
 
   const v = validateUrl(url);
   if (!v.ok) {

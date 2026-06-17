@@ -34,10 +34,25 @@ export const PLATFORMS: PlatformMeta[] = [
   },
 ];
 
+/** Ensure a parseable URL — prepends https:// when the user omits the scheme. */
+export function normalizeUrl(raw: string): string {
+  const trimmed = raw.trim();
+  if (!trimmed) return trimmed;
+  try {
+    return new URL(trimmed).href;
+  } catch {
+    try {
+      return new URL(`https://${trimmed}`).href;
+    } catch {
+      return trimmed;
+    }
+  }
+}
+
 /** Returns the detected platform for a raw URL string, or null. */
 export function detectPlatform(raw: string): PlatformMeta | null {
   try {
-    const host = new URL(raw.trim()).hostname.toLowerCase();
+    const host = new URL(normalizeUrl(raw)).hostname.toLowerCase();
     return PLATFORMS.find((p) => p.test(host)) ?? null;
   } catch {
     return null;

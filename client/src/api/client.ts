@@ -1,11 +1,18 @@
 import type { CodecMode, ProgressUpdate, QualityId, VideoInfo } from '../types';
-import { API_NOT_CONFIGURED_MSG, API_UNREACHABLE_MSG, apiUrl } from '../config/api';
+import { API_NOT_CONFIGURED_MSG, API_UNREACHABLE_MSG, apiUrl, isApiConfigured } from '../config/api';
 import { retryFetch } from '../utils/retryFetch';
 
 /** Thrown for any non-2xx API response, carrying the friendly server message. */
 export class ApiError extends Error {}
 
+/** Enough attempts to survive Render free-tier cold starts (~50s wake). */
+const COLD_START_RETRY = { retries: 7, delayMs: 4000, backoffFactor: 1.5 } as const;
+
 async function postJson<T>(path: string, body: unknown): Promise<T> {
+  if (!isApiConfigured()) {
+    throw new ApiError(API_NOT_CONFIGURED_MSG);
+  }
+
   let res: Response;
   try {
     // Retry with backoff so a sleeping free-tier backend (Render) gets a chance
@@ -17,7 +24,7 @@ async function postJson<T>(path: string, body: unknown): Promise<T> {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
       },
-      { retries: 4, delayMs: 2000, backoffFactor: 1.7 },
+      COLD_START_RETRY,
     );
   } catch {
     throw new ApiError(API_UNREACHABLE_MSG);
@@ -54,13 +61,19 @@ export function fetchVideoInfo(url: string): Promise<VideoInfo> {
 
 /** Fast preview (title + thumbnail). YouTube only; returns null when unavailable. */
 export async function fetchVideoPreview(url: string): Promise<VideoInfo | null> {
+  if (!isApiConfigured()) return null;
+
   let res: Response;
   try {
-    res = await fetch(apiUrl('/api/info/preview'), {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ url }),
-    });
+    res = await retryFetch(
+      apiUrl('/api/info/preview'),
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url }),
+      },
+      COLD_START_RETRY,
+    );
   } catch {
     return null;
   }

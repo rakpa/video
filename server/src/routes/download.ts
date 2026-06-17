@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { validateUrl } from '../utils/validate.js';
+import { readJsonBody } from '../utils/body.js';
 import { getQuality, isCodecMode } from '../services/formats.js';
 import { createJob } from '../jobManager.js';
 import { YtDlpError } from '../services/ytdlp.js';
@@ -14,7 +15,7 @@ export const downloadRouter = Router();
  * subscribes to /api/progress/:jobId and finally GETs /api/file/:jobId.
  */
 downloadRouter.post('/download', async (req, res) => {
-  const { url, quality, mode, license } = req.body ?? {};
+  const { url, quality, mode, license } = readJsonBody(req);
 
   const v = validateUrl(url);
   if (!v.ok) return res.status(400).json({ error: v.message });

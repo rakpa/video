@@ -2,7 +2,8 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import type { AvailableFormat, CodecMode, Phase, ProgressUpdate, QualityId, VideoInfo } from './types';
 import { useTheme, type Theme } from './hooks/useTheme';
-import { detectPlatform } from './utils/platform';
+import { detectPlatform, normalizeUrl } from './utils/platform';
+import { API_NOT_CONFIGURED_MSG, isApiConfigured } from './config/api';
 import { PLACEHOLDER_FORMATS } from './utils/formats';
 import { isPro, licenseToken } from './lib/license';
 import { useStripeReturn } from './hooks/useStripeReturn';
@@ -102,11 +103,18 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
     (formats.find((f) => f.id === '1080' && f.available) ?? formats.find((f) => f.available) ?? formats[0]).id;
 
   const handleFetch = useCallback(async (target: string) => {
+    const normalized = normalizeUrl(target);
+    if (!isApiConfigured()) {
+      setError(API_NOT_CONFIGURED_MSG);
+      setPhase('error');
+      return;
+    }
+
     setError(null);
     setPhase('preview');
-    fetchedUrl.current = target;
+    fetchedUrl.current = normalized;
 
-    const platform = detectPlatform(target)!;
+    const platform = detectPlatform(normalized)!;
     setInfo({
       platform: platform.id,
       id: '',
@@ -117,17 +125,17 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
       formats: PLACEHOLDER_FORMATS,
     });
 
-    const previewPromise = fetchVideoPreview(target).catch(() => null);
-    const fullPromise = fetchVideoInfo(target);
+    const previewPromise = fetchVideoPreview(normalized).catch(() => null);
+    const fullPromise = fetchVideoInfo(normalized);
 
     try {
       const preview = await previewPromise;
-      if (preview && fetchedUrl.current === target) {
+      if (preview && fetchedUrl.current === normalized) {
         setInfo((prev) => ({ ...preview, formats: prev?.formats ?? PLACEHOLDER_FORMATS }));
       }
 
       const data = await fullPromise;
-      if (fetchedUrl.current !== target) return;
+      if (fetchedUrl.current !== normalized) return;
       setInfo((prev) => ({
         ...data,
         thumbnail: prev?.thumbnail ?? data.thumbnail,
@@ -138,7 +146,7 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
       });
       setPhase((p) => (p === 'preview' || p === 'fetching' ? 'ready' : p));
     } catch (e) {
-      if (fetchedUrl.current !== target) return;
+      if (fetchedUrl.current !== normalized) return;
       setError(e instanceof ApiError ? e.message : 'Could not fetch that video.');
       setPhase((p) => (p === 'downloading' || p === 'success' ? p : 'error'));
     }
@@ -146,6 +154,7 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
 
   useEffect(() => {
     const trimmed = url.trim();
+    const normalized = normalizeUrl(trimmed);
     const likelyPaste = trimmed.length - prevUrlLen.current > 8;
     prevUrlLen.current = trimmed.length;
 
@@ -154,10 +163,11 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
         setInfo(null);
         setPhase('idle');
         setError(null);
+        fetchedUrl.current = '';
       }
       return;
     }
-    if (trimmed === fetchedUrl.current || phase === 'downloading') return;
+    if (normalized === fetchedUrl.current || phase === 'downloading') return;
     const delay = likelyPaste ? 0 : 200;
     const t = setTimeout(() => handleFetch(trimmed), delay);
     return () => clearTimeout(t);
