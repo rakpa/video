@@ -17,7 +17,9 @@ const clientDist = path.resolve(__dirname, '../../client/dist');
 
 const app = express();
 
-app.use(cors({ origin: config.clientOrigin }));
+const corsOrigin: cors.CorsOptions['origin'] =
+  config.clientOrigin.includes('*') ? true : config.clientOrigin;
+app.use(cors({ origin: corsOrigin }));
 
 // Stripe webhook needs the RAW body for signature verification, so it must be
 // registered before the JSON body parser.
