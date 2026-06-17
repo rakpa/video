@@ -31,6 +31,8 @@ services:
       # "Secret File" (Service → Settings → Secret Files), then uncomment:
       # - key: YTDLP_COOKIES
       #   value: /etc/secrets/cookies.txt
-      # Optionally override the YouTube player client if one gets blocked:
+      # YouTube PO Token (yt-dlp wiki: PO Token Guide). Use with mweb client.
+      # - key: YTDLP_PO_TOKEN
+      #   sync: false
       # - key: YTDLP_PLAYER_CLIENT
-      #   value: web_safari,tv
+      #   value: mweb

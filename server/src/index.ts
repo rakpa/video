@@ -52,6 +52,10 @@ app.get('/api/health', (_req, res) => {
       hasGoogle: cookies.hasGoogle,
       hasYoutube: cookies.hasYoutube,
     },
+    youtube: {
+      poTokenConfigured: Boolean(config.ytdlpPoToken),
+      playerClient: config.youtubePlayerClient,
+    },
   });
 });
 
@@ -86,4 +90,11 @@ app.listen(config.port, () => {
   logger.info(`Using yt-dlp: ${config.ytdlpPath} | ffmpeg: ${config.ffmpegPath}`);
   logger.info(`CORS origins: ${config.clientOrigin.join(', ')}`);
   logCookiesStatus();
+  if (config.ytdlpPoToken) {
+    logger.info(
+      `yt-dlp PO token: configured (client=${config.youtubePlayerClient !== 'default' ? config.youtubePlayerClient : 'mweb'})`,
+    );
+  } else {
+    logger.info('yt-dlp PO token: not configured');
+  }
 });

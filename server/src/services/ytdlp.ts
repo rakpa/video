@@ -67,26 +67,57 @@ const INFO_ARGS = [
   '--no-check-formats',
 ] as const;
 
-/** Player clients to try without cookies (datacenter IPs). */
+/** Player clients to try without cookies or PO token (datacenter IPs). */
 const YOUTUBE_PLAYER_CLIENTS = ['web_safari', 'tv_embedded', 'mweb', 'android', 'default'] as const;
 
 /** With cookies, the web client is most reliable for authenticated sessions. */
 const YOUTUBE_COOKIES_CLIENTS = ['web', 'web_safari', 'mweb', 'tv_embedded', 'default'] as const;
 
+/** Default client when a PO token is configured (yt-dlp recommends mweb + PO token). */
+const YOUTUBE_PO_TOKEN_CLIENT = 'mweb';
+
+/** Build the youtube: extractor-args value (player_client + optional po_token). */
+function youtubeExtractorArgValue(playerClient: string): string {
+  const parts = [`player_client=${playerClient}`];
+  if (config.ytdlpPoToken) {
+    parts.push(`po_token=${config.ytdlpPoToken}`);
+  }
+  return parts.join(';');
+}
+
+/** Resolve which YouTube player client(s) to try for info/download. */
+function youtubeClientsToTry(hasCookies: boolean): readonly string[] {
+  if (config.ytdlpPoToken) {
+    const client =
+      config.youtubePlayerClient !== 'default' ? config.youtubePlayerClient : YOUTUBE_PO_TOKEN_CLIENT;
+    return [client];
+  }
+  if (config.youtubePlayerClient !== 'default') {
+    return [config.youtubePlayerClient];
+  }
+  return hasCookies ? YOUTUBE_COOKIES_CLIENTS : YOUTUBE_PLAYER_CLIENTS;
+}
+
 /**
  * Args shared by every yt-dlp invocation (info + download) to survive YouTube's
  * bot-detection on cloud/datacenter IPs: a configurable player client and, when
- * provided, an authenticated cookies file. The `youtube:` namespace makes the
- * extractor-arg a no-op for other platforms (Facebook/Instagram).
+ * provided, an authenticated cookies file and/or PO token. The `youtube:`
+ * namespace makes the extractor-arg a no-op for other platforms.
  */
-function youtubeHardeningArgs(playerClient = config.youtubePlayerClient): string[] {
-  const args = ['--extractor-args', `youtube:player_client=${playerClient}`];
+function youtubeHardeningArgs(playerClient: string): string[] {
+  const args = ['--extractor-args', `youtube:${youtubeExtractorArgValue(playerClient)}`];
   if (config.ytdlpCookies) args.push('--cookies', config.ytdlpCookies);
   return args;
 }
 
 function ytDlpFailureMessage(stderr: string): string {
   const s = stderr.toLowerCase();
+  if (s.includes('po token') || (s.includes('http error 403') && s.includes('youtube'))) {
+    if (config.ytdlpPoToken) {
+      return 'YouTube rejected the PO Token (expired or wrong format). Refresh YTDLP_PO_TOKEN — tokens can be per-video and short-lived. See yt-dlp PO Token Guide.';
+    }
+    return 'YouTube requires a PO Token for this client. Set YTDLP_PO_TOKEN on the server (mweb client recommended). See https://github.com/yt-dlp/yt-dlp/wiki/PO-Token-Guide';
+  }
   if (s.includes("sign in to confirm you're not a bot") || s.includes('not a bot') || s.includes('bot detected')) {
     const cookies = getCookiesStatus();
     if (cookies.path && cookies.exists) {
@@ -221,11 +252,7 @@ export async function fetchInfo(url: string): Promise<VideoInfo> {
   const platform = detectPlatform(url);
   const isYoutube = platform?.id === 'youtube';
   const cookies = getCookiesStatus();
-  const clients = isYoutube
-    ? cookies.exists
-      ? [...YOUTUBE_COOKIES_CLIENTS]
-      : [...YOUTUBE_PLAYER_CLIENTS]
-    : [config.youtubePlayerClient];
+  const clients = isYoutube ? youtubeClientsToTry(cookies.exists) : [config.youtubePlayerClient];
 
   let lastError: YtDlpError | undefined;
   for (const client of clients) {
@@ -308,6 +335,8 @@ export function startDownload(
   onProgress: (p: ProgressUpdate) => void,
 ): DownloadHandle {
   const outTemplate = path.join(outputDir, '%(title).80s.%(ext)s');
+  const cookies = getCookiesStatus();
+  const [youtubeClient] = youtubeClientsToTry(cookies.exists);
 
   // NOTE: we intentionally do NOT use `--print after_move:filepath` — it makes
   // yt-dlp suppress the live progress lines on stdout. Instead we parse progress
@@ -322,7 +351,7 @@ export function startDownload(
     '--no-part',
     '--progress',
     '--restrict-filenames',
-    ...youtubeHardeningArgs(),
+    ...youtubeHardeningArgs(youtubeClient ?? config.youtubePlayerClient),
     '-o', outTemplate,
     url,
   ];
