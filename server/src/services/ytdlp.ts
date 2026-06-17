@@ -192,54 +192,6 @@ function runJson(args: readonly string[]): Promise<string> {
   });
 }
 
-export interface DebugProbeResult {
-  client: string;
-  code: number | null;
-  formatCount: number | null;
-  stderrTail: string;
-}
-
-/** Mask credentials so probe output never leaks the proxy username/password. */
-function maskSecrets(s: string): string {
-  return s.replace(/\/\/[^@\s/]*@/g, '//***@');
-}
-
-/**
- * TEMPORARY DIAGNOSTIC: run a yt-dlp info probe per client and return the raw
- * (masked) exit code / format count / stderr tail. Lets us see exactly what the
- * deployed server's yt-dlp does, which local runs can't reveal.
- */
-export function debugProbe(url: string): Promise<DebugProbeResult[]> {
-  const cookies = getCookiesStatus();
-  const clients = youtubeClientsToTry(cookies.exists);
-  return Promise.all(
-    clients.map(
-      (client) =>
-        new Promise<DebugProbeResult>((resolve) => {
-          const child = spawn(
-            config.ytdlpPath,
-            [...INFO_ARGS, ...youtubeHardeningArgs(client), url],
-            { windowsHide: true },
-          );
-          let stdout = '';
-          let stderr = '';
-          child.stdout.on('data', (d) => (stdout += d.toString()));
-          child.stderr.on('data', (d) => (stderr += d.toString()));
-          child.on('error', (err) => resolve({ client, code: null, formatCount: null, stderrTail: maskSecrets(err.message) }));
-          child.on('close', (code) => {
-            let formatCount: number | null = null;
-            try {
-              formatCount = (JSON.parse(stdout).formats ?? []).length;
-            } catch {
-              /* not json */
-            }
-            resolve({ client, code, formatCount, stderrTail: maskSecrets(stderr).slice(-1200) });
-          });
-        }),
-    ),
-  );
-}
-
 /** Picks the best thumbnail URL from the dump. */
 function pickThumbnail(raw: RawDump): string | null {
   if (raw.thumbnail) return raw.thumbnail;
