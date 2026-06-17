@@ -409,17 +409,23 @@ export function startDownload(
   const args = [
     '-f', buildSelector(quality, mode),
     '--merge-output-format', 'mp4',
-    '--ffmpeg-location', config.ffmpegPath,
+    // Only pass --ffmpeg-location for a real path. A bare name like "ffmpeg"
+    // is rejected by yt-dlp ("ffmpeg-location ffmpeg does not exist") and makes
+    // it SKIP the merge — producing a video-only file with no audio. Omitting
+    // the flag lets yt-dlp find ffmpeg on PATH (the normal case).
+    ...(/[\\/]/.test(config.ffmpegPath) ? ['--ffmpeg-location', config.ffmpegPath] : []),
     '--no-playlist',
     '--no-warnings',
     '--newline',
     '--no-part',
     '--progress',
     '--restrict-filenames',
-    // Resilience for slow/flaky proxies: download in ranged chunks (a dropped
-    // connection costs one chunk, not the whole file, and resets per-request
-    // throttling) and retry transient network/fragment errors generously.
+    // Resilience + speed for slow/flaky proxies: download in ranged chunks (a
+    // dropped connection costs one chunk, not the whole file, and resets
+    // per-request throttling), pull several chunks in parallel to beat
+    // per-connection proxy throttling, and retry transient errors generously.
     '--http-chunk-size', '10M',
+    '--concurrent-fragments', '4',
     '--retries', '10',
     '--fragment-retries', '20',
     '--retry-sleep', 'linear=1::5',
