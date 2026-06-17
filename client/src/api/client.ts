@@ -1,5 +1,6 @@
 import type { CodecMode, ProgressUpdate, QualityId, VideoInfo } from '../types';
 import { API_NOT_CONFIGURED_MSG, API_UNREACHABLE_MSG, apiUrl } from '../config/api';
+import { retryFetch } from '../utils/retryFetch';
 
 /** Thrown for any non-2xx API response, carrying the friendly server message. */
 export class ApiError extends Error {}
@@ -7,11 +8,17 @@ export class ApiError extends Error {}
 async function postJson<T>(path: string, body: unknown): Promise<T> {
   let res: Response;
   try {
-    res = await fetch(apiUrl(path), {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-    });
+    // Retry with backoff so a sleeping free-tier backend (Render) gets a chance
+    // to wake up instead of immediately surfacing "could not reach" on cold start.
+    res = await retryFetch(
+      apiUrl(path),
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      },
+      { retries: 4, delayMs: 2000, backoffFactor: 1.7 },
+    );
   } catch {
     throw new ApiError(API_UNREACHABLE_MSG);
   }
