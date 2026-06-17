@@ -22,28 +22,30 @@ export const QUALITIES: Record<QualityId, QualityDef> = {
     label: '720p',
     tag: 'HD',
     height: 720,
-    selector: 'bv*[height<=720]+ba/b[height<=720]/b',
+    // Prefer <= target height, but always fall back to "best" so yt-dlp never hard-fails
+    // with "Requested format is not available" on unusual videos.
+    selector: 'bv*[height<=720]+ba/b[height<=720]/bv*+ba/b',
   },
   '1080': {
     id: '1080',
     label: '1080p',
     tag: 'Full HD',
     height: 1080,
-    selector: 'bv*[height<=1080]+ba/b[height<=1080]/b',
+    selector: 'bv*[height<=1080]+ba/b[height<=1080]/bv*+ba/b',
   },
   '1440': {
     id: '1440',
     label: '1440p',
     tag: '2K',
     height: 1440,
-    selector: 'bv*[height<=1440]+ba/b[height<=1440]/b',
+    selector: 'bv*[height<=1440]+ba/b[height<=1440]/bv*+ba/b',
   },
   '2160': {
     id: '2160',
     label: '2160p',
     tag: '4K',
     height: 2160,
-    selector: 'bv*[height<=2160]+ba/b[height<=2160]/b',
+    selector: 'bv*[height<=2160]+ba/b[height<=2160]/bv*+ba/b',
   },
 };
 
@@ -82,6 +84,8 @@ export function buildSelector(quality: QualityDef, mode: CodecMode): string {
       `b[vcodec^=avc1][height<=${h}]`,
       `b[ext=mp4][height<=${h}]`,
       `b[height<=${h}]`,
+      // Last-resort fallback so the job doesn't hard-fail.
+      `bv*+ba/b`,
     ].join('/');
   }
   return quality.selector;
