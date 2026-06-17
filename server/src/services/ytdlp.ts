@@ -2,6 +2,7 @@ import { spawn } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { config } from '../config.js';
+import { getCookiesStatus } from '../utils/cookies.js';
 import { QUALITIES, buildSelector, type CodecMode, type QualityDef, type QualityId } from './formats.js';
 import { detectPlatform } from './platform.js';
 import { logger } from '../utils/logger.js';
@@ -66,8 +67,11 @@ const INFO_ARGS = [
   '--no-check-formats',
 ] as const;
 
-/** Player clients to try on cloud hosts when YouTube blocks the default client. */
+/** Player clients to try without cookies (datacenter IPs). */
 const YOUTUBE_PLAYER_CLIENTS = ['web_safari', 'tv_embedded', 'mweb', 'android', 'default'] as const;
+
+/** With cookies, the web client is most reliable for authenticated sessions. */
+const YOUTUBE_COOKIES_CLIENTS = ['web', 'web_safari', 'mweb', 'tv_embedded', 'default'] as const;
 
 /**
  * Args shared by every yt-dlp invocation (info + download) to survive YouTube's
@@ -84,6 +88,13 @@ function youtubeHardeningArgs(playerClient = config.youtubePlayerClient): string
 function ytDlpFailureMessage(stderr: string): string {
   const s = stderr.toLowerCase();
   if (s.includes("sign in to confirm you're not a bot") || s.includes('not a bot') || s.includes('bot detected')) {
+    const cookies = getCookiesStatus();
+    if (cookies.path && cookies.exists) {
+      if (!cookies.hasGoogle || !cookies.hasYoutube) {
+        return 'Cookies file is missing Google or YouTube entries. Re-export cookies from both accounts.google.com and youtube.com, then redeploy.';
+      }
+      return 'YouTube blocked this server even with cookies. Re-export a fresh cookies.txt (after logging in on Google + YouTube) and redeploy. Render datacenter IPs are often blocked by YouTube.';
+    }
     return 'YouTube blocked automated access from this server. Add a cookies.txt on Render (secret file) and set YTDLP_COOKIES, then redeploy.';
   }
   if (s.includes('requested format is not available')) {
@@ -209,9 +220,10 @@ function parseInfoDump(stdout: string): VideoInfo {
 export async function fetchInfo(url: string): Promise<VideoInfo> {
   const platform = detectPlatform(url);
   const isYoutube = platform?.id === 'youtube';
+  const cookies = getCookiesStatus();
   const clients = isYoutube
-    ? config.ytdlpCookies
-      ? [config.youtubePlayerClient]
+    ? cookies.exists
+      ? [...YOUTUBE_COOKIES_CLIENTS]
       : [...YOUTUBE_PLAYER_CLIENTS]
     : [config.youtubePlayerClient];
 

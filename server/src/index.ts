@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { existsSync } from 'node:fs';
 import { config } from './config.js';
 import { logger } from './utils/logger.js';
+import { getCookiesStatus, logCookiesStatus } from './utils/cookies.js';
 import { startSweeper } from './jobManager.js';
 import { infoRouter } from './routes/info.js';
 import { downloadRouter } from './routes/download.js';
@@ -39,8 +40,20 @@ app.use((err: unknown, req: express.Request, res: express.Response, next: expres
   next(err);
 });
 
-// Health check
-app.get('/api/health', (_req, res) => res.json({ ok: true }));
+// Health check (includes cookies status for debugging — no secret values)
+app.get('/api/health', (_req, res) => {
+  const cookies = getCookiesStatus();
+  res.json({
+    ok: true,
+    cookies: {
+      configured: Boolean(cookies.path),
+      found: cookies.exists,
+      lines: cookies.lines,
+      hasGoogle: cookies.hasGoogle,
+      hasYoutube: cookies.hasYoutube,
+    },
+  });
+});
 
 // Feature routes
 app.use('/api', infoRouter);
@@ -72,4 +85,5 @@ app.listen(config.port, () => {
   logger.info(`ClipVault API listening on port ${config.port}`);
   logger.info(`Using yt-dlp: ${config.ytdlpPath} | ffmpeg: ${config.ffmpegPath}`);
   logger.info(`CORS origins: ${config.clientOrigin.join(', ')}`);
+  logCookiesStatus();
 });
