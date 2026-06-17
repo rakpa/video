@@ -1,12 +1,29 @@
 import { Router } from 'express';
 import { validateUrl } from '../utils/validate.js';
 import { readJsonBody } from '../utils/body.js';
-import { fetchInfo, YtDlpError } from '../services/ytdlp.js';
+import { fetchInfo, debugProbe, YtDlpError } from '../services/ytdlp.js';
 import { detectPlatform } from '../services/platform.js';
 import { fetchPreview } from '../services/preview.js';
 import { getCachedInfo, setCachedInfo } from '../services/infoCache.js';
 
 export const infoRouter = Router();
+
+/**
+ * TEMPORARY DIAGNOSTIC: GET /api/info/debug?url=...&token=clipvault-diag
+ * Returns the raw yt-dlp result per client so we can see what the deployed
+ * server actually gets. Remove once the YouTube format issue is resolved.
+ */
+infoRouter.get('/info/debug', async (req, res) => {
+  if (req.query.token !== 'clipvault-diag') return res.status(403).json({ error: 'Forbidden.' });
+  const url = String(req.query.url ?? '');
+  const v = validateUrl(url);
+  if (!v.ok) return res.status(400).json({ error: v.message });
+  try {
+    return res.json({ probes: await debugProbe(url.trim()) });
+  } catch (err) {
+    return res.status(500).json({ error: (err as Error).message });
+  }
+});
 
 /** POST /api/info/preview { url } → fast title/thumbnail (YouTube oEmbed). */
 infoRouter.post('/info/preview', async (req, res) => {
