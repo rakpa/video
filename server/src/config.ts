@@ -32,6 +32,10 @@ export const config = {
   // the most reliable fix for "Sign in to confirm you're not a bot" errors that
   // hit datacenter IPs (Render/AWS/GCP). Empty = no cookies (works locally).
   ytdlpCookies: (process.env.YTDLP_COOKIES ?? '').trim(),
+  // Optional proxy for yt-dlp (e.g. http://user:pass@host:port). The most
+  // reliable fix for datacenter IP blocks: route requests through a trusted
+  // (residential/clean) IP. Empty = direct connection (fine locally).
+  ytdlpProxy: (process.env.YTDLP_PROXY ?? '').trim(),
   // YouTube PO Token for yt-dlp (e.g. mweb.gvs.TOKEN). See yt-dlp PO Token Guide.
   // Tokens may expire and can be per-video; a PO Token Provider plugin is better long-term.
   // Sanitised: a malformed value (e.g. JSON pasted by mistake) is dropped so it

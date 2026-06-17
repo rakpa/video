@@ -113,6 +113,9 @@ function youtubeClientsToTry(hasCookies: boolean): readonly string[] {
 function youtubeHardeningArgs(playerClient: string): string[] {
   const args = ['--extractor-args', `youtube:${youtubeExtractorArgValue(playerClient)}`];
   if (config.ytdlpCookies) args.push('--cookies', config.ytdlpCookies);
+  // A proxy routes every request through a trusted IP — the most effective
+  // fix for "Sign in to confirm you're not a bot" on blocked datacenter IPs.
+  if (config.ytdlpProxy) args.push('--proxy', config.ytdlpProxy);
   return args;
 }
 
