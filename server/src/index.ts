@@ -41,6 +41,17 @@ const corsOrigin: cors.CorsOptions['origin'] = allowAllOrigins
     };
 app.use(cors({ origin: corsOrigin }));
 
+/** Strip credentials from a proxy URL, leaving host:port for safe diagnostics. */
+function maskProxy(proxy: string): string | null {
+  if (!proxy) return null;
+  try {
+    const u = new URL(proxy);
+    return `${u.protocol}//${u.host}`;
+  } catch {
+    return proxy.replace(/\/\/[^@]*@/, '//');
+  }
+}
+
 // Stripe webhook needs the RAW body for signature verification, so it must be
 // registered before the JSON body parser.
 app.post('/api/billing/webhook', express.raw({ type: 'application/json' }), (req, res) => {
@@ -74,6 +85,12 @@ app.get('/api/health', (_req, res) => {
     youtube: {
       poTokenConfigured: Boolean(config.ytdlpPoToken),
       playerClient: config.youtubePlayerClient,
+    },
+    // Proxy status for debugging datacenter-IP blocks. Host:port only — never
+    // the username/password embedded in the URL.
+    proxy: {
+      configured: Boolean(config.ytdlpProxy),
+      host: maskProxy(config.ytdlpProxy),
     },
   });
 });
