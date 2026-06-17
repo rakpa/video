@@ -63,9 +63,19 @@ const INFO_ARGS = [
   '--no-warnings',
   '--no-playlist',
   '--no-check-formats',
-  '--extractor-args',
-  'youtube:player_client=android',
 ] as const;
+
+/**
+ * Args shared by every yt-dlp invocation (info + download) to survive YouTube's
+ * bot-detection on cloud/datacenter IPs: a configurable player client and, when
+ * provided, an authenticated cookies file. The `youtube:` namespace makes the
+ * extractor-arg a no-op for other platforms (Facebook/Instagram).
+ */
+function youtubeHardeningArgs(): string[] {
+  const args = ['--extractor-args', `youtube:player_client=${config.youtubePlayerClient}`];
+  if (config.ytdlpCookies) args.push('--cookies', config.ytdlpCookies);
+  return args;
+}
 
 /** Run yt-dlp and collect stdout. Rejects with a typed error on failure. */
 function runJson(args: readonly string[]): Promise<string> {
@@ -129,7 +139,7 @@ function estimateSize(raw: RawDump, height: number, durationSeconds: number | nu
 
 /** Fetches metadata + computes the four quality cards for a URL. */
 export async function fetchInfo(url: string): Promise<VideoInfo> {
-  const stdout = await runJson([...INFO_ARGS, url]);
+  const stdout = await runJson([...INFO_ARGS, ...youtubeHardeningArgs(), url]);
 
   let raw: RawDump;
   try {
@@ -251,6 +261,7 @@ export function startDownload(
     '--no-part',
     '--progress',
     '--restrict-filenames',
+    ...youtubeHardeningArgs(),
     '-o', outTemplate,
     url,
   ];

@@ -26,3 +26,11 @@ services:
         value: 180
       - key: LICENSE_SECRET
         generateValue: true
+      # YouTube blocks datacenter IPs ("Sign in to confirm you're not a bot").
+      # To authenticate yt-dlp, add a Netscape cookies.txt as a Render
+      # "Secret File" (Service → Settings → Secret Files), then uncomment:
+      # - key: YTDLP_COOKIES
+      #   value: /etc/secrets/cookies.txt
+      # Optionally override the YouTube player client if one gets blocked:
+      # - key: YTDLP_PLAYER_CLIENT
+      #   value: web_safari,tv

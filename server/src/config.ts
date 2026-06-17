@@ -16,6 +16,15 @@ export const config = {
   ytdlpPath: process.env.YTDLP_PATH ?? 'yt-dlp',
   ffmpegPath: process.env.FFMPEG_PATH ?? 'ffmpeg',
 
+  // --- yt-dlp hardening for cloud hosts (YouTube bot-detection) ---
+  // Path to a Netscape-format cookies.txt so yt-dlp can authenticate. This is
+  // the most reliable fix for "Sign in to confirm you're not a bot" errors that
+  // hit datacenter IPs (Render/AWS/GCP). Empty = no cookies (works locally).
+  ytdlpCookies: (process.env.YTDLP_COOKIES ?? '').trim(),
+  // YouTube player client(s) yt-dlp uses. 'default' lets yt-dlp pick its tuned,
+  // up-to-date set; override e.g. 'web_safari,tv' if a specific client is blocked.
+  youtubePlayerClient: (process.env.YTDLP_PLAYER_CLIENT ?? 'default').trim(),
+
   // Root directory where per-job temp folders are created.
   tmpRoot: path.join(os.tmpdir(), 'clipvault'),
 
