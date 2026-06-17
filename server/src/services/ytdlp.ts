@@ -365,6 +365,14 @@ export function startDownload(
     '--no-part',
     '--progress',
     '--restrict-filenames',
+    // Resilience for slow/flaky proxies: download in ranged chunks (a dropped
+    // connection costs one chunk, not the whole file, and resets per-request
+    // throttling) and retry transient network/fragment errors generously.
+    '--http-chunk-size', '10M',
+    '--retries', '10',
+    '--fragment-retries', '20',
+    '--retry-sleep', 'linear=1::5',
+    '--socket-timeout', '30',
     ...youtubeHardeningArgs(youtubeClient ?? config.youtubePlayerClient),
     '-o', outTemplate,
     url,
