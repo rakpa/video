@@ -125,7 +125,7 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
       formats: PLACEHOLDER_FORMATS,
     });
 
-    const previewPromise = fetchVideoPreview(normalized).catch(() => null);
+    const previewPromise = fetchVideoPreview(normalized);
     const fullPromise = fetchVideoInfo(normalized);
 
     try {
@@ -138,6 +138,8 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
       if (fetchedUrl.current !== normalized) return;
       setInfo((prev) => ({
         ...data,
+        title: data.title || prev?.title || 'Untitled video',
+        author: data.author || prev?.author || 'Unknown',
         thumbnail: prev?.thumbnail ?? data.thumbnail,
       }));
       setSelected((current) => {

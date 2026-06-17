@@ -1,12 +1,26 @@
 import type { CodecMode, ProgressUpdate, QualityId, VideoInfo } from '../types';
 import { API_NOT_CONFIGURED_MSG, API_UNREACHABLE_MSG, apiUrl, isApiConfigured } from '../config/api';
+import { detectPlatform } from '../utils/platform';
+import { fetchClientYoutubePreview } from '../utils/youtube';
 import { retryFetch } from '../utils/retryFetch';
 
 /** Thrown for any non-2xx API response, carrying the friendly server message. */
 export class ApiError extends Error {}
 
 /** Enough attempts to survive Render free-tier cold starts (~50s wake). */
-const COLD_START_RETRY = { retries: 7, delayMs: 4000, backoffFactor: 1.5 } as const;
+const COLD_START_RETRY = { retries: 8, delayMs: 5000, backoffFactor: 1.4 } as const;
+
+function apiFailureMessage(res: Response, isJson: boolean): string {
+  if (res.status === 502 || res.status === 503 || res.status === 504) {
+    return 'The download service is waking up (Render free tier). Wait ~1 minute and try again.';
+  }
+  if (!isJson) {
+    return import.meta.env.PROD && !import.meta.env.VITE_API_URL
+      ? API_NOT_CONFIGURED_MSG
+      : API_UNREACHABLE_MSG;
+  }
+  return 'Something went wrong. Please try again.';
+}
 
 async function postJson<T>(path: string, body: unknown): Promise<T> {
   if (!isApiConfigured()) {
@@ -35,20 +49,11 @@ async function postJson<T>(path: string, body: unknown): Promise<T> {
 
   if (!res.ok) {
     if (data.error) throw new ApiError(data.error);
-    if (!isJson) {
-      throw new ApiError(
-        import.meta.env.PROD && !import.meta.env.VITE_API_URL
-          ? API_NOT_CONFIGURED_MSG
-          : import.meta.env.PROD
-            ? API_UNREACHABLE_MSG
-            : 'Can’t reach the download service. Run the backend (cd server && npm run dev).',
-      );
-    }
-    throw new ApiError('Something went wrong. Please try again.');
+    throw new ApiError(apiFailureMessage(res, Boolean(isJson)));
   }
 
   if (!isJson) {
-    throw new ApiError(import.meta.env.PROD ? API_NOT_CONFIGURED_MSG : API_UNREACHABLE_MSG);
+    throw new ApiError(apiFailureMessage(res, false));
   }
 
   return data as T;
@@ -59,8 +64,13 @@ export function fetchVideoInfo(url: string): Promise<VideoInfo> {
   return postJson<VideoInfo>('/api/info', { url });
 }
 
-/** Fast preview (title + thumbnail). YouTube only; returns null when unavailable. */
+/** Fast preview (title + thumbnail). YouTube uses browser oEmbed first; API is a fallback. */
 export async function fetchVideoPreview(url: string): Promise<VideoInfo | null> {
+  if (detectPlatform(url)?.id === 'youtube') {
+    const local = await fetchClientYoutubePreview(url);
+    if (local) return local;
+  }
+
   if (!isApiConfigured()) return null;
 
   let res: Response;
@@ -75,9 +85,11 @@ export async function fetchVideoPreview(url: string): Promise<VideoInfo | null> 
       COLD_START_RETRY,
     );
   } catch {
-    return null;
+    return detectPlatform(url)?.id === 'youtube' ? fetchClientYoutubePreview(url) : null;
   }
-  if (res.status === 204) return null;
+  if (res.status === 204) {
+    return detectPlatform(url)?.id === 'youtube' ? fetchClientYoutubePreview(url) : null;
+  }
   if (!res.ok) return null;
   const isJson = res.headers.get('content-type')?.includes('application/json');
   if (!isJson) return null;

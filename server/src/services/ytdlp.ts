@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { config } from '../config.js';
 import { QUALITIES, buildSelector, type CodecMode, type QualityDef, type QualityId } from './formats.js';
+import { detectPlatform } from './platform.js';
 import { logger } from '../utils/logger.js';
 
 /** Shape of the metadata we return to the client. */
@@ -65,16 +66,27 @@ const INFO_ARGS = [
   '--no-check-formats',
 ] as const;
 
+/** Player clients to try on cloud hosts when YouTube blocks the default client. */
+const YOUTUBE_PLAYER_CLIENTS = ['web_safari', 'tv_embedded', 'mweb', 'android', 'default'] as const;
+
 /**
  * Args shared by every yt-dlp invocation (info + download) to survive YouTube's
  * bot-detection on cloud/datacenter IPs: a configurable player client and, when
  * provided, an authenticated cookies file. The `youtube:` namespace makes the
  * extractor-arg a no-op for other platforms (Facebook/Instagram).
  */
-function youtubeHardeningArgs(): string[] {
-  const args = ['--extractor-args', `youtube:player_client=${config.youtubePlayerClient}`];
+function youtubeHardeningArgs(playerClient = config.youtubePlayerClient): string[] {
+  const args = ['--extractor-args', `youtube:player_client=${playerClient}`];
   if (config.ytdlpCookies) args.push('--cookies', config.ytdlpCookies);
   return args;
+}
+
+function ytDlpFailureMessage(stderr: string): string {
+  const s = stderr.toLowerCase();
+  if (s.includes("sign in to confirm you're not a bot") || s.includes('not a bot') || s.includes('bot detected')) {
+    return 'YouTube blocked automated access from this server. Add a cookies.txt on Render (secret file) and set YTDLP_COOKIES, then redeploy.';
+  }
+  return 'Could not read that video. It may be private, removed, or region-locked.';
 }
 
 /** Run yt-dlp and collect stdout. Rejects with a typed error on failure. */
@@ -98,12 +110,7 @@ function runJson(args: readonly string[]): Promise<string> {
     child.on('close', (code) => {
       if (code === 0) return resolve(stdout);
       logger.warn('yt-dlp info failed:', stderr.slice(0, 500));
-      const s = stderr.toLowerCase();
-      const message =
-        s.includes("sign in to confirm you're not a bot") || s.includes('not a bot') || s.includes('bot detected')
-          ? 'YouTube blocked automated access from this server. Add a cookies.txt on Render (secret file) and set YTDLP_COOKIES, then redeploy.'
-          : 'Could not read that video. It may be private, removed, or region-locked.';
-      reject(new YtDlpError(message, 'UNAVAILABLE'));
+      reject(new YtDlpError(ytDlpFailureMessage(stderr), 'UNAVAILABLE'));
     });
   });
 }
@@ -142,10 +149,7 @@ function estimateSize(raw: RawDump, height: number, durationSeconds: number | nu
   return Math.round(best + audioBytes);
 }
 
-/** Fetches metadata + computes the four quality cards for a URL. */
-export async function fetchInfo(url: string): Promise<VideoInfo> {
-  const stdout = await runJson([...INFO_ARGS, ...youtubeHardeningArgs(), url]);
-
+function parseInfoDump(stdout: string): VideoInfo {
   let raw: RawDump;
   try {
     raw = JSON.parse(stdout);
@@ -169,9 +173,7 @@ export async function fetchInfo(url: string): Promise<VideoInfo> {
     tag: q.tag,
     height: q.height,
     estimatedBytes: estimateSize(raw, q.height, duration),
-    // A quality is "available" if the source has any stream at/under it.
     available: maxHeight === 0 ? true : maxHeight >= Math.min(q.height, 360),
-    // Resolutions above the free tier require a Pro subscription.
     premium: q.height > config.freeMaxHeight,
   }));
 
@@ -183,6 +185,30 @@ export async function fetchInfo(url: string): Promise<VideoInfo> {
     thumbnail: pickThumbnail(raw),
     formats,
   };
+}
+
+/** Fetches metadata + computes the four quality cards for a URL. */
+export async function fetchInfo(url: string): Promise<VideoInfo> {
+  const platform = detectPlatform(url);
+  const isYoutube = platform?.id === 'youtube';
+  const clients = isYoutube
+    ? config.ytdlpCookies
+      ? [config.youtubePlayerClient]
+      : [...YOUTUBE_PLAYER_CLIENTS]
+    : [config.youtubePlayerClient];
+
+  let lastError: YtDlpError | undefined;
+  for (const client of clients) {
+    try {
+      const stdout = await runJson([...INFO_ARGS, ...youtubeHardeningArgs(client), url]);
+      return parseInfoDump(stdout);
+    } catch (err) {
+      if (err instanceof YtDlpError) lastError = err;
+      else throw err;
+    }
+  }
+
+  throw lastError ?? new YtDlpError('Could not read that video.', 'UNAVAILABLE');
 }
 
 export interface DownloadHandle {

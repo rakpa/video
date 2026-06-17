@@ -29,6 +29,14 @@ app.post('/api/billing/webhook', express.raw({ type: 'application/json' }), (req
 
 app.use(express.json({ limit: '64kb' }));
 
+// Malformed JSON should be a 400, not an unhandled 500.
+app.use((err: unknown, req: express.Request, res: express.Response, next: express.NextFunction) => {
+  if (err instanceof SyntaxError && 'body' in (err as object) && req.path.startsWith('/api')) {
+    return res.status(400).json({ error: 'Invalid JSON body.' });
+  }
+  next(err);
+});
+
 // Health check
 app.get('/api/health', (_req, res) => res.json({ ok: true }));
 
