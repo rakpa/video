@@ -3,6 +3,7 @@ import cors from 'cors';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { existsSync } from 'node:fs';
+import { execFile } from 'node:child_process';
 import { config } from './config.js';
 import { logger } from './utils/logger.js';
 import { getCookiesStatus, logCookiesStatus } from './utils/cookies.js';
@@ -41,6 +42,14 @@ const corsOrigin: cors.CorsOptions['origin'] = allowAllOrigins
     };
 app.use(cors({ origin: corsOrigin }));
 
+// Capture the running yt-dlp version once at startup so /api/health can report
+// it — the surest way to tell whether a deploy actually picked up a fresh binary.
+let ytdlpVersion = 'unknown';
+execFile(config.ytdlpPath, ['--version'], { windowsHide: true }, (err, stdout) => {
+  if (!err) ytdlpVersion = stdout.trim();
+  else logger.warn('Could not read yt-dlp version:', err.message);
+});
+
 /** Strip credentials from a proxy URL, leaving host:port for safe diagnostics. */
 function maskProxy(proxy: string): string | null {
   if (!proxy) return null;
@@ -75,6 +84,7 @@ app.get('/api/health', (_req, res) => {
   const cookies = getCookiesStatus();
   res.json({
     ok: true,
+    ytdlpVersion,
     cookies: {
       configured: Boolean(cookies.path),
       found: cookies.exists,
