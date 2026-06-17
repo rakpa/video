@@ -86,7 +86,25 @@ function ytDlpFailureMessage(stderr: string): string {
   if (s.includes("sign in to confirm you're not a bot") || s.includes('not a bot') || s.includes('bot detected')) {
     return 'YouTube blocked automated access from this server. Add a cookies.txt on Render (secret file) and set YTDLP_COOKIES, then redeploy.';
   }
+  if (s.includes('requested format is not available')) {
+    return 'This video does not provide the requested quality/codec combination. Try a lower quality or switch to “Most compatible”.';
+  }
   return 'Could not read that video. It may be private, removed, or region-locked.';
+}
+
+function downloadFailureMessage(stderr: string): string {
+  // Reuse the info-path heuristics first.
+  const msg = ytDlpFailureMessage(stderr);
+  if (msg !== 'Could not read that video. It may be private, removed, or region-locked.') return msg;
+
+  const s = stderr.toLowerCase();
+  if (s.includes('requested format is not available')) {
+    return 'Requested format is not available for this video. Try 720p or “Most compatible”.';
+  }
+  if (s.includes('http error 429') || s.includes('too many requests')) {
+    return 'YouTube rate-limited this server (429). Wait a bit and try again.';
+  }
+  return 'The download failed. The video may be protected or unavailable.';
 }
 
 /** Run yt-dlp and collect stdout. Rejects with a typed error on failure. */
@@ -371,7 +389,7 @@ export function startDownload(
         resolve(finalPath);
       } else {
         logger.warn('yt-dlp download failed:', stderr.slice(0, 500));
-        reject(new YtDlpError('The download failed. The video may be protected or unavailable.', 'FAILED'));
+        reject(new YtDlpError(downloadFailureMessage(stderr), 'FAILED'));
       }
     });
   });
