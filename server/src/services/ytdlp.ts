@@ -70,8 +70,13 @@ const INFO_ARGS = [
 /** Player clients to try without cookies or PO token (datacenter IPs). */
 const YOUTUBE_PLAYER_CLIENTS = ['web_safari', 'tv_embedded', 'mweb', 'android', 'default'] as const;
 
-/** With cookies, the web client is most reliable for authenticated sessions. */
-const YOUTUBE_COOKIES_CLIENTS = ['web', 'web_safari', 'mweb', 'tv_embedded', 'default'] as const;
+// Client order for authenticated (cookies) sessions. Through a proxy / on
+// flagged IPs, YouTube serves the `web` and `mweb` clients a DEGRADED format
+// set (often 360p only or none), which breaks high-quality downloads with
+// "Requested format is not available". The `default`, `tv_embedded` and
+// `web_safari` clients return the full ladder (up to 4K), so we lead with those
+// and keep web/mweb only as last-resort fallbacks.
+const YOUTUBE_COOKIES_CLIENTS = ['default', 'web_safari', 'tv_embedded', 'mweb', 'web'] as const;
 
 /** Default client when a PO token is configured (yt-dlp recommends mweb + PO token). */
 const YOUTUBE_PO_TOKEN_CLIENT = 'mweb';
