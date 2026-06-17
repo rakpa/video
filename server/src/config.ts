@@ -53,9 +53,9 @@ export const config = {
 
   // --- Monetisation ---
   // Resolutions at or below this height are free; above requires a Pro license.
-  // 1440 → 720p, 1080p & 2K (1440p) free; only 4K (2160p) is Pro.
-  // (Override with FREE_MAX_HEIGHT, e.g. 1080 to make 1440p Pro again.)
-  freeMaxHeight: Number(process.env.FREE_MAX_HEIGHT ?? 1440),
+  // 2160 → everything (incl. 2K & 4K) is free for testing.
+  // (Override with FREE_MAX_HEIGHT, e.g. 1080, to gate higher resolutions again.)
+  freeMaxHeight: Number(process.env.FREE_MAX_HEIGHT ?? 2160),
 
   // Stripe. Leave keys empty to run without billing (pricing page shows a notice).
   stripeSecret: process.env.STRIPE_SECRET_KEY ?? '',

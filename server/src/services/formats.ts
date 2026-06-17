@@ -18,18 +18,23 @@ export interface QualityDef {
 
 /**
  * "Best" selector for a target height that guarantees AAC (m4a) audio so the
- * merged MP4 always plays with sound. Order: H.264 video + AAC (most
- * compatible) → any video ≤ height + AAC → any video + any audio → progressive
- * → absolute fallback (so yt-dlp never hard-fails with "format not available").
+ * merged MP4 always plays with sound.
+ *
+ * YouTube only offers H.264 (avc1) up to 1080p. Preferring avc1 unconditionally
+ * would cap 1440p/2160p at 1080p (the avc1 branch matches the 1080p stream), so
+ * we only prefer avc1 when it can actually deliver the requested resolution
+ * (≤1080). Above that we pick the best video at the true target resolution
+ * (VP9/AV1) + AAC audio. Always ends with loose fallbacks so yt-dlp never
+ * hard-fails with "Requested format is not available".
  */
 function bestSelector(h: number): string {
-  return [
-    `bv*[height<=${h}][vcodec^=avc1]+ba[ext=m4a]`,
-    `bv*[height<=${h}]+ba[ext=m4a]`,
-    `bv*[height<=${h}]+ba`,
-    `b[height<=${h}]`,
-    `bv*+ba/b`,
-  ].join('/');
+  const tiers: string[] = [];
+  if (h <= 1080) tiers.push(`bv*[height<=${h}][vcodec^=avc1]+ba[ext=m4a]`);
+  tiers.push(`bv*[height<=${h}]+ba[ext=m4a]`);
+  tiers.push(`bv*[height<=${h}]+ba`);
+  tiers.push(`b[height<=${h}]`);
+  tiers.push(`bv*+ba/b`);
+  return tiers.join('/');
 }
 
 export const QUALITIES: Record<QualityId, QualityDef> = {
