@@ -16,36 +16,53 @@ export interface QualityDef {
   selector: string;
 }
 
+/**
+ * "Best" selector for a target height that guarantees AAC (m4a) audio so the
+ * merged MP4 always plays with sound. Order: H.264 video + AAC (most
+ * compatible) → any video ≤ height + AAC → any video + any audio → progressive
+ * → absolute fallback (so yt-dlp never hard-fails with "format not available").
+ */
+function bestSelector(h: number): string {
+  return [
+    `bv*[height<=${h}][vcodec^=avc1]+ba[ext=m4a]`,
+    `bv*[height<=${h}]+ba[ext=m4a]`,
+    `bv*[height<=${h}]+ba`,
+    `b[height<=${h}]`,
+    `bv*+ba/b`,
+  ].join('/');
+}
+
 export const QUALITIES: Record<QualityId, QualityDef> = {
   '720': {
     id: '720',
     label: '720p',
     tag: 'HD',
     height: 720,
-    // Prefer <= target height, but always fall back to "best" so yt-dlp never hard-fails
-    // with "Requested format is not available" on unusual videos.
-    selector: 'bv*[height<=720]+ba/b[height<=720]/bv*+ba/b',
+    // Always pair with AAC (m4a) audio so the MP4 plays with sound everywhere —
+    // Opus-in-MP4 (yt-dlp's default "best audio") is silent in most players.
+    // Prefer H.264 video for max compatibility, then loosen, never hard-failing.
+    selector: bestSelector(720),
   },
   '1080': {
     id: '1080',
     label: '1080p',
     tag: 'Full HD',
     height: 1080,
-    selector: 'bv*[height<=1080]+ba/b[height<=1080]/bv*+ba/b',
+    selector: bestSelector(1080),
   },
   '1440': {
     id: '1440',
     label: '1440p',
     tag: '2K',
     height: 1440,
-    selector: 'bv*[height<=1440]+ba/b[height<=1440]/bv*+ba/b',
+    selector: bestSelector(1440),
   },
   '2160': {
     id: '2160',
     label: '2160p',
     tag: '4K',
     height: 2160,
-    selector: 'bv*[height<=2160]+ba/b[height<=2160]/bv*+ba/b',
+    selector: bestSelector(2160),
   },
 };
 
