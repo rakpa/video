@@ -50,10 +50,10 @@ export function ProUpgradePanel({ selectedQuality, inline = false }: Props) {
       className={inline ? '' : 'mt-8'}
     >
       <div className={inline ? '' : 'text-center'}>
-        <h2 className={`font-extrabold tracking-tight text-white ${inline ? 'text-xl sm:text-2xl' : 'text-3xl sm:text-4xl'}`}>
+        <h2 className={`font-extrabold tracking-tight text-slate-900 ${inline ? 'text-xl sm:text-2xl' : 'text-3xl sm:text-4xl'}`}>
           Unlock <span className="gradient-text">HD, 2K &amp; 4K</span>
         </h2>
-        <p className={`mt-2 text-white/60 ${inline ? 'text-sm' : 'mx-auto mt-3 max-w-md'}`}>
+        <p className={`mt-2 text-slate-600 ${inline ? 'text-sm' : 'mx-auto mt-3 max-w-md'}`}>
           {selectedQuality
             ? `${selectedQuality} requires Pro. Free downloads go up to 1080p.`
             : 'Free downloads go up to 1080p. Go Pro to grab full-quality video with sound — up to 4K.'}
@@ -82,10 +82,10 @@ export function ProUpgradePanel({ selectedQuality, inline = false }: Props) {
         </div>
 
         {error && (
-          <p className="mt-4 rounded-xl bg-rose-500/10 p-3 text-center text-sm text-rose-200">{error}</p>
+          <p className="mt-4 rounded-xl border border-rose-200 bg-rose-50 p-3 text-center text-sm text-rose-700">{error}</p>
         )}
         {cfg && !cfg.enabled && (
-          <p className="mt-4 rounded-xl bg-amber-500/10 p-3 text-center text-sm text-amber-200">
+          <p className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-3 text-center text-sm text-amber-700">
             Payments aren’t configured yet. Add your Stripe keys to <code>server/.env</code> to enable checkout.
           </p>
         )}
@@ -110,7 +110,7 @@ export function ProUpgradePanel({ selectedQuality, inline = false }: Props) {
 
         <PaymentBadges />
 
-        <label className="mt-4 flex items-start justify-center gap-2 text-xs text-white/55">
+        <label className="mt-4 flex items-start justify-center gap-2 text-xs text-slate-500">
           <input
             type="checkbox"
             checked={agree}
@@ -119,11 +119,11 @@ export function ProUpgradePanel({ selectedQuality, inline = false }: Props) {
           />
           <span>
             I agree to the{' '}
-            <button type="button" onClick={() => navigate('/terms')} className="text-accent-400 hover:underline">
+            <button type="button" onClick={() => navigate('/terms')} className="text-indigo-600 hover:underline">
               Terms of Service
             </button>{' '}
             and{' '}
-            <button type="button" onClick={() => navigate('/refunds')} className="text-accent-400 hover:underline">
+            <button type="button" onClick={() => navigate('/refunds')} className="text-indigo-600 hover:underline">
               Refund Policy
             </button>
             . Prices exclude VAT where applicable.
@@ -146,8 +146,8 @@ export function ProUpgradeSuccess({ selectedQuality, onDismiss }: { selectedQual
           <path d="m12 2 2.4 7.4H22l-6 4.4 2.3 7.2-6.3-4.6L5.7 21 8 13.8 2 9.4h7.6L12 2Z" />
         </svg>
       </div>
-      <h2 className="mt-4 text-xl font-bold">Welcome to Pro!</h2>
-      <p className="mx-auto mt-2 max-w-sm text-sm text-white/60">
+      <h2 className="mt-4 text-xl font-bold text-slate-900">Welcome to Pro!</h2>
+      <p className="mx-auto mt-2 max-w-sm text-sm text-slate-600">
         {selectedQuality ? `${selectedQuality} and all Pro qualities` : 'HD, 2K and 4K'} are unlocked.
       </p>
       {onDismiss && (
@@ -188,8 +188,8 @@ function PlanCard({
       className={[
         'relative flex flex-col items-start rounded-2xl border p-4 text-left transition-all',
         active
-          ? 'border-accent/60 bg-accent/10 shadow-glow'
-          : 'border-white/10 bg-white/[0.03] hover:bg-white/[0.06]',
+          ? 'border-accent/60 bg-indigo-50 shadow-glow'
+          : 'border-slate-200 bg-white hover:bg-slate-50',
       ].join(' ')}
     >
       {badge && (
@@ -197,12 +197,12 @@ function PlanCard({
           {badge}
         </span>
       )}
-      <span className="text-sm font-medium text-white/70">{title}</span>
-      <span className="mt-1 text-2xl font-extrabold text-white">
+      <span className="text-sm font-medium text-slate-600">{title}</span>
+      <span className="mt-1 text-2xl font-extrabold text-slate-900">
         {price}
-        <span className="ml-1 text-sm font-medium text-white/50">{suffix}</span>
+        <span className="ml-1 text-sm font-medium text-slate-400">{suffix}</span>
       </span>
-      <span className="mt-1 text-xs text-white/50">{note}</span>
+      <span className="mt-1 text-xs text-slate-400">{note}</span>
     </button>
   );
 }
@@ -217,8 +217,8 @@ function FeatureList({ compact }: { compact?: boolean }) {
   return (
     <ul className={`space-y-2 ${compact ? 'mt-5' : 'mx-auto mt-8 max-w-sm'}`}>
       {features.map((f) => (
-        <li key={f} className="flex items-center gap-2.5 text-sm text-white/70">
-          <span className="grid h-5 w-5 shrink-0 place-items-center rounded-full bg-emerald-500/15 text-emerald-400">
+        <li key={f} className="flex items-center gap-2.5 text-sm text-slate-600">
+          <span className="grid h-5 w-5 shrink-0 place-items-center rounded-full bg-emerald-50 text-emerald-500">
             <svg viewBox="0 0 24 24" className="h-3 w-3" fill="none" stroke="currentColor" strokeWidth="3" aria-hidden="true">
               <path strokeLinecap="round" strokeLinejoin="round" d="m5 13 4 4L19 7" />
             </svg>

@@ -62,7 +62,7 @@ export function QualitySelector({ formats, selected, onSelect, mode, onModeChang
       className="space-y-5"
     >
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <h3 className="text-sm font-medium uppercase tracking-wider text-white/50">Choose quality</h3>
+        <h3 className="text-sm font-medium uppercase tracking-wider text-slate-400">Choose quality</h3>
         <CodecToggle mode={mode} onChange={handleModeChange} />
       </div>
 
@@ -84,7 +84,7 @@ export function QualitySelector({ formats, selected, onSelect, mode, onModeChang
               transition={{ duration: 0.2 }}
               className={[
                 'glass relative flex flex-col items-start gap-1 rounded-2xl p-4 text-left transition-all',
-                active ? 'shadow-glow ring-1 ring-accent/60' : 'hover:bg-white/[0.07]',
+                active ? 'shadow-glow ring-1 ring-accent/60' : 'hover:bg-slate-50',
                 disabled ? 'cursor-not-allowed opacity-40' : 'cursor-pointer',
               ].join(' ')}
             >
@@ -105,7 +105,7 @@ export function QualitySelector({ formats, selected, onSelect, mode, onModeChang
                 )}
               </AnimatePresence>
               {!active && locked && (
-                <span className="absolute right-2.5 top-2.5 inline-flex items-center gap-0.5 rounded-full bg-amber-400/20 px-1.5 py-0.5 text-[9px] font-bold text-amber-300">
+                <span className="absolute right-2.5 top-2.5 inline-flex items-center gap-0.5 rounded-full bg-amber-100 px-1.5 py-0.5 text-[9px] font-bold text-amber-600">
                   <svg viewBox="0 0 24 24" className="h-2.5 w-2.5" fill="currentColor" aria-hidden="true">
                     <path d="M12 1a5 5 0 0 0-5 5v3H6a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-9a2 2 0 0 0-2-2h-1V6a5 5 0 0 0-5-5Zm3 8H9V6a3 3 0 0 1 6 0v3Z" />
                   </svg>
@@ -113,12 +113,12 @@ export function QualitySelector({ formats, selected, onSelect, mode, onModeChang
                 </span>
               )}
 
-              <span className="text-lg font-bold text-white">{f.label}</span>
-              <span className="rounded-md bg-accent/15 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-accent-400">
+              <span className="text-lg font-bold text-slate-900">{f.label}</span>
+              <span className="rounded-md bg-indigo-50 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-indigo-600">
                 {f.tag}
               </span>
 
-              <span className={`mt-1 text-xs text-white/50 ${refining && f.estimatedBytes == null ? 'shimmer relative overflow-hidden rounded' : ''}`}>
+              <span className={`mt-1 text-xs text-slate-500 ${refining && f.estimatedBytes == null ? 'shimmer relative overflow-hidden rounded' : ''}`}>
                 {disabled
                   ? mode === 'compatible' && f.height > COMPATIBLE_MAX_HEIGHT
                     ? 'Best-quality only'
@@ -129,7 +129,7 @@ export function QualitySelector({ formats, selected, onSelect, mode, onModeChang
               </span>
 
               {!disabled && (
-                <span className="inline-flex items-center gap-1 text-[11px] font-medium text-emerald-300/90">
+                <span className="inline-flex items-center gap-1 text-[11px] font-medium text-emerald-600">
                   <svg viewBox="0 0 24 24" className="h-3 w-3" fill="currentColor" aria-hidden="true">
                     <path d="M3 10v4h4l5 5V5L7 10H3Zm13.5 2a4.5 4.5 0 0 0-2.5-4v8a4.5 4.5 0 0 0 2.5-4Z" />
                   </svg>
@@ -191,7 +191,7 @@ function CodecToggle({ mode, onChange }: { mode: CodecMode; onChange: (m: CodecM
                 className="absolute inset-0 rounded-full bg-accent-gradient shadow-glow-soft"
               />
             )}
-            <span className={`relative z-10 ${active ? 'text-white' : 'text-white/55 hover:text-white/80'}`}>
+            <span className={`relative z-10 ${active ? 'text-white' : 'text-slate-500 hover:text-slate-800'}`}>
               {o.label}
             </span>
           </button>

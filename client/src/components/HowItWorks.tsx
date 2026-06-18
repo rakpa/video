@@ -35,10 +35,10 @@ const STEPS = [
 export function HowItWorks() {
   return (
     <section id="how-it-works" className="mx-auto mt-24 max-w-4xl scroll-mt-8">
-      <h2 className="text-center text-2xl font-bold tracking-tight text-white sm:text-3xl">
+      <h2 className="text-center text-2xl font-bold tracking-tight text-slate-900 sm:text-3xl">
         How it works
       </h2>
-      <p className="mx-auto mt-2 max-w-md text-center text-sm text-white/60">
+      <p className="mx-auto mt-2 max-w-md text-center text-sm text-slate-600">
         Three steps, about ten seconds. No account required.
       </p>
 
@@ -52,14 +52,14 @@ export function HowItWorks() {
             transition={{ duration: 0.4, delay: i * 0.08 }}
             className="glass relative rounded-3xl p-6"
           >
-            <span className="absolute right-5 top-5 text-5xl font-black leading-none text-white/[0.06]">
+            <span className="absolute right-5 top-5 text-5xl font-black leading-none text-slate-100">
               {i + 1}
             </span>
             <div className="grid h-12 w-12 place-items-center rounded-2xl bg-accent-gradient text-white shadow-glow-soft">
               {s.icon}
             </div>
-            <h3 className="mt-4 text-lg font-semibold text-white">{s.title}</h3>
-            <p className="mt-1.5 text-sm leading-relaxed text-white/60">{s.body}</p>
+            <h3 className="mt-4 text-lg font-semibold text-slate-900">{s.title}</h3>
+            <p className="mt-1.5 text-sm leading-relaxed text-slate-600">{s.body}</p>
           </motion.div>
         ))}
       </div>

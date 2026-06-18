@@ -251,7 +251,6 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
   const selectedFmt = info?.formats.find((f) => f.id === selected);
   const showProUpgrade = !pro && Boolean(selectedFmt?.premium);
   const isBusy = phase === 'fetching' || phase === 'preview' || phase === 'downloading';
-  const canDownload = Boolean(info && (phase === 'ready' || phase === 'preview') && !showProUpgrade);
 
   const view: 'ready' | 'downloading' | 'success' | null =
     phase === 'downloading'
@@ -263,56 +262,43 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
       : null;
 
   return (
-    <div className="app-bg min-h-screen text-white">
+    <div className="app-bg min-h-screen text-slate-600">
       <SiteHeader theme={theme} onToggleTheme={onToggleTheme} />
 
       <main className="mx-auto max-w-5xl px-5">
         <section className="pt-14 sm:pt-24">
           <Hero />
           <div className="mx-auto mt-14 max-w-3xl">
-            <UrlInput
-              value={url}
-              onChange={setUrl}
-              status={
-                phase === 'fetching' || phase === 'preview'
-                  ? 'fetching'
-                  : phase === 'downloading'
-                    ? 'downloading'
-                  : canDownload
-                    ? 'ready'
-                    : 'idle'
-              }
-              onDownload={() => handleDownload(selected, codecMode)}
-            />
+            <UrlInput value={url} onChange={setUrl} />
             <div className="mt-7 flex flex-col items-center gap-4">
-              <p className="flex flex-wrap items-center justify-center gap-x-2 gap-y-1 text-center text-xs font-medium text-white/55">
+              <p className="flex flex-wrap items-center justify-center gap-x-2 gap-y-1 text-center text-xs font-medium text-slate-500">
                 <span className="inline-flex items-center gap-1.5">
                   <CheckDot /> Free
                 </span>
-                <span aria-hidden="true" className="text-white/25">·</span>
+                <span aria-hidden="true" className="text-slate-300">·</span>
                 <span className="inline-flex items-center gap-1.5">
                   <CheckDot /> No sign-up
                 </span>
-                <span aria-hidden="true" className="text-white/25">·</span>
+                <span aria-hidden="true" className="text-slate-300">·</span>
                 <span className="inline-flex items-center gap-1.5">
                   <CheckDot /> No watermark
                 </span>
               </p>
 
-              <p className="text-center text-xs text-white/45">
+              <p className="text-center text-xs text-slate-400">
                 By using ClipVault you accept our{' '}
-                <button onClick={() => navigate('/terms')} className="font-medium text-accent-400 transition hover:text-accent-300 hover:underline">
+                <button onClick={() => navigate('/terms')} className="font-medium text-indigo-600 transition hover:text-indigo-700 hover:underline">
                   Terms of Service
                 </button>{' '}
                 and{' '}
-                <button onClick={() => navigate('/privacy')} className="font-medium text-accent-400 transition hover:text-accent-300 hover:underline">
+                <button onClick={() => navigate('/privacy')} className="font-medium text-indigo-600 transition hover:text-indigo-700 hover:underline">
                   Privacy Policy
                 </button>
                 .
               </p>
 
-              <span className="glass inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium text-white/60">
-                <svg viewBox="0 0 24 24" className="h-3.5 w-3.5 text-emerald-400" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+              <span className="glass inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium text-slate-500">
+                <svg viewBox="0 0 24 24" className="h-3.5 w-3.5 text-emerald-500" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
                   <path strokeLinecap="round" strokeLinejoin="round" d="M12 3 5 6v6c0 4.4 3 7.6 7 9 4-1.4 7-4.6 7-9V6l-7-3Z" />
                   <path strokeLinecap="round" strokeLinejoin="round" d="m9 12 2 2 4-4" />
                 </svg>
@@ -403,8 +389,8 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
 
       <Footer />
 
-      <div className="pointer-events-none fixed -left-32 top-1/3 -z-10 h-72 w-72 rounded-full bg-accent/20 blur-3xl" aria-hidden="true" />
-      <div className="pointer-events-none fixed -right-24 top-20 -z-10 h-64 w-64 rounded-full bg-blue-500/15 blur-3xl" aria-hidden="true" />
+      <div className="pointer-events-none fixed -left-32 top-1/3 -z-10 h-72 w-72 rounded-full bg-accent/10 blur-3xl" aria-hidden="true" />
+      <div className="pointer-events-none fixed -right-24 top-20 -z-10 h-64 w-64 rounded-full bg-violet-500/10 blur-3xl" aria-hidden="true" />
 
       <p className="sr-only" role="status" aria-live="polite">
         {isBusy ? 'Working…' : phase === 'success' ? 'Download complete' : error ?? ''}

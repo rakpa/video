@@ -20,7 +20,7 @@ function Logo() {
           <path d="M8 5v14l11-7L8 5Z" />
         </svg>
       </div>
-      <span className="text-lg font-bold tracking-tight">ClipVault</span>
+      <span className="text-lg font-bold tracking-tight text-slate-900">ClipVault</span>
     </button>
   );
 }
@@ -41,9 +41,9 @@ export function SiteHeader({ theme, onToggleTheme, maxWidth = 'max-w-5xl', showN
           // Pro users get a direct account entry point instead of a Pricing CTA.
           <button
             onClick={() => navigate('/pricing')}
-            className="glass inline-flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-sm font-semibold text-white transition hover:bg-white/10"
+            className="glass inline-flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-sm font-semibold text-slate-900 transition hover:bg-slate-50"
           >
-            <svg viewBox="0 0 24 24" className="h-3.5 w-3.5 text-amber-300" fill="currentColor" aria-hidden="true">
+            <svg viewBox="0 0 24 24" className="h-3.5 w-3.5 text-amber-500" fill="currentColor" aria-hidden="true">
               <path d="m12 2 2.4 7.4H22l-6 4.4 2.3 7.2-6.3-4.6L5.7 21 8 13.8 2 9.4h7.6L12 2Z" />
             </svg>
             Account
@@ -54,7 +54,7 @@ export function SiteHeader({ theme, onToggleTheme, maxWidth = 'max-w-5xl', showN
               <nav className="hidden items-center sm:flex">
                 <button
                   onClick={() => navigate('/pricing')}
-                  className="font-medium text-white/80 transition hover:text-white"
+                  className="font-medium text-slate-600 transition hover:text-slate-900"
                 >
                   Pricing
                 </button>

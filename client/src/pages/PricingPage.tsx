@@ -51,7 +51,7 @@ export function PricingPage({ theme, onToggleTheme }: Props) {
   }, []));
 
   return (
-    <div className="app-bg min-h-screen text-white">
+    <div className="app-bg min-h-screen text-slate-600">
       <SiteHeader theme={theme} onToggleTheme={onToggleTheme} maxWidth="max-w-4xl" showNav={false} />
 
       <main className="mx-auto max-w-3xl px-5 pb-20">
@@ -90,9 +90,9 @@ function ProStatus({
           <path d="m12 2 2.4 7.4H22l-6 4.4 2.3 7.2-6.3-4.6L5.7 21 8 13.8 2 9.4h7.6L12 2Z" />
         </svg>
       </div>
-      <h1 className="mt-5 text-2xl font-bold">{justUpgraded ? 'Welcome to Pro! 🎉' : 'You’re on Pro'}</h1>
-      <p className="mx-auto mt-2 max-w-sm text-sm text-white/60">
-        HD, 2K and 4K downloads are unlocked for <span className="font-medium text-white/80">{license.email}</span>.
+      <h1 className="mt-5 text-2xl font-bold text-slate-900">{justUpgraded ? 'Welcome to Pro! 🎉' : 'You’re on Pro'}</h1>
+      <p className="mx-auto mt-2 max-w-sm text-sm text-slate-600">
+        HD, 2K and 4K downloads are unlocked for <span className="font-medium text-slate-900">{license.email}</span>.
         Plan: <span className="capitalize">{license.plan}</span>
         {license.expiresAt ? ` · renews ${new Date(license.expiresAt).toLocaleDateString()}` : ' · lifetime access'}.
       </p>
@@ -101,9 +101,9 @@ function ProStatus({
         <Button variant="ghost" onClick={onSignOut}>Sign out of Pro</Button>
       </div>
 
-      <p className="mt-5 text-xs text-white/45">
+      <p className="mt-5 text-xs text-slate-400">
         {license.plan === 'monthly' ? 'Need to update billing or cancel? ' : 'Questions about your purchase? '}
-        <a href={`mailto:${COMPANY.contactEmail}`} className="font-medium text-accent-400 transition hover:text-accent-300 hover:underline">
+        <a href={`mailto:${COMPANY.contactEmail}`} className="font-medium text-indigo-600 transition hover:text-indigo-700 hover:underline">
           Contact {COMPANY.contactEmail}
         </a>
       </p>
