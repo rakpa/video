@@ -323,6 +323,14 @@ const MERGE_RE = /\[Merger\]|Merging formats/;
 /** Fraction of the bar reserved for downloading (the rest is merge/finish). */
 const DOWNLOAD_BUDGET = 92;
 
+/**
+ * Kill a download that produces no output for this long. yt-dlp prints
+ * extraction + per-second progress lines while healthy, so silence this long
+ * means a stalled connection (commonly a slow/blocked proxy). The watchdog is
+ * paused during the local ffmpeg merge, which can be legitimately quiet.
+ */
+const DOWNLOAD_IDLE_TIMEOUT_MS = 90_000;
+
 /** Finds the produced media file in a job directory (largest non-fragment file). */
 function findOutputFile(dir: string): string | null {
   let entries: string[];
@@ -401,6 +409,7 @@ export function startDownload(
   let streamTotal = 1; // updated from the "format(s): a+b" line
   let streamsStarted = 0; // incremented on each "Destination:" line
   let lastPercent = 0; // monotonic guard so the bar never jumps backwards
+  let merging = false; // pause the idle watchdog during the (quiet) ffmpeg merge
 
   const emit = (raw: number, speed: string | null, eta: string | null) => {
     const idx = Math.max(1, streamsStarted);
@@ -432,6 +441,7 @@ export function startDownload(
       return;
     }
     if (MERGE_RE.test(line)) {
+      merging = true;
       lastPercent = Math.max(lastPercent, DOWNLOAD_BUDGET);
       onProgress({ percent: lastPercent, speed: null, eta: null, stage: 'merging', streamIndex: streamTotal, streamTotal });
       return;
@@ -447,13 +457,46 @@ export function startDownload(
   };
 
   const done = new Promise<string>((resolve, reject) => {
-    child.stdout.on('data', pump);
-    child.stderr.on('data', (d: Buffer) => {
-      stderr += d.toString();
+    let settled = false;
+    let idleTimer: NodeJS.Timeout;
+
+    // Re-arm on every line of yt-dlp output. If it goes silent for the timeout
+    // (and we're not merging), the connection has stalled — kill it so the user
+    // gets a retryable error instead of an endless spinner.
+    const armIdle = () => {
+      clearTimeout(idleTimer);
+      idleTimer = setTimeout(() => {
+        if (merging) return armIdle(); // ffmpeg merge can be legitimately quiet
+        if (settled) return;
+        settled = true;
+        logger.warn('yt-dlp download stalled (no output for 90s) — killing process');
+        try {
+          child.kill('SIGKILL');
+        } catch {
+          /* already exited */
+        }
+        reject(
+          new YtDlpError(
+            'The download stalled — the proxy may be slow or blocked. Please try again; it will use a different proxy.',
+            'FAILED',
+          ),
+        );
+      }, DOWNLOAD_IDLE_TIMEOUT_MS);
+    };
+
+    const onData = (d: Buffer, isErr: boolean) => {
+      armIdle();
+      if (isErr) stderr += d.toString();
       pump(d);
-    });
+    };
+
+    child.stdout.on('data', (d: Buffer) => onData(d, false));
+    child.stderr.on('data', (d: Buffer) => onData(d, true));
 
     child.on('error', (err) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(idleTimer);
       if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
         reject(new YtDlpError('yt-dlp binary not found. Is it installed and on PATH?', 'NO_BINARY'));
       } else {
@@ -462,6 +505,9 @@ export function startDownload(
     });
 
     child.on('close', (code) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(idleTimer);
       const finalPath = code === 0 ? findOutputFile(outputDir) : null;
       if (code === 0 && finalPath) {
         onProgress({ percent: 100, speed: null, eta: null, stage: 'done', streamIndex: streamTotal, streamTotal });
@@ -471,6 +517,8 @@ export function startDownload(
         reject(new YtDlpError(downloadFailureMessage(stderr), 'FAILED'));
       }
     });
+
+    armIdle();
   });
 
   return {
