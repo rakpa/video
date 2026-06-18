@@ -2,7 +2,9 @@ import { spawn } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { config } from '../config.js';
+import { getCookiesStatus, getUsableCookiesPath } from '../utils/cookies.js';
 import { QUALITIES, buildSelector, type CodecMode, type QualityDef, type QualityId } from './formats.js';
+import { detectPlatform } from './platform.js';
 import { logger } from '../utils/logger.js';
 
 /** Shape of the metadata we return to the client. */
@@ -65,22 +67,108 @@ const INFO_ARGS = [
   '--no-check-formats',
 ] as const;
 
+/** Player clients to try without cookies or PO token (datacenter IPs). */
+const YOUTUBE_PLAYER_CLIENTS = ['web_safari', 'tv_embedded', 'mweb', 'android', 'default'] as const;
+
+// Client order for authenticated (cookies) sessions. Through a proxy / on
+// flagged IPs, YouTube serves the `web` and `mweb` clients a DEGRADED format
+// set (often 360p only or none), which breaks high-quality downloads with
+// "Requested format is not available". The `default`, `tv_embedded` and
+// `web_safari` clients return the full ladder (up to 4K), so we lead with those
+// and keep web/mweb only as last-resort fallbacks.
+const YOUTUBE_COOKIES_CLIENTS = ['default', 'web_safari', 'tv_embedded', 'mweb', 'web'] as const;
+
+/** Default client when a PO token is configured (yt-dlp recommends mweb + PO token). */
+const YOUTUBE_PO_TOKEN_CLIENT = 'mweb';
+
+/** Build the youtube: extractor-args value (player_client + optional po_token). */
+function youtubeExtractorArgValue(playerClient: string): string {
+  const parts = [`player_client=${playerClient}`];
+  if (config.ytdlpPoToken) {
+    parts.push(`po_token=${config.ytdlpPoToken}`);
+  }
+  return parts.join(';');
+}
+
+/** Resolve which YouTube player client(s) to try for info/download. */
+function youtubeClientsToTry(hasCookies: boolean): readonly string[] {
+  // Base fallback list, best-first, for the current auth situation.
+  const base = config.ytdlpPoToken
+    ? [YOUTUBE_PO_TOKEN_CLIENT, ...YOUTUBE_COOKIES_CLIENTS]
+    : hasCookies
+      ? YOUTUBE_COOKIES_CLIENTS
+      : YOUTUBE_PLAYER_CLIENTS;
+
+  // An explicitly configured client is tried first, but we still fall back to
+  // the rest of the list so one failing client can't break every download.
+  const ordered =
+    config.youtubePlayerClient !== 'default'
+      ? [config.youtubePlayerClient, ...base]
+      : [...base];
+
+  return [...new Set(ordered)];
+}
+
 /**
  * Args shared by every yt-dlp invocation (info + download) to survive YouTube's
  * bot-detection on cloud/datacenter IPs: a configurable player client and, when
- * provided, an authenticated cookies file. The `youtube:` namespace makes the
- * extractor-arg a no-op for other platforms (Facebook/Instagram).
+ * provided, an authenticated cookies file and/or PO token. The `youtube:`
+ * namespace makes the extractor-arg a no-op for other platforms.
  */
-function youtubeHardeningArgs(): string[] {
-  const args = ['--extractor-args', `youtube:player_client=${config.youtubePlayerClient}`];
-  // BgUtils PO-token provider: when running on a non-default URL, tell the plugin
-  // where to reach it. (On the default 127.0.0.1:4416 the plugin auto-connects.)
+function youtubeHardeningArgs(playerClient: string): string[] {
+  const args = ['--extractor-args', `youtube:${youtubeExtractorArgValue(playerClient)}`];
+  // BgUtils PO-token provider: the plugin auto-connects to the in-container
+  // provider on 127.0.0.1:4416; only pass a base_url when overriding it.
   if (config.ytdlpPotBaseUrl) {
     args.push('--extractor-args', `youtubepot-bgutilhttp:base_url=${config.ytdlpPotBaseUrl}`);
   }
-  if (config.ytdlpCookies) args.push('--cookies', config.ytdlpCookies);
+  // Use a writable copy: yt-dlp rewrites the cookies file on exit and Render's
+  // secret mount is read-only (crashes the process otherwise).
+  const cookiesPath = getUsableCookiesPath();
+  if (cookiesPath) args.push('--cookies', cookiesPath);
+  // A proxy routes every request through a trusted IP — the most effective
+  // fix for "Sign in to confirm you're not a bot" on blocked datacenter IPs.
   if (config.ytdlpProxy) args.push('--proxy', config.ytdlpProxy);
   return args;
+}
+
+function ytDlpFailureMessage(stderr: string): string {
+  const s = stderr.toLowerCase();
+  if (s.includes('po token') || (s.includes('http error 403') && s.includes('youtube'))) {
+    if (config.ytdlpPoToken) {
+      return 'YouTube rejected the PO Token (expired or wrong format). Refresh YTDLP_PO_TOKEN — tokens can be per-video and short-lived. See yt-dlp PO Token Guide.';
+    }
+    return 'YouTube requires a PO Token for this client. Set YTDLP_PO_TOKEN on the server (mweb client recommended). See https://github.com/yt-dlp/yt-dlp/wiki/PO-Token-Guide';
+  }
+  if (s.includes("sign in to confirm you're not a bot") || s.includes('not a bot') || s.includes('bot detected')) {
+    const cookies = getCookiesStatus();
+    if (cookies.path && cookies.exists) {
+      if (!cookies.hasGoogle || !cookies.hasYoutube) {
+        return 'Cookies file is missing Google or YouTube entries. Re-export cookies from both accounts.google.com and youtube.com, then redeploy.';
+      }
+      return 'YouTube blocked this server even with cookies. Re-export a fresh cookies.txt (after logging in on Google + YouTube) and redeploy. Render datacenter IPs are often blocked by YouTube.';
+    }
+    return 'YouTube blocked automated access from this server. Add a cookies.txt on Render (secret file) and set YTDLP_COOKIES, then redeploy.';
+  }
+  if (s.includes('requested format is not available')) {
+    return 'This video does not provide the requested quality/codec combination. Try a lower quality or switch to “Most compatible”.';
+  }
+  return 'Could not read that video. It may be private, removed, or region-locked.';
+}
+
+function downloadFailureMessage(stderr: string): string {
+  // Reuse the info-path heuristics first.
+  const msg = ytDlpFailureMessage(stderr);
+  if (msg !== 'Could not read that video. It may be private, removed, or region-locked.') return msg;
+
+  const s = stderr.toLowerCase();
+  if (s.includes('requested format is not available')) {
+    return 'Requested format is not available for this video. Try 720p or “Most compatible”.';
+  }
+  if (s.includes('http error 429') || s.includes('too many requests')) {
+    return 'YouTube rate-limited this server (429). Wait a bit and try again.';
+  }
+  return 'The download failed. The video may be protected or unavailable.';
 }
 
 /** Run yt-dlp and collect stdout. Rejects with a typed error on failure. */
@@ -104,7 +192,7 @@ function runJson(args: readonly string[]): Promise<string> {
     child.on('close', (code) => {
       if (code === 0) return resolve(stdout);
       logger.warn('yt-dlp info failed:', stderr.slice(0, 500));
-      reject(new YtDlpError('Could not read that video. It may be private, removed, or region-locked.', 'UNAVAILABLE'));
+      reject(new YtDlpError(ytDlpFailureMessage(stderr), 'UNAVAILABLE'));
     });
   });
 }
@@ -143,10 +231,7 @@ function estimateSize(raw: RawDump, height: number, durationSeconds: number | nu
   return Math.round(best + audioBytes);
 }
 
-/** Fetches metadata + computes the four quality cards for a URL. */
-export async function fetchInfo(url: string): Promise<VideoInfo> {
-  const stdout = await runJson([...INFO_ARGS, ...youtubeHardeningArgs(), url]);
-
+function parseInfoDump(stdout: string): VideoInfo {
   let raw: RawDump;
   try {
     raw = JSON.parse(stdout);
@@ -170,9 +255,7 @@ export async function fetchInfo(url: string): Promise<VideoInfo> {
     tag: q.tag,
     height: q.height,
     estimatedBytes: estimateSize(raw, q.height, duration),
-    // A quality is "available" if the source has any stream at/under it.
     available: maxHeight === 0 ? true : maxHeight >= Math.min(q.height, 360),
-    // Resolutions above the free tier require a Pro subscription.
     premium: q.height > config.freeMaxHeight,
   }));
 
@@ -184,6 +267,27 @@ export async function fetchInfo(url: string): Promise<VideoInfo> {
     thumbnail: pickThumbnail(raw),
     formats,
   };
+}
+
+/** Fetches metadata + computes the four quality cards for a URL. */
+export async function fetchInfo(url: string): Promise<VideoInfo> {
+  const platform = detectPlatform(url);
+  const isYoutube = platform?.id === 'youtube';
+  const cookies = getCookiesStatus();
+  const clients = isYoutube ? youtubeClientsToTry(cookies.exists) : [config.youtubePlayerClient];
+
+  let lastError: YtDlpError | undefined;
+  for (const client of clients) {
+    try {
+      const stdout = await runJson([...INFO_ARGS, ...youtubeHardeningArgs(client), url]);
+      return parseInfoDump(stdout);
+    } catch (err) {
+      if (err instanceof YtDlpError) lastError = err;
+      else throw err;
+    }
+  }
+
+  throw lastError ?? new YtDlpError('Could not read that video.', 'UNAVAILABLE');
 }
 
 export interface DownloadHandle {
@@ -253,6 +357,8 @@ export function startDownload(
   onProgress: (p: ProgressUpdate) => void,
 ): DownloadHandle {
   const outTemplate = path.join(outputDir, '%(title).80s.%(ext)s');
+  const cookies = getCookiesStatus();
+  const [youtubeClient] = youtubeClientsToTry(cookies.exists);
 
   // NOTE: we intentionally do NOT use `--print after_move:filepath` — it makes
   // yt-dlp suppress the live progress lines on stdout. Instead we parse progress
@@ -260,14 +366,28 @@ export function startDownload(
   const args = [
     '-f', buildSelector(quality, mode),
     '--merge-output-format', 'mp4',
-    '--ffmpeg-location', config.ffmpegPath,
+    // Only pass --ffmpeg-location for a real path. A bare name like "ffmpeg"
+    // is rejected by yt-dlp ("ffmpeg-location ffmpeg does not exist") and makes
+    // it SKIP the merge — producing a video-only file with no audio. Omitting
+    // the flag lets yt-dlp find ffmpeg on PATH (the normal case).
+    ...(/[\\/]/.test(config.ffmpegPath) ? ['--ffmpeg-location', config.ffmpegPath] : []),
     '--no-playlist',
     '--no-warnings',
     '--newline',
     '--no-part',
     '--progress',
     '--restrict-filenames',
-    ...youtubeHardeningArgs(),
+    // Resilience + speed for slow/flaky proxies: download in ranged chunks (a
+    // dropped connection costs one chunk, not the whole file, and resets
+    // per-request throttling), pull several chunks in parallel to beat
+    // per-connection proxy throttling, and retry transient errors generously.
+    '--http-chunk-size', '10M',
+    '--concurrent-fragments', '4',
+    '--retries', '10',
+    '--fragment-retries', '20',
+    '--retry-sleep', 'linear=1::5',
+    '--socket-timeout', '30',
+    ...youtubeHardeningArgs(youtubeClient ?? config.youtubePlayerClient),
     '-o', outTemplate,
     url,
   ];
@@ -346,7 +466,7 @@ export function startDownload(
         resolve(finalPath);
       } else {
         logger.warn('yt-dlp download failed:', stderr.slice(0, 500));
-        reject(new YtDlpError('The download failed. The video may be protected or unavailable.', 'FAILED'));
+        reject(new YtDlpError(downloadFailureMessage(stderr), 'FAILED'));
       }
     });
   });

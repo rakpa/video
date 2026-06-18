@@ -3,8 +3,10 @@ import cors from 'cors';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { existsSync } from 'node:fs';
+import { execFile } from 'node:child_process';
 import { config } from './config.js';
 import { logger } from './utils/logger.js';
+import { getCookiesStatus, logCookiesStatus } from './utils/cookies.js';
 import { startSweeper } from './jobManager.js';
 import { infoRouter } from './routes/info.js';
 import { downloadRouter } from './routes/download.js';
@@ -17,7 +19,47 @@ const clientDist = path.resolve(__dirname, '../../client/dist');
 
 const app = express();
 
-app.use(cors({ origin: config.clientOrigin }));
+// Normalise an origin to a scheme-less, lowercase host (no trailing slash) so a
+// configured CLIENT_ORIGIN that omits "https://" (a very common mistake) still
+// matches the real browser Origin header. The `cors` package otherwise does an
+// exact string compare, which silently drops the Access-Control-Allow-Origin
+// header and makes every browser request fail with "could not reach".
+const normaliseOrigin = (o: string): string =>
+  o.trim().replace(/^https?:\/\//i, '').replace(/\/+$/, '').toLowerCase();
+
+const allowAllOrigins = config.clientOrigin.includes('*');
+const allowedHosts = new Set(config.clientOrigin.map(normaliseOrigin));
+
+const corsOrigin: cors.CorsOptions['origin'] = allowAllOrigins
+  ? true
+  : (origin, callback) => {
+      // No Origin header → non-browser client (curl, server-to-server, health
+      // checks) or same-origin navigation; allow it.
+      if (!origin || allowedHosts.has(normaliseOrigin(origin))) {
+        return callback(null, true);
+      }
+      return callback(null, false);
+    };
+app.use(cors({ origin: corsOrigin }));
+
+// Capture the running yt-dlp version once at startup so /api/health can report
+// it — the surest way to tell whether a deploy actually picked up a fresh binary.
+let ytdlpVersion = 'unknown';
+execFile(config.ytdlpPath, ['--version'], { windowsHide: true }, (err, stdout) => {
+  if (!err) ytdlpVersion = stdout.trim();
+  else logger.warn('Could not read yt-dlp version:', err.message);
+});
+
+/** Strip credentials from a proxy URL, leaving host:port for safe diagnostics. */
+function maskProxy(proxy: string): string | null {
+  if (!proxy) return null;
+  try {
+    const u = new URL(proxy);
+    return `${u.protocol}//${u.host}`;
+  } catch {
+    return proxy.replace(/\/\/[^@]*@/, '//');
+  }
+}
 
 // Stripe webhook needs the RAW body for signature verification, so it must be
 // registered before the JSON body parser.
@@ -29,8 +71,39 @@ app.post('/api/billing/webhook', express.raw({ type: 'application/json' }), (req
 
 app.use(express.json({ limit: '64kb' }));
 
-// Health check
-app.get('/api/health', (_req, res) => res.json({ ok: true }));
+// Malformed JSON should be a 400, not an unhandled 500.
+app.use((err: unknown, req: express.Request, res: express.Response, next: express.NextFunction) => {
+  if (err instanceof SyntaxError && 'body' in (err as object) && req.path.startsWith('/api')) {
+    return res.status(400).json({ error: 'Invalid JSON body.' });
+  }
+  next(err);
+});
+
+// Health check (includes cookies status for debugging — no secret values)
+app.get('/api/health', (_req, res) => {
+  const cookies = getCookiesStatus();
+  res.json({
+    ok: true,
+    ytdlpVersion,
+    cookies: {
+      configured: Boolean(cookies.path),
+      found: cookies.exists,
+      lines: cookies.lines,
+      hasGoogle: cookies.hasGoogle,
+      hasYoutube: cookies.hasYoutube,
+    },
+    youtube: {
+      poTokenConfigured: Boolean(config.ytdlpPoToken),
+      playerClient: config.youtubePlayerClient,
+    },
+    // Proxy status for debugging datacenter-IP blocks. Host:port only — never
+    // the username/password embedded in the URL.
+    proxy: {
+      configured: Boolean(config.ytdlpProxy),
+      host: maskProxy(config.ytdlpProxy),
+    },
+  });
+});
 
 // Feature routes
 app.use('/api', infoRouter);
@@ -62,4 +135,12 @@ app.listen(config.port, () => {
   logger.info(`ClipVault API listening on port ${config.port}`);
   logger.info(`Using yt-dlp: ${config.ytdlpPath} | ffmpeg: ${config.ffmpegPath}`);
   logger.info(`CORS origins: ${config.clientOrigin.join(', ')}`);
+  logCookiesStatus();
+  if (config.ytdlpPoToken) {
+    logger.info(
+      `yt-dlp PO token: configured (client=${config.youtubePlayerClient !== 'default' ? config.youtubePlayerClient : 'mweb'})`,
+    );
+  } else {
+    logger.info('yt-dlp PO token: not configured');
+  }
 });

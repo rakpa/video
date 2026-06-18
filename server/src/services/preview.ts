@@ -34,21 +34,45 @@ export async function fetchYoutubePreview(url: string): Promise<VideoInfo | null
   const id = extractYoutubeId(url);
   if (!id) return null;
 
-  const res = await fetch(
-    `https://www.youtube.com/oembed?url=${encodeURIComponent(url)}&format=json`,
-    { signal: AbortSignal.timeout(4000) },
-  );
-  if (!res.ok) return null;
+  // oEmbed is picky — use a canonical watch URL (tracking params like ?si= break it).
+  const cleanUrl = `https://www.youtube.com/watch?v=${id}`;
+  const thumbnail = `https://i.ytimg.com/vi/${id}/hqdefault.jpg`;
 
-  const data = (await res.json()) as OEmbedResponse;
-  return {
-    id,
-    title: data.title ?? 'Untitled video',
-    author: data.author_name ?? 'Unknown',
-    durationSeconds: null,
-    thumbnail: data.thumbnail_url ?? `https://i.ytimg.com/vi/${id}/hqdefault.jpg`,
-    formats: [],
-  };
+  try {
+    const res = await fetch(
+      `https://www.youtube.com/oembed?url=${encodeURIComponent(cleanUrl)}&format=json`,
+      { signal: AbortSignal.timeout(4000) },
+    );
+    if (!res.ok) {
+      return {
+        id,
+        title: 'Untitled video',
+        author: 'Unknown',
+        durationSeconds: null,
+        thumbnail,
+        formats: [],
+      };
+    }
+
+    const data = (await res.json()) as OEmbedResponse;
+    return {
+      id,
+      title: data.title ?? 'Untitled video',
+      author: data.author_name ?? 'Unknown',
+      durationSeconds: null,
+      thumbnail: data.thumbnail_url ?? thumbnail,
+      formats: [],
+    };
+  } catch {
+    return {
+      id,
+      title: 'Untitled video',
+      author: 'Unknown',
+      durationSeconds: null,
+      thumbnail,
+      formats: [],
+    };
+  }
 }
 
 export async function fetchPreview(url: string, platform: PlatformId): Promise<VideoInfo | null> {

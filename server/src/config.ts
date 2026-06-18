@@ -3,6 +3,17 @@ import os from 'node:os';
 import path from 'node:path';
 
 /**
+ * A real yt-dlp PO token is a single opaque value (optionally CLIENT.CONTEXT+TOKEN)
+ * — base64-ish, no whitespace, braces, quotes or colons. Reject anything else so a
+ * malformed env value (e.g. a pasted JSON snippet) is treated as "no token".
+ */
+function cleanPoToken(raw: string | undefined): string {
+  const t = (raw ?? '').trim();
+  if (!t || /[\s{}":]/.test(t)) return '';
+  return t;
+}
+
+/**
  * Centralised, typed configuration sourced from environment variables.
  * Every value has a sensible default so the app runs with zero config.
  */
@@ -21,12 +32,18 @@ export const config = {
   // the most reliable fix for "Sign in to confirm you're not a bot" errors that
   // hit datacenter IPs (Render/AWS/GCP). Empty = no cookies (works locally).
   ytdlpCookies: (process.env.YTDLP_COOKIES ?? '').trim(),
-  // YouTube player client(s) yt-dlp uses. 'default' lets yt-dlp pick its tuned,
-  // up-to-date set; override e.g. 'web_safari,tv' if a specific client is blocked.
-  youtubePlayerClient: (process.env.YTDLP_PLAYER_CLIENT ?? 'default').trim(),
-  // Optional proxy for all yt-dlp traffic, e.g. a residential proxy to get past
-  // datacenter-IP blocks: 'http://user:pass@host:port' (Cobalt's API_EXTERNAL_PROXY).
+  // Optional proxy for yt-dlp (e.g. http://user:pass@host:port). The most
+  // reliable fix for datacenter IP blocks: route requests through a trusted
+  // (residential/clean) IP. Empty = direct connection (fine locally).
   ytdlpProxy: (process.env.YTDLP_PROXY ?? '').trim(),
+  // YouTube PO Token for yt-dlp (e.g. mweb.gvs.TOKEN). See yt-dlp PO Token Guide.
+  // Tokens may expire and can be per-video; a PO Token Provider plugin is better long-term.
+  // Sanitised: a malformed value (e.g. JSON pasted by mistake) is dropped so it
+  // can't pin yt-dlp to a single failing client and break extraction.
+  ytdlpPoToken: cleanPoToken(process.env.YTDLP_PO_TOKEN),
+  // YouTube player client(s) yt-dlp uses. 'default' lets yt-dlp pick its tuned,
+  // up-to-date set; use 'mweb' when YTDLP_PO_TOKEN is set. Override e.g. 'web_safari'.
+  youtubePlayerClient: (process.env.YTDLP_PLAYER_CLIENT ?? 'default').trim(),
   // Override the BgUtils PO-token provider URL. Empty = use the in-container
   // provider on its default port (127.0.0.1:4416); set this to point elsewhere.
   ytdlpPotBaseUrl: (process.env.YTDLP_POT_BASE_URL ?? '').trim(),
@@ -39,8 +56,9 @@ export const config = {
 
   // --- Monetisation ---
   // Resolutions at or below this height are free; above requires a Pro license.
-  // 1080 → 720p & 1080p free; 2K (1440p) & 4K (2160p) are Pro.
-  freeMaxHeight: Number(process.env.FREE_MAX_HEIGHT ?? 1080),
+  // 2160 → everything (incl. 2K & 4K) is free for testing.
+  // (Override with FREE_MAX_HEIGHT, e.g. 1080, to gate higher resolutions again.)
+  freeMaxHeight: Number(process.env.FREE_MAX_HEIGHT ?? 2160),
 
   // Stripe. Leave keys empty to run without billing (pricing page shows a notice).
   stripeSecret: process.env.STRIPE_SECRET_KEY ?? '',

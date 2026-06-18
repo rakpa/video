@@ -1,10 +1,17 @@
 # ClipVault — full-stack image (Node API + yt-dlp + ffmpeg + built React UI)
 FROM node:20-bookworm-slim
 
-# System deps: ffmpeg (merge), yt-dlp (download), git (build the POT provider).
+# Pin yt-dlp to a known-good release. Bump this to upgrade — changing the value
+# also busts Docker's layer cache so Render actually fetches the new binary
+# instead of silently reusing a stale cached "latest" (which crashes on finalize
+# as YouTube changes). See https://github.com/yt-dlp/yt-dlp/releases
+ARG YTDLP_VERSION=2026.06.09
+
+# System deps: ffmpeg (merge), yt-dlp (download), python3 (yt-dlp runtime),
+# git (clone + build the PO-token provider).
 RUN apt-get update \
-  && apt-get install -y --no-install-recommends ffmpeg ca-certificates curl git \
-  && curl -L https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp -o /usr/local/bin/yt-dlp \
+  && apt-get install -y --no-install-recommends ffmpeg ca-certificates curl python3 git \
+  && curl -L "https://github.com/yt-dlp/yt-dlp/releases/download/${YTDLP_VERSION}/yt-dlp" -o /usr/local/bin/yt-dlp \
   && chmod a+rx /usr/local/bin/yt-dlp \
   && rm -rf /var/lib/apt/lists/*
 

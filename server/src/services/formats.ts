@@ -16,34 +16,58 @@ export interface QualityDef {
   selector: string;
 }
 
+/**
+ * "Best" selector for a target height that guarantees AAC (m4a) audio so the
+ * merged MP4 always plays with sound.
+ *
+ * YouTube only offers H.264 (avc1) up to 1080p. Preferring avc1 unconditionally
+ * would cap 1440p/2160p at 1080p (the avc1 branch matches the 1080p stream), so
+ * we only prefer avc1 when it can actually deliver the requested resolution
+ * (≤1080). Above that we pick the best video at the true target resolution
+ * (VP9/AV1) + AAC audio. Always ends with loose fallbacks so yt-dlp never
+ * hard-fails with "Requested format is not available".
+ */
+function bestSelector(h: number): string {
+  const tiers: string[] = [];
+  if (h <= 1080) tiers.push(`bv*[height<=${h}][vcodec^=avc1]+ba[ext=m4a]`);
+  tiers.push(`bv*[height<=${h}]+ba[ext=m4a]`);
+  tiers.push(`bv*[height<=${h}]+ba`);
+  tiers.push(`b[height<=${h}]`);
+  tiers.push(`bv*+ba/b`);
+  return tiers.join('/');
+}
+
 export const QUALITIES: Record<QualityId, QualityDef> = {
   '720': {
     id: '720',
     label: '720p',
     tag: 'HD',
     height: 720,
-    selector: 'bv*[height<=720]+ba/b[height<=720]/b',
+    // Always pair with AAC (m4a) audio so the MP4 plays with sound everywhere —
+    // Opus-in-MP4 (yt-dlp's default "best audio") is silent in most players.
+    // Prefer H.264 video for max compatibility, then loosen, never hard-failing.
+    selector: bestSelector(720),
   },
   '1080': {
     id: '1080',
     label: '1080p',
     tag: 'Full HD',
     height: 1080,
-    selector: 'bv*[height<=1080]+ba/b[height<=1080]/b',
+    selector: bestSelector(1080),
   },
   '1440': {
     id: '1440',
     label: '1440p',
     tag: '2K',
     height: 1440,
-    selector: 'bv*[height<=1440]+ba/b[height<=1440]/b',
+    selector: bestSelector(1440),
   },
   '2160': {
     id: '2160',
     label: '2160p',
     tag: '4K',
     height: 2160,
-    selector: 'bv*[height<=2160]+ba/b[height<=2160]/b',
+    selector: bestSelector(2160),
   },
 };
 
@@ -82,6 +106,8 @@ export function buildSelector(quality: QualityDef, mode: CodecMode): string {
       `b[vcodec^=avc1][height<=${h}]`,
       `b[ext=mp4][height<=${h}]`,
       `b[height<=${h}]`,
+      // Last-resort fallback so the job doesn't hard-fail.
+      `bv*+ba/b`,
     ].join('/');
   }
   return quality.selector;
