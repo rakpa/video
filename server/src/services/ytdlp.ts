@@ -53,11 +53,24 @@ interface RawFormat {
 }
 
 class YtDlpError extends Error {
-  constructor(message: string, public readonly code: 'UNAVAILABLE' | 'TOO_LONG' | 'NO_BINARY' | 'FAILED') {
+  constructor(message: string, public readonly code: 'UNAVAILABLE' | 'TOO_LONG' | 'NO_BINARY' | 'FAILED' | 'BLOCKED') {
     super(message);
   }
 }
 export { YtDlpError };
+
+/** True when yt-dlp's stderr indicates an IP/bot block worth rotating proxy for. */
+function isBlockedStderr(stderr: string): boolean {
+  const s = stderr.toLowerCase();
+  return (
+    s.includes("sign in to confirm you're not a bot") ||
+    s.includes('not a bot') ||
+    s.includes('bot detected') ||
+    s.includes('http error 429') ||
+    s.includes('too many requests') ||
+    s.includes('http error 403')
+  );
+}
 
 /** yt-dlp flags tuned for faster metadata extraction (info-only, no download). */
 const INFO_ARGS = [
@@ -194,7 +207,7 @@ function runJson(args: readonly string[]): Promise<string> {
     child.on('close', (code) => {
       if (code === 0) return resolve(stdout);
       logger.warn('yt-dlp info failed:', stderr.slice(0, 500));
-      reject(new YtDlpError(ytDlpFailureMessage(stderr), 'UNAVAILABLE'));
+      reject(new YtDlpError(ytDlpFailureMessage(stderr), isBlockedStderr(stderr) ? 'BLOCKED' : 'UNAVAILABLE'));
     });
   });
 }
@@ -278,23 +291,36 @@ export async function fetchInfo(url: string): Promise<VideoInfo> {
   const cookies = getCookiesStatus();
   const clients = isYoutube ? youtubeClientsToTry(cookies.exists) : [config.youtubePlayerClient];
 
+  // Try the sticky proxy first; if YouTube blocks the IP, rotate through the
+  // pool (fast-fail) so a single blocked IP self-heals without a manual retry.
+  const maxProxyTries = Math.min(Math.max(config.proxies.length, 1), 3);
   let lastError: YtDlpError | undefined;
-  for (const client of clients) {
-    try {
-      const stdout = await runJson([...INFO_ARGS, ...youtubeHardeningArgs(client), url]);
-      return parseInfoDump(stdout);
-    } catch (err) {
-      if (err instanceof YtDlpError) lastError = err;
-      else throw err;
+
+  for (let proxyTry = 0; proxyTry < maxProxyTries; proxyTry++) {
+    let blocked = false;
+    for (const client of clients) {
+      try {
+        const stdout = await runJson([...INFO_ARGS, ...youtubeHardeningArgs(client), url]);
+        return parseInfoDump(stdout);
+      } catch (err) {
+        if (!(err instanceof YtDlpError)) throw err;
+        lastError = err;
+        // A block won't be fixed by another client — rotating the IP is the fix.
+        if (err.code === 'BLOCKED') {
+          blocked = true;
+          break;
+        }
+      }
     }
+
+    if (blocked && config.proxies.length > 1 && proxyTry < maxProxyTries - 1) {
+      const next = rotateProxy();
+      logger.info(`Info blocked on proxy; rotating to ${next ? new URL(next).host : 'none'} (try ${proxyTry + 2}/${maxProxyTries})`);
+      continue;
+    }
+    break; // succeeded, non-block error, or no more proxies to try
   }
 
-  // Every client failed on the current proxy — retire it so the next attempt
-  // (e.g. the user's retry) starts on a fresh IP instead of the bad one.
-  if (config.proxies.length > 1) {
-    const next = rotateProxy();
-    logger.info(`Info failed on current proxy; rotated to ${next ? new URL(next).host : 'none'}`);
-  }
   throw lastError ?? new YtDlpError('Could not read that video.', 'UNAVAILABLE');
 }
 
