@@ -5,7 +5,7 @@ export default {
   theme: {
     extend: {
       fontFamily: {
-        sans: ['Inter', 'ui-sans-serif', 'system-ui', 'sans-serif'],
+        sans: ['Plus Jakarta Sans', 'Inter', 'ui-sans-serif', 'system-ui', 'sans-serif'],
       },
       colors: {
         ink: {
@@ -15,19 +15,19 @@ export default {
           700: '#1b1b2e',
         },
         accent: {
-          DEFAULT: '#7c5cff',
-          400: '#9b7cff',
-          500: '#7c5cff',
-          600: '#6a3dff',
+          DEFAULT: '#4f46e5',
+          400: '#6366f1',
+          500: '#4f46e5',
+          600: '#4338ca',
         },
       },
       boxShadow: {
-        glow: '0 0 0 1px rgba(124,92,255,0.35), 0 12px 40px -8px rgba(124,92,255,0.5)',
-        'glow-soft': '0 8px 30px -8px rgba(124,92,255,0.35)',
-        card: '0 20px 60px -20px rgba(0,0,0,0.5)',
+        glow: '0 0 0 1px rgba(79,70,229,0.18), 0 16px 40px -16px rgba(79,70,229,0.35)',
+        'glow-soft': '0 10px 30px -14px rgba(79,70,229,0.30)',
+        card: '0 1px 2px rgba(2,6,23,0.04), 0 18px 50px -24px rgba(2,6,23,0.18)',
       },
       backgroundImage: {
-        'accent-gradient': 'linear-gradient(120deg, #7c5cff 0%, #c44bff 50%, #4b9bff 100%)',
+        'accent-gradient': 'linear-gradient(120deg, #4f46e5 0%, #7c3aed 100%)',
       },
       keyframes: {
         shimmer: {

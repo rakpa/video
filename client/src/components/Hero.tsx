@@ -24,7 +24,7 @@ export function Hero() {
         initial={{ opacity: 0, y: 16 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.6, delay: 0.05 }}
-        className="whitespace-nowrap text-[clamp(1.15rem,5.4vw,3.5rem)] font-bold leading-[1.1] tracking-tight text-white"
+        className="whitespace-nowrap text-[clamp(1.15rem,5.4vw,3.5rem)] font-bold leading-[1.1] tracking-tight text-slate-900"
       >
         Best <span className="gradient-text">Free Online</span> Video Downloader
       </motion.h1>
@@ -38,14 +38,14 @@ export function Hero() {
         {SOCIALS.map((s) => (
           <span
             key={s.id}
-            className="glass inline-flex items-center gap-2 rounded-full px-3.5 py-1.5 text-sm font-medium text-white/80"
+            className="glass inline-flex items-center gap-2 rounded-full px-3.5 py-1.5 text-sm font-medium text-slate-700"
           >
             <PlatformIcon platform={s.id} className="h-5 w-5" />
             {s.label}
           </span>
         ))}
-        <span className="glass inline-flex items-center gap-2 rounded-full px-3.5 py-1.5 text-sm font-medium text-white/80">
-          <TikTokIcon className="h-5 w-5" />
+        <span className="glass inline-flex items-center gap-2 rounded-full px-3.5 py-1.5 text-sm font-medium text-slate-700">
+          <TikTokIcon className="h-5 w-5 text-slate-900" />
           TikTok
         </span>
       </motion.div>

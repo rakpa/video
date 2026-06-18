@@ -22,11 +22,11 @@ export function SuccessState({ title, onReset, onRedownload }: Props) {
         initial={{ scale: 0 }}
         animate={{ scale: 1 }}
         transition={{ type: 'spring', stiffness: 400, damping: 16, delay: 0.1 }}
-        className="mx-auto grid h-16 w-16 place-items-center rounded-full bg-emerald-500/15"
+        className="mx-auto grid h-16 w-16 place-items-center rounded-full bg-emerald-50"
       >
         <motion.svg
           viewBox="0 0 24 24"
-          className="h-8 w-8 text-emerald-400"
+          className="h-8 w-8 text-emerald-500"
           fill="none"
           stroke="currentColor"
           strokeWidth="3"
@@ -43,9 +43,9 @@ export function SuccessState({ title, onReset, onRedownload }: Props) {
         </motion.svg>
       </motion.div>
 
-      <h3 className="mt-5 text-2xl font-bold text-white">Your download is ready! 🎉</h3>
-      <p className="mx-auto mt-2 max-w-md text-sm text-white/55">
-        <span className="line-clamp-1 font-medium text-white/80">{title}</span>
+      <h3 className="mt-5 text-2xl font-bold text-slate-900">Your download is ready! 🎉</h3>
+      <p className="mx-auto mt-2 max-w-md text-sm text-slate-500">
+        <span className="line-clamp-1 font-medium text-slate-700">{title}</span>
         has been saved to your device as an MP4 with sound.
       </p>
 

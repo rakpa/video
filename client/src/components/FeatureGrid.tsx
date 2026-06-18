@@ -64,10 +64,10 @@ const FEATURES: Feature[] = [
 export function FeatureGrid() {
   return (
     <section id="features" className="mx-auto mt-24 max-w-4xl scroll-mt-8">
-      <h2 className="text-center text-2xl font-bold tracking-tight text-white sm:text-3xl">
+      <h2 className="text-center text-2xl font-bold tracking-tight text-slate-900 sm:text-3xl">
         Everything you need, nothing you don't
       </h2>
-      <p className="mx-auto mt-2 max-w-md text-center text-sm text-white/60">
+      <p className="mx-auto mt-2 max-w-md text-center text-sm text-slate-600">
         Built to be the fastest, cleanest way to save a video.
       </p>
 
@@ -79,15 +79,15 @@ export function FeatureGrid() {
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true, margin: '-60px' }}
             transition={{ duration: 0.4, delay: (i % 3) * 0.06 }}
-            className="glass rounded-2xl p-5 transition-colors hover:bg-white/[0.07]"
+            className="glass rounded-2xl p-5 transition-colors hover:bg-slate-50"
           >
-            <div className="grid h-10 w-10 place-items-center rounded-xl bg-accent/15 text-accent-400">
+            <div className="grid h-10 w-10 place-items-center rounded-xl bg-indigo-50 text-indigo-600">
               <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
                 {f.icon}
               </svg>
             </div>
-            <h3 className="mt-3.5 font-semibold text-white">{f.title}</h3>
-            <p className="mt-1 text-sm leading-relaxed text-white/60">{f.body}</p>
+            <h3 className="mt-3.5 font-semibold text-slate-900">{f.title}</h3>
+            <p className="mt-1 text-sm leading-relaxed text-slate-600">{f.body}</p>
           </motion.div>
         ))}
       </div>

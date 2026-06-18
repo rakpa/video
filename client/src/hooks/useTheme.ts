@@ -4,10 +4,10 @@ export type Theme = 'dark' | 'light';
 
 const STORAGE_KEY = 'clipvault-theme';
 
-/** Reads the persisted theme, defaulting to dark (the brand default). */
+/** Reads the persisted theme, defaulting to light (the brand default). */
 function initialTheme(): Theme {
-  if (typeof window === 'undefined') return 'dark';
-  return localStorage.getItem(STORAGE_KEY) === 'light' ? 'light' : 'dark';
+  if (typeof window === 'undefined') return 'light';
+  return localStorage.getItem(STORAGE_KEY) === 'dark' ? 'dark' : 'light';
 }
 
 /**

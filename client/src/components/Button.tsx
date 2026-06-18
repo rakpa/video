@@ -10,7 +10,7 @@ interface Props extends HTMLMotionProps<'button'> {
 
 const VARIANTS: Record<Variant, string> = {
   primary: 'btn-gradient text-white shadow-glow-soft hover:shadow-glow',
-  ghost: 'glass text-white/80 hover:text-white',
+  ghost: 'glass text-slate-700 hover:text-slate-900',
   upgrade: 'bg-gradient-to-r from-amber-500 to-orange-500 text-white shadow-glow-soft hover:shadow-glow',
 };
 

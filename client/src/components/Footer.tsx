@@ -14,7 +14,7 @@ function goToSection(id: string) {
 
 function FootLink({ children, onClick }: { children: React.ReactNode; onClick: () => void }) {
   return (
-    <button onClick={onClick} className="text-sm text-white/55 transition hover:text-white">
+    <button onClick={onClick} className="text-sm text-slate-500 transition hover:text-slate-900">
       {children}
     </button>
   );
@@ -23,7 +23,7 @@ function FootLink({ children, onClick }: { children: React.ReactNode; onClick: (
 /** Multi-column site footer with brand, product, legal, and support columns. */
 export function Footer() {
   return (
-    <footer className="mt-24 border-t border-white/[0.06]">
+    <footer className="mt-24 border-t border-slate-200">
       <div className="mx-auto max-w-5xl px-5 py-12">
         <div className="grid gap-10 sm:grid-cols-2 lg:grid-cols-[1.6fr_1fr_1fr_1fr]">
           {/* Brand */}
@@ -34,9 +34,9 @@ export function Footer() {
                   <path d="M8 5v14l11-7L8 5Z" />
                 </svg>
               </div>
-              <span className="text-lg font-bold tracking-tight text-white">ClipVault</span>
+              <span className="text-lg font-bold tracking-tight text-slate-900">ClipVault</span>
             </button>
-            <p className="mt-4 max-w-xs text-sm leading-relaxed text-white/55">
+            <p className="mt-4 max-w-xs text-sm leading-relaxed text-slate-500">
               The fastest, cleanest way to download videos from YouTube, Facebook, and Instagram —
               in HD, 2K, and 4K, always with sound.
             </p>
@@ -44,7 +44,7 @@ export function Footer() {
 
           {/* Product */}
           <div>
-            <h3 className="text-xs font-semibold uppercase tracking-wider text-white/40">Product</h3>
+            <h3 className="text-xs font-semibold uppercase tracking-wider text-slate-400">Product</h3>
             <div className="mt-4 flex flex-col items-start gap-2.5">
               <FootLink onClick={() => goToSection('how-it-works')}>How it works</FootLink>
               <FootLink onClick={() => goToSection('features')}>Features</FootLink>
@@ -54,7 +54,7 @@ export function Footer() {
 
           {/* Legal */}
           <div>
-            <h3 className="text-xs font-semibold uppercase tracking-wider text-white/40">Legal</h3>
+            <h3 className="text-xs font-semibold uppercase tracking-wider text-slate-400">Legal</h3>
             <div className="mt-4 flex flex-col items-start gap-2.5">
               {LEGAL_LINKS.map((l) => (
                 <FootLink key={l.path} onClick={() => navigate(l.path)}>
@@ -66,12 +66,12 @@ export function Footer() {
 
           {/* Support */}
           <div>
-            <h3 className="text-xs font-semibold uppercase tracking-wider text-white/40">Support</h3>
+            <h3 className="text-xs font-semibold uppercase tracking-wider text-slate-400">Support</h3>
             <div className="mt-4 flex flex-col items-start gap-2.5">
-              <a href={`mailto:${COMPANY.contactEmail}`} className="text-sm text-white/55 transition hover:text-white">
+              <a href={`mailto:${COMPANY.contactEmail}`} className="text-sm text-slate-500 transition hover:text-slate-900">
                 Contact us
               </a>
-              <a href={`mailto:${COMPANY.dmcaEmail}`} className="text-sm text-white/55 transition hover:text-white">
+              <a href={`mailto:${COMPANY.dmcaEmail}`} className="text-sm text-slate-500 transition hover:text-slate-900">
                 Copyright / DMCA
               </a>
             </div>
@@ -79,8 +79,8 @@ export function Footer() {
         </div>
 
         {/* Responsible-use disclaimer */}
-        <div className="mt-10 rounded-2xl bg-white/[0.03] p-5 text-xs leading-relaxed text-white/50">
-          <p className="mb-1.5 font-medium text-white/70">⚖️ Please download responsibly</p>
+        <div className="mt-10 rounded-2xl border border-slate-200 bg-slate-50 p-5 text-xs leading-relaxed text-slate-500">
+          <p className="mb-1.5 font-medium text-slate-700">⚖️ Please download responsibly</p>
           <p>
             Only download content you own or have the rights to. By using ClipVault you agree to respect each
             platform's Terms of Service and all applicable copyright laws. This tool is provided for personal,
@@ -88,7 +88,7 @@ export function Footer() {
           </p>
         </div>
 
-        <p className="mt-6 text-center text-xs text-white/45 sm:text-left">
+        <p className="mt-6 text-center text-xs text-slate-400 sm:text-left">
           © {new Date().getFullYear()} ClipVault · Built with yt-dlp &amp; ffmpeg
         </p>
       </div>

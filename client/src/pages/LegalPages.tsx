@@ -39,7 +39,7 @@ export function LegalPage({ path, theme, onToggleTheme }: Props) {
   if (!route) return <NotFound />;
 
   return (
-    <div className="app-bg min-h-screen text-white">
+    <div className="app-bg min-h-screen text-slate-600">
       <SiteHeader theme={theme} onToggleTheme={onToggleTheme} maxWidth="max-w-3xl" showNav={false} />
 
       <main className="mx-auto max-w-3xl px-5 pb-20">
@@ -51,7 +51,7 @@ export function LegalPage({ path, theme, onToggleTheme }: Props) {
         >
           <button
             onClick={() => navigate('/')}
-            className="mb-6 inline-flex items-center gap-1.5 text-sm text-accent-400 transition hover:text-white"
+            className="mb-6 inline-flex items-center gap-1.5 text-sm text-indigo-600 transition hover:text-indigo-700"
           >
             <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
               <path strokeLinecap="round" strokeLinejoin="round" d="m15 18-6-6 6-6" />
@@ -59,14 +59,14 @@ export function LegalPage({ path, theme, onToggleTheme }: Props) {
             Back to app
           </button>
 
-          <h1 className="text-3xl font-extrabold tracking-tight text-white sm:text-4xl">{route.title}</h1>
-          <p className="mt-2 text-sm text-white/50">Last updated: {COMPANY.lastUpdated}</p>
+          <h1 className="text-3xl font-extrabold tracking-tight text-slate-900 sm:text-4xl">{route.title}</h1>
+          <p className="mt-2 text-sm text-slate-400">Last updated: {COMPANY.lastUpdated}</p>
 
-          <div className="mt-8 space-y-6 text-[15px] leading-relaxed text-white/70">{route.render()}</div>
+          <div className="mt-8 space-y-6 text-[15px] leading-relaxed text-slate-600">{route.render()}</div>
         </motion.article>
 
         {/* Cross-links between legal docs */}
-        <nav className="mt-6 flex flex-wrap justify-center gap-x-5 gap-y-2 text-sm text-white/60">
+        <nav className="mt-6 flex flex-wrap justify-center gap-x-5 gap-y-2 text-sm text-slate-500">
           {LEGAL_LINKS.map((l) => (
             <LegalLink key={l.path} to={l.path} active={l.path === path}>
               {l.label}
@@ -81,22 +81,22 @@ export function LegalPage({ path, theme, onToggleTheme }: Props) {
 /* ------------------------------- primitives ------------------------------- */
 
 function H2({ children }: { children: ReactNode }) {
-  return <h2 className="pt-2 text-xl font-bold text-white">{children}</h2>;
+  return <h2 className="pt-2 text-xl font-bold text-slate-900">{children}</h2>;
 }
 function P({ children }: { children: ReactNode }) {
   return <p>{children}</p>;
 }
 function UL({ children }: { children: ReactNode }) {
-  return <ul className="ml-5 list-disc space-y-2 marker:text-accent-400">{children}</ul>;
+  return <ul className="ml-5 list-disc space-y-2 marker:text-indigo-500">{children}</ul>;
 }
 function Strong({ children }: { children: ReactNode }) {
-  return <strong className="font-semibold text-white/90">{children}</strong>;
+  return <strong className="font-semibold text-slate-900">{children}</strong>;
 }
 function LegalLink({ to, active, children }: { to: string; active?: boolean; children: ReactNode }) {
   return (
     <button
       onClick={() => navigate(to)}
-      className={active ? 'font-medium text-accent-400' : 'transition hover:text-white'}
+      className={active ? 'font-medium text-indigo-600' : 'transition hover:text-slate-900'}
     >
       {children}
     </button>
@@ -105,9 +105,9 @@ function LegalLink({ to, active, children }: { to: string; active?: boolean; chi
 
 function NotFound() {
   return (
-    <div className="app-bg grid min-h-screen place-items-center px-5 text-center text-white">
+    <div className="app-bg grid min-h-screen place-items-center px-5 text-center text-slate-600">
       <div>
-        <h1 className="text-2xl font-bold">Page not found</h1>
+        <h1 className="text-2xl font-bold text-slate-900">Page not found</h1>
         <Button onClick={() => navigate('/')} className="mt-5">
           Back to {COMPANY.brand}
         </Button>

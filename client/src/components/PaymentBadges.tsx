@@ -26,8 +26,8 @@ export function PaymentBadges() {
         </CardChip>
       </div>
 
-      <p className="inline-flex items-center gap-1.5 text-xs text-white/50">
-        <svg viewBox="0 0 24 24" className="h-3.5 w-3.5 text-emerald-400" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+      <p className="inline-flex items-center gap-1.5 text-xs text-slate-400">
+        <svg viewBox="0 0 24 24" className="h-3.5 w-3.5 text-emerald-500" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
           <rect x="5" y="11" width="14" height="9" rx="2" />
           <path strokeLinecap="round" d="M8 11V8a4 4 0 0 1 8 0v3" />
         </svg>
