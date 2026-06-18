@@ -172,7 +172,7 @@ function useCountUp(target: number): number {
     };
     raf.current = requestAnimationFrame(tick);
     return () => {
-      if (raf.current) cancelAuthorizationFrame(raf.current);
+      if (raf.current) cancelAnimationFrame(raf.current);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [target]);
