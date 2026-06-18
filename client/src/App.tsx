@@ -129,22 +129,22 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
       formats: PLACEHOLDER_FORMATS,
     });
 
-    const previewPromise = fetchVideoPreview(normalized);
-    const fullPromise = fetchVideoInfo(normalized);
-
+    // Fast preview (thumbnail/title) first so the card + Download button are
+    // usable in ~1s, instead of waiting on the slow full-info extraction.
+    const preview = await fetchVideoPreview(normalized).catch(() => null);
+    if (fetchedUrl.current !== normalized) return;
     let hasPreview = false;
-    try {
-      const preview = await previewPromise;
-      if (fetchedUrl.current !== normalized) return;
-      if (preview) {
-        hasPreview = true;
-        setInfo((prev) => ({ ...preview, formats: prev?.formats ?? PLACEHOLDER_FORMATS }));
-        // Button is usable now — the download extracts on its own; don't make the
-        // user wait on the slow full-info call just to click Download.
-        setPhase((p) => (p === 'preview' ? 'ready' : p));
-      }
+    if (preview) {
+      hasPreview = true;
+      setInfo((prev) => ({ ...preview, formats: prev?.formats ?? PLACEHOLDER_FORMATS }));
+      // The button is usable now — the download runs its own extraction, so don't
+      // make the user wait on the full-info call just to click Download.
+      setPhase((p) => (p === 'preview' ? 'ready' : p));
+    }
 
-      const data = await fullPromise;
+    // Full info (accurate sizes/availability) refines the cards in the background.
+    try {
+      const data = await fetchVideoInfo(normalized);
       if (fetchedUrl.current !== normalized) return;
       setInfo((prev) => ({
         ...data,
@@ -160,9 +160,8 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
     } catch (e) {
       if (fetchedUrl.current !== normalized) return;
       if (hasPreview) {
-        // Full info failed (e.g. a transient extraction error) but the preview
-        // gave us a usable card — keep it and let the user try the download,
-        // which runs its own extraction, instead of blocking with an error.
+        // Full info failed but the preview gave us a usable card — keep it and
+        // let the user try the download (it extracts independently).
         setPhase((p) => (p === 'downloading' || p === 'success' ? p : 'ready'));
       } else {
         setError(e instanceof ApiError ? e.message : 'Could not fetch that video.');
@@ -259,9 +258,9 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
       ? 'downloading'
       : phase === 'success'
         ? 'success'
-        : phase === 'ready' || phase === 'preview' || phase === 'error'
-          ? 'ready'
-          : null;
+      : phase === 'ready' || phase === 'preview' || phase === 'error'
+        ? 'ready'
+      : null;
 
   return (
     <div className="app-bg min-h-screen text-white">
@@ -279,9 +278,9 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
                   ? 'fetching'
                   : phase === 'downloading'
                     ? 'downloading'
-                    : canDownload
-                      ? 'ready'
-                      : 'idle'
+                  : canDownload
+                    ? 'ready'
+                    : 'idle'
               }
               onDownload={() => handleDownload(selected, codecMode)}
             />
@@ -317,7 +316,7 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
                   <path strokeLinecap="round" strokeLinejoin="round" d="M12 3 5 6v6c0 4.4 3 7.6 7 9 4-1.4 7-4.6 7-9V6l-7-3Z" />
                   <path strokeLinecap="round" strokeLinejoin="round" d="m9 12 2 2 4-4" />
                 </svg>
-                Secure &amp; malware-free · SSL encrypted
+                Secure & malware-free · SSL encrypted
               </span>
             </div>
           </div>
