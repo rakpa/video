@@ -15,18 +15,21 @@ RUN apt-get update \
   && chmod a+rx /usr/local/bin/yt-dlp \
   && rm -rf /var/lib/apt/lists/*
 
-# --- BgUtils PO Token provider (helps bypass YouTube bot detection) ---
-# Builds the provider server (runs locally on :4416) and installs the yt-dlp
-# plugin so yt-dlp auto-fetches the poToken / visitor_data YouTube now requires
-# (this is the equivalent of Cobalt's YOUTUBE_SESSION_SERVER). Pinned to a known
-# tag and made best-effort: a failure here must never break the image build.
-RUN ( git clone --single-branch --branch 1.3.1 \
-        https://github.com/Brainicism/bgutil-ytdlp-pot-provider.git /opt/bgutil \
-      && cd /opt/bgutil/server && npm ci --include=dev && npx tsc \
-      && mkdir -p /root/.config/yt-dlp/plugins \
-      && cp -r /opt/bgutil/plugin/yt_dlp_plugins /root/.config/yt-dlp/plugins/ \
-      && echo "PO token provider installed" ) \
-   || echo "WARN: PO token provider setup failed; continuing without it"
+# --- BgUtils PO Token provider (OPTIONAL — OFF by default) ---
+# Only needed to bypass YouTube bot-detection WITHOUT a proxy. If you use
+# YTDLP_PROXY (recommended), leave this disabled: running the provider is a
+# second Node process that adds memory pressure and can OOM-crash the 512 MB
+# free tier. Enable with: --build-arg ENABLE_POT_PROVIDER=true
+ARG ENABLE_POT_PROVIDER=false
+RUN if [ "$ENABLE_POT_PROVIDER" = "true" ]; then \
+      ( git clone --single-branch --branch 1.3.1 \
+          https://github.com/Brainicism/bgutil-ytdlp-pot-provider.git /opt/bgutil \
+        && cd /opt/bgutil/server && npm ci --include=dev && npx tsc \
+        && mkdir -p /root/.config/yt-dlp/plugins \
+        && cp -r /opt/bgutil/plugin/yt_dlp_plugins /root/.config/yt-dlp/plugins/ \
+        && echo "PO token provider installed" ) \
+      || echo "WARN: PO token provider setup failed; continuing without it" ; \
+    else echo "PO token provider disabled (set ENABLE_POT_PROVIDER=true to enable)"; fi
 
 WORKDIR /app
 
@@ -42,7 +45,7 @@ COPY server ./server
 
 RUN npm run build --prefix client && npm run build --prefix server
 
-# Entrypoint starts the PO token provider (background) then the API.
+# Entrypoint starts the PO token provider (only if it was built) then the API.
 COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 
