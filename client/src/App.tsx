@@ -90,6 +90,9 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
   const [selected, setSelected] = useState<QualityId>('1080');
   const [codecMode, setCodecMode] = useState<CodecMode>('best');
   const [pro, setPro] = useState(isPro);
+  // True while the slow full /api/info (real sizes/availability) is still loading
+  // in the background, after the fast preview has already shown the cards.
+  const [refining, setRefining] = useState(false);
 
   const lastJobId = useRef<string | null>(null);
   const unsubscribe = useRef<(() => void) | null>(null);
@@ -112,6 +115,7 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
 
     setError(null);
     setPhase('preview');
+    setRefining(true);
     fetchedUrl.current = normalized;
 
     const platform = detectPlatform(normalized)!;
@@ -128,10 +132,16 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
     const previewPromise = fetchVideoPreview(normalized);
     const fullPromise = fetchVideoInfo(normalized);
 
+    let hasPreview = false;
     try {
       const preview = await previewPromise;
-      if (preview && fetchedUrl.current === normalized) {
+      if (fetchedUrl.current !== normalized) return;
+      if (preview) {
+        hasPreview = true;
         setInfo((prev) => ({ ...preview, formats: prev?.formats ?? PLACEHOLDER_FORMATS }));
+        // Button is usable now — the download extracts on its own; don't make the
+        // user wait on the slow full-info call just to click Download.
+        setPhase((p) => (p === 'preview' ? 'ready' : p));
       }
 
       const data = await fullPromise;
@@ -149,8 +159,17 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
       setPhase((p) => (p === 'preview' || p === 'fetching' ? 'ready' : p));
     } catch (e) {
       if (fetchedUrl.current !== normalized) return;
-      setError(e instanceof ApiError ? e.message : 'Could not fetch that video.');
-      setPhase((p) => (p === 'downloading' || p === 'success' ? p : 'error'));
+      if (hasPreview) {
+        // Full info failed (e.g. a transient extraction error) but the preview
+        // gave us a usable card — keep it and let the user try the download,
+        // which runs its own extraction, instead of blocking with an error.
+        setPhase((p) => (p === 'downloading' || p === 'success' ? p : 'ready'));
+      } else {
+        setError(e instanceof ApiError ? e.message : 'Could not fetch that video.');
+        setPhase((p) => (p === 'downloading' || p === 'success' ? p : 'error'));
+      }
+    } finally {
+      if (fetchedUrl.current === normalized) setRefining(false);
     }
   }, []);
 
@@ -346,7 +365,7 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
                           mode={codecMode}
                           onModeChange={setCodecMode}
                           pro={pro}
-                          refining={phase === 'preview'}
+                          refining={refining}
                           onDownload={() => handleDownload(selected, codecMode)}
                           onUpgrade={() => proPanelRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })}
                         />

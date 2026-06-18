@@ -92,7 +92,7 @@ export function DownloadProgress({ progress, qualityLabel }: Props) {
               ) : progress.stage === 'merging' ? (
                 'Stitching streams…'
               ) : (
-                'Starting…'
+                'Preparing — fetching from source…'
               )}
             </span>
             <span className="tabular-nums">

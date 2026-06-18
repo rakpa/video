@@ -397,8 +397,8 @@ export function startDownload(
     // dropped connection costs one chunk, not the whole file, and resets
     // per-request throttling), pull several chunks in parallel to beat
     // per-connection proxy throttling, and retry transient errors generously.
-    '--http-chunk-size', '10M',
-    '--concurrent-fragments', '4',
+    '--http-chunk-size', '5M',
+    '--concurrent-fragments', '8',
     '--retries', '10',
     '--fragment-retries', '20',
     '--retry-sleep', 'linear=1::5',
