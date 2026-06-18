@@ -97,9 +97,25 @@ export const config = {
   licenseSecret: process.env.LICENSE_SECRET ?? 'dev-insecure-license-secret-change-me',
 } as const;
 
-/** Pick a proxy from the pool at random (rotation). Undefined when none set. */
-export function pickProxy(): string | undefined {
+// Start on a random proxy so restarts spread load across the pool, then stay put.
+let proxyCursor = config.proxies.length > 0 ? Math.floor(Math.random() * config.proxies.length) : 0;
+
+/**
+ * The proxy currently in use. Deliberately **sticky**: one account's cookies
+ * arriving from a single stable IP looks like a real signed-in user, whereas
+ * hopping IPs on every request trips YouTube's "confirm you're not a bot" check.
+ * Undefined when no proxy is configured.
+ */
+export function currentProxy(): string | undefined {
   const { proxies } = config;
-  if (proxies.length === 0) return undefined;
-  return proxies[Math.floor(Math.random() * proxies.length)];
+  return proxies.length ? proxies[proxyCursor % proxies.length] : undefined;
+}
+
+/**
+ * Advance to the next proxy in the pool. Call this only AFTER a request fails,
+ * so a bad/blocked IP gets retired without hopping mid-session.
+ */
+export function rotateProxy(): string | undefined {
+  if (config.proxies.length > 1) proxyCursor = (proxyCursor + 1) % config.proxies.length;
+  return currentProxy();
 }
