@@ -144,4 +144,9 @@ app.listen(config.port, () => {
   } else {
     logger.info('yt-dlp PO token: not configured');
   }
+  if (config.proxies.length > 0) {
+    logger.info(`yt-dlp proxy: ${config.proxies.length} proxy(ies) loaded, rotating per request`);
+  } else {
+    logger.info('yt-dlp proxy: none configured (direct connection)');
+  }
 });
