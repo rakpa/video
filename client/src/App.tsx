@@ -134,19 +134,33 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
         setInfo((prev) => ({ ...preview, formats: prev?.formats ?? PLACEHOLDER_FORMATS }));
       }
 
-      const data = await fullPromise;
-      if (fetchedUrl.current !== normalized) return;
-      setInfo((prev) => ({
-        ...data,
-        title: data.title || prev?.title || 'Untitled video',
-        author: data.author || prev?.author || 'Unknown',
-        thumbnail: prev?.thumbnail ?? data.thumbnail,
-      }));
-      setSelected((current) => {
-        const chosen = data.formats.find((f) => f.id === current);
-        return chosen?.available ? current : pickDefault(data.formats);
-      });
+      // IMPROVEMENT: Set ready immediately after preview so Download button responds right away
+      // (thumbnail + quality options visible). Full metadata (accurate sizes) loads in background.
       setPhase((p) => (p === 'preview' || p === 'fetching' ? 'ready' : p));
+
+      // Background update for accurate formats/sizes (non-blocking)
+      fullPromise
+        .then((data) => {
+          if (fetchedUrl.current !== normalized) return;
+          setInfo((prev) => ({
+            ...data,
+            title: data.title || prev?.title || 'Untitled video',
+            author: data.author || prev?.author || 'Unknown',
+            thumbnail: prev?.thumbnail ?? data.thumbnail,
+          }));
+          setSelected((current) => {
+            const chosen = data.formats.find((f) => f.id === current);
+            return chosen?.available ? current : pickDefault(data.formats);
+          });
+        })
+        .catch((e) => {
+          if (fetchedUrl.current !== normalized) return;
+          // Only surface error if we haven't already succeeded with preview
+          if (phase !== 'ready' && phase !== 'downloading' && phase !== 'success') {
+            setError(e instanceof ApiError ? e.message : 'Could not fetch full video info.');
+            setPhase('error');
+          }
+        });
     } catch (e) {
       if (fetchedUrl.current !== normalized) return;
       setError(e instanceof ApiError ? e.message : 'Could not fetch that video.');
@@ -240,9 +254,9 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
       ? 'downloading'
       : phase === 'success'
         ? 'success'
-        : phase === 'ready' || phase === 'preview' || phase === 'error'
-          ? 'ready'
-          : null;
+      : phase === 'ready' || phase === 'preview' || phase === 'error'
+        ? 'ready'
+      : null;
 
   return (
     <div className="app-bg min-h-screen text-white">
@@ -260,9 +274,9 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
                   ? 'fetching'
                   : phase === 'downloading'
                     ? 'downloading'
-                    : canDownload
-                      ? 'ready'
-                      : 'idle'
+                  : canDownload
+                    ? 'ready'
+                    : 'idle'
               }
               onDownload={() => handleDownload(selected, codecMode)}
             />
@@ -298,7 +312,7 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
                   <path strokeLinecap="round" strokeLinejoin="round" d="M12 3 5 6v6c0 4.4 3 7.6 7 9 4-1.4 7-4.6 7-9V6l-7-3Z" />
                   <path strokeLinecap="round" strokeLinejoin="round" d="m9 12 2 2 4-4" />
                 </svg>
-                Secure &amp; malware-free · SSL encrypted
+                Secure & malware-free · SSL encrypted
               </span>
             </div>
           </div>
