@@ -241,7 +241,8 @@ function RippleButton({
           transition={{ duration: 0.6 }}
           className="pointer-events-none absolute h-24 w-24 rounded-full bg-white/40"
           style={{ left: r.x - 48, top: r.y - 48 }}
-        ))}
+        />
+      ))}
       {children}
     </motion.button>
   );

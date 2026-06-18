@@ -90,6 +90,9 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
   const [selected, setSelected] = useState<QualityId>('1080');
   const [codecMode, setCodecMode] = useState<CodecMode>('best');
   const [pro, setPro] = useState(isPro);
+  // True while the slow full /api/info (real sizes/availability) is still loading
+  // in the background, after the fast preview has already shown the cards.
+  const [refining, setRefining] = useState(false);
 
   const lastJobId = useRef<string | null>(null);
   const unsubscribe = useRef<(() => void) | null>(null);
@@ -112,6 +115,7 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
 
     setError(null);
     setPhase('preview');
+    setRefining(true);
     fetchedUrl.current = normalized;
 
     const platform = detectPlatform(normalized)!;
@@ -125,46 +129,46 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
       formats: PLACEHOLDER_FORMATS,
     });
 
-    const previewPromise = fetchVideoPreview(normalized);
-    const fullPromise = fetchVideoInfo(normalized);
+    // Fast preview (thumbnail/title) first so the card + Download button are
+    // usable in ~1s, instead of waiting on the slow full-info extraction.
+    const preview = await fetchVideoPreview(normalized).catch(() => null);
+    if (fetchedUrl.current !== normalized) return;
+    let hasPreview = false;
+    if (preview) {
+      hasPreview = true;
+      setInfo((prev) => ({ ...preview, formats: prev?.formats ?? PLACEHOLDER_FORMATS }));
+      // The button is usable now — the download runs its own extraction, so don't
+      // make the user wait on the full-info call just to click Download.
+      setPhase((p) => (p === 'preview' ? 'ready' : p));
+    }
 
+    // Full info (accurate sizes/availability) refines the cards in the background.
     try {
-      const preview = await previewPromise;
-      if (preview && fetchedUrl.current === normalized) {
-        setInfo((prev) => ({ ...preview, formats: prev?.formats ?? PLACEHOLDER_FORMATS }));
-      }
-
-      // IMPROVEMENT: Set ready immediately after preview so Download button responds right away
-      // (thumbnail + quality options visible). Full metadata (accurate sizes) loads in background.
+      const data = await fetchVideoInfo(normalized);
+      if (fetchedUrl.current !== normalized) return;
+      setInfo((prev) => ({
+        ...data,
+        title: data.title || prev?.title || 'Untitled video',
+        author: data.author || prev?.author || 'Unknown',
+        thumbnail: prev?.thumbnail ?? data.thumbnail,
+      }));
+      setSelected((current) => {
+        const chosen = data.formats.find((f) => f.id === current);
+        return chosen?.available ? current : pickDefault(data.formats);
+      });
       setPhase((p) => (p === 'preview' || p === 'fetching' ? 'ready' : p));
-
-      // Background update for accurate formats/sizes (non-blocking)
-      fullPromise
-        .then((data) => {
-          if (fetchedUrl.current !== normalized) return;
-          setInfo((prev) => ({
-            ...data,
-            title: data.title || prev?.title || 'Untitled video',
-            author: data.author || prev?.author || 'Unknown',
-            thumbnail: prev?.thumbnail ?? data.thumbnail,
-          }));
-          setSelected((current) => {
-            const chosen = data.formats.find((f) => f.id === current);
-            return chosen?.available ? current : pickDefault(data.formats);
-          });
-        })
-        .catch((e) => {
-          if (fetchedUrl.current !== normalized) return;
-          // Only surface error if we haven't already succeeded with preview
-          if (phase !== 'ready' && phase !== 'downloading' && phase !== 'success') {
-            setError(e instanceof ApiError ? e.message : 'Could not fetch full video info.');
-            setPhase('error');
-          }
-        });
     } catch (e) {
       if (fetchedUrl.current !== normalized) return;
-      setError(e instanceof ApiError ? e.message : 'Could not fetch that video.');
-      setPhase((p) => (p === 'downloading' || p === 'success' ? p : 'error'));
+      if (hasPreview) {
+        // Full info failed but the preview gave us a usable card — keep it and
+        // let the user try the download (it extracts independently).
+        setPhase((p) => (p === 'downloading' || p === 'success' ? p : 'ready'));
+      } else {
+        setError(e instanceof ApiError ? e.message : 'Could not fetch that video.');
+        setPhase((p) => (p === 'downloading' || p === 'success' ? p : 'error'));
+      }
+    } finally {
+      if (fetchedUrl.current === normalized) setRefining(false);
     }
   }, []);
 
@@ -360,7 +364,7 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
                           mode={codecMode}
                           onModeChange={setCodecMode}
                           pro={pro}
-                          refining={phase === 'preview'}
+                          refining={refining}
                           onDownload={() => handleDownload(selected, codecMode)}
                           onUpgrade={() => proPanelRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })}
                         />
