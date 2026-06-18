@@ -1,7 +1,7 @@
 import { spawn } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
-import { config, pickProxy } from '../config.js';
+import { config, currentProxy, rotateProxy } from '../config.js';
 import { getCookiesStatus, getUsableCookiesPath } from '../utils/cookies.js';
 import { QUALITIES, buildSelector, type CodecMode, type QualityDef, type QualityId } from './formats.js';
 import { detectPlatform } from './platform.js';
@@ -126,10 +126,10 @@ function youtubeHardeningArgs(playerClient: string): string[] {
   // secret mount is read-only (crashes the process otherwise).
   const cookiesPath = getUsableCookiesPath();
   if (cookiesPath) args.push('--cookies', cookiesPath);
-  // A proxy routes every request through a trusted IP — the most effective
-  // fix for "Sign in to confirm you're not a bot" on blocked datacenter IPs.
-  // pickProxy() rotates across the pool so one blocked IP doesn't stop downloads.
-  const proxy = pickProxy();
+  // A proxy routes every request through a trusted IP — the most effective fix
+  // for "Sign in to confirm you're not a bot". currentProxy() is sticky (one
+  // stable IP) so an authenticated session doesn't hop IPs and look bot-like.
+  const proxy = currentProxy();
   if (proxy) args.push('--proxy', proxy);
   return args;
 }
@@ -289,6 +289,12 @@ export async function fetchInfo(url: string): Promise<VideoInfo> {
     }
   }
 
+  // Every client failed on the current proxy — retire it so the next attempt
+  // (e.g. the user's retry) starts on a fresh IP instead of the bad one.
+  if (config.proxies.length > 1) {
+    const next = rotateProxy();
+    logger.info(`Info failed on current proxy; rotated to ${next ? new URL(next).host : 'none'}`);
+  }
   throw lastError ?? new YtDlpError('Could not read that video.', 'UNAVAILABLE');
 }
 
@@ -475,6 +481,7 @@ export function startDownload(
         } catch {
           /* already exited */
         }
+        if (config.proxies.length > 1) rotateProxy();
         reject(
           new YtDlpError(
             'The download stalled — the proxy may be slow or blocked. Please try again; it will use a different proxy.',
@@ -514,6 +521,7 @@ export function startDownload(
         resolve(finalPath);
       } else {
         logger.warn('yt-dlp download failed:', stderr.slice(0, 500));
+        if (config.proxies.length > 1) rotateProxy();
         reject(new YtDlpError(downloadFailureMessage(stderr), 'FAILED'));
       }
     });
