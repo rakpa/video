@@ -44,6 +44,9 @@ export const config = {
   // YouTube player client(s) yt-dlp uses. 'default' lets yt-dlp pick its tuned,
   // up-to-date set; use 'mweb' when YTDLP_PO_TOKEN is set. Override e.g. 'web_safari'.
   youtubePlayerClient: (process.env.YTDLP_PLAYER_CLIENT ?? 'default').trim(),
+  // Override the BgUtils PO-token provider URL. Empty = use the in-container
+  // provider on its default port (127.0.0.1:4416); set this to point elsewhere.
+  ytdlpPotBaseUrl: (process.env.YTDLP_POT_BASE_URL ?? '').trim(),
 
   // Root directory where per-job temp folders are created.
   tmpRoot: path.join(os.tmpdir(), 'clipvault'),

@@ -117,6 +117,11 @@ function youtubeClientsToTry(hasCookies: boolean): readonly string[] {
  */
 function youtubeHardeningArgs(playerClient: string): string[] {
   const args = ['--extractor-args', `youtube:${youtubeExtractorArgValue(playerClient)}`];
+  // BgUtils PO-token provider: the plugin auto-connects to the in-container
+  // provider on 127.0.0.1:4416; only pass a base_url when overriding it.
+  if (config.ytdlpPotBaseUrl) {
+    args.push('--extractor-args', `youtubepot-bgutilhttp:base_url=${config.ytdlpPotBaseUrl}`);
+  }
   // Use a writable copy: yt-dlp rewrites the cookies file on exit and Render's
   // secret mount is read-only (crashes the process otherwise).
   const cookiesPath = getUsableCookiesPath();
