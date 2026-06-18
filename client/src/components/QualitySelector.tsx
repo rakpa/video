@@ -213,7 +213,7 @@ function RippleButton({
 }) {
   const [ripples, setRipples] = useState<{ id: number; x: number; y: number }[]>([]);
 
-  const handleClick = (e: React.EventMouse<HTMLButtonElement>) => {
+  const handleClick = (e: React.MouseEvent<HTMLButtonElement>) => {
     const rect = e.currentTarget.getBoundingClientRect();
     const id = Date.now();
     setRipples((r) => [...r, { id, x: e.clientX - rect.left, y: e.clientY - rect.top }]);
