@@ -27,6 +27,13 @@ export function DownloadProgress({ progress, qualityLabel }: Props) {
   const display = useCountUp(pct);
   const indeterminate = pct < 0.5 && progress.stage === 'downloading';
 
+  // Friendly message during cold-start / initial wait (Render free tier ~50s wake)
+  const initialWaitMessage = indeterminate 
+    ? 'Waking up download service… (first request can take up to ~60s on free hosting)'
+    : progress.stage === 'merging' 
+      ? 'Stitching streams…' 
+      : 'Starting…';
+
   return (
     <motion.div
       initial={{ opacity: 0, y: 14 }}
@@ -89,10 +96,8 @@ export function DownloadProgress({ progress, qualityLabel }: Props) {
                   </svg>
                   {progress.speed}
                 </>
-              ) : progress.stage === 'merging' ? (
-                'Stitching streams…'
               ) : (
-                'Starting…'
+                initialWaitMessage
               )}
             </span>
             <span className="tabular-nums">
@@ -114,7 +119,7 @@ export function DownloadProgress({ progress, qualityLabel }: Props) {
                   ? 'bg-accent'
                   : i === progress.streamIndex - 1 && progress.stage !== 'merging'
                     ? 'bg-accent/60'
-                    : 'bg-white/10',
+                  : 'bg-white/10',
               ].join(' ')}
             />
           ))}
@@ -167,7 +172,7 @@ function useCountUp(target: number): number {
     };
     raf.current = requestAnimationFrame(tick);
     return () => {
-      if (raf.current) cancelAnimationFrame(raf.current);
+      if (raf.current) cancelAuthorizationFrame(raf.current);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [target]);
