@@ -24,6 +24,12 @@ export const config = {
   // YouTube player client(s) yt-dlp uses. 'default' lets yt-dlp pick its tuned,
   // up-to-date set; override e.g. 'web_safari,tv' if a specific client is blocked.
   youtubePlayerClient: (process.env.YTDLP_PLAYER_CLIENT ?? 'default').trim(),
+  // Optional proxy for all yt-dlp traffic, e.g. a residential proxy to get past
+  // datacenter-IP blocks: 'http://user:pass@host:port' (Cobalt's API_EXTERNAL_PROXY).
+  ytdlpProxy: (process.env.YTDLP_PROXY ?? '').trim(),
+  // Override the BgUtils PO-token provider URL. Empty = use the in-container
+  // provider on its default port (127.0.0.1:4416); set this to point elsewhere.
+  ytdlpPotBaseUrl: (process.env.YTDLP_POT_BASE_URL ?? '').trim(),
 
   // Root directory where per-job temp folders are created.
   tmpRoot: path.join(os.tmpdir(), 'clipvault'),

@@ -1,11 +1,25 @@
 # ClipVault — full-stack image (Node API + yt-dlp + ffmpeg + built React UI)
 FROM node:20-bookworm-slim
 
+# System deps: ffmpeg (merge), yt-dlp (download), git (build the POT provider).
 RUN apt-get update \
-  && apt-get install -y --no-install-recommends ffmpeg ca-certificates curl \
+  && apt-get install -y --no-install-recommends ffmpeg ca-certificates curl git \
   && curl -L https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp -o /usr/local/bin/yt-dlp \
   && chmod a+rx /usr/local/bin/yt-dlp \
   && rm -rf /var/lib/apt/lists/*
+
+# --- BgUtils PO Token provider (helps bypass YouTube bot detection) ---
+# Builds the provider server (runs locally on :4416) and installs the yt-dlp
+# plugin so yt-dlp auto-fetches the poToken / visitor_data YouTube now requires
+# (this is the equivalent of Cobalt's YOUTUBE_SESSION_SERVER). Pinned to a known
+# tag and made best-effort: a failure here must never break the image build.
+RUN ( git clone --single-branch --branch 1.3.1 \
+        https://github.com/Brainicism/bgutil-ytdlp-pot-provider.git /opt/bgutil \
+      && cd /opt/bgutil/server && npm ci --include=dev && npx tsc \
+      && mkdir -p /root/.config/yt-dlp/plugins \
+      && cp -r /opt/bgutil/plugin/yt_dlp_plugins /root/.config/yt-dlp/plugins/ \
+      && echo "PO token provider installed" ) \
+   || echo "WARN: PO token provider setup failed; continuing without it"
 
 WORKDIR /app
 
@@ -21,6 +35,10 @@ COPY server ./server
 
 RUN npm run build --prefix client && npm run build --prefix server
 
+# Entrypoint starts the PO token provider (background) then the API.
+COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
+RUN chmod +x /usr/local/bin/docker-entrypoint.sh
+
 ENV NODE_ENV=production
 ENV SERVE_CLIENT=true
 ENV PORT=10000
@@ -29,4 +47,4 @@ ENV FFMPEG_PATH=ffmpeg
 
 EXPOSE 10000
 
-CMD ["node", "server/dist/index.js"]
+CMD ["docker-entrypoint.sh"]

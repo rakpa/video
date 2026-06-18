@@ -73,7 +73,13 @@ const INFO_ARGS = [
  */
 function youtubeHardeningArgs(): string[] {
   const args = ['--extractor-args', `youtube:player_client=${config.youtubePlayerClient}`];
+  // BgUtils PO-token provider: when running on a non-default URL, tell the plugin
+  // where to reach it. (On the default 127.0.0.1:4416 the plugin auto-connects.)
+  if (config.ytdlpPotBaseUrl) {
+    args.push('--extractor-args', `youtubepot-bgutilhttp:base_url=${config.ytdlpPotBaseUrl}`);
+  }
   if (config.ytdlpCookies) args.push('--cookies', config.ytdlpCookies);
+  if (config.ytdlpProxy) args.push('--proxy', config.ytdlpProxy);
   return args;
 }
 

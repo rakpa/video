@@ -34,3 +34,9 @@ services:
       # Optionally override the YouTube player client if one gets blocked:
       # - key: YTDLP_PLAYER_CLIENT
       #   value: web_safari,tv
+      # Route yt-dlp through a (residential) proxy to beat datacenter-IP blocks,
+      # like Cobalt's API_EXTERNAL_PROXY. Format: http://user:pass@host:port
+      # - key: YTDLP_PROXY
+      #   value: http://user:pass@proxy.example.com:8080
+      # The BgUtils PO-token provider runs inside the container (port 4416) and is
+      # used automatically; set YTDLP_POT_BASE_URL only to point at an external one.
