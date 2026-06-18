@@ -14,6 +14,33 @@ function cleanPoToken(raw: string | undefined): string {
 }
 
 /**
+ * Parse the YTDLP_PROXY env into a normalised proxy-URL pool. Entries may be
+ * separated by commas, spaces or newlines, and each may be a full URL
+ * (http://user:pass@host:port, socks5://…) OR Webshare's raw export format
+ * `host:port:user:pass`. Invalid entries are dropped. Requests rotate across
+ * the pool so one blocked/slow IP doesn't stop downloads.
+ */
+function parseProxies(raw: string | undefined): string[] {
+  return (raw ?? '')
+    .split(/[\s,]+/)
+    .map((s) => s.trim())
+    .filter(Boolean)
+    .map(normalizeProxy)
+    .filter((s): s is string => s !== null);
+}
+
+function normalizeProxy(entry: string): string | null {
+  if (/^[a-z][a-z0-9+.-]*:\/\//i.test(entry)) return entry; // already a URL
+  const parts = entry.split(':');
+  if (parts.length === 4) {
+    const [host, port, user, pass] = parts; // Webshare raw: host:port:user:pass
+    return `http://${encodeURIComponent(user)}:${encodeURIComponent(pass)}@${host}:${port}`;
+  }
+  if (parts.length === 2) return `http://${entry}`; // host:port, no auth
+  return null;
+}
+
+/**
  * Centralised, typed configuration sourced from environment variables.
  * Every value has a sensible default so the app runs with zero config.
  */
@@ -32,10 +59,10 @@ export const config = {
   // the most reliable fix for "Sign in to confirm you're not a bot" errors that
   // hit datacenter IPs (Render/AWS/GCP). Empty = no cookies (works locally).
   ytdlpCookies: (process.env.YTDLP_COOKIES ?? '').trim(),
-  // Optional proxy for yt-dlp (e.g. http://user:pass@host:port). The most
-  // reliable fix for datacenter IP blocks: route requests through a trusted
-  // (residential/clean) IP. Empty = direct connection (fine locally).
-  ytdlpProxy: (process.env.YTDLP_PROXY ?? '').trim(),
+  // Proxy pool for yt-dlp — the most reliable fix for datacenter-IP blocks.
+  // One or many proxies via YTDLP_PROXY (comma/space/newline-separated), each a
+  // full URL or Webshare raw `host:port:user:pass`. Requests rotate across them.
+  proxies: parseProxies(process.env.YTDLP_PROXY),
   // YouTube PO Token for yt-dlp (e.g. mweb.gvs.TOKEN). See yt-dlp PO Token Guide.
   // Tokens may expire and can be per-video; a PO Token Provider plugin is better long-term.
   // Sanitised: a malformed value (e.g. JSON pasted by mistake) is dropped so it
@@ -69,3 +96,10 @@ export const config = {
   // Secret used to HMAC-sign stateless Pro license tokens. CHANGE IN PRODUCTION.
   licenseSecret: process.env.LICENSE_SECRET ?? 'dev-insecure-license-secret-change-me',
 } as const;
+
+/** Pick a proxy from the pool at random (rotation). Undefined when none set. */
+export function pickProxy(): string | undefined {
+  const { proxies } = config;
+  if (proxies.length === 0) return undefined;
+  return proxies[Math.floor(Math.random() * proxies.length)];
+}

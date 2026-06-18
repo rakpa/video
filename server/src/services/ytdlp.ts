@@ -1,7 +1,7 @@
 import { spawn } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
-import { config } from '../config.js';
+import { config, pickProxy } from '../config.js';
 import { getCookiesStatus, getUsableCookiesPath } from '../utils/cookies.js';
 import { QUALITIES, buildSelector, type CodecMode, type QualityDef, type QualityId } from './formats.js';
 import { detectPlatform } from './platform.js';
@@ -128,7 +128,9 @@ function youtubeHardeningArgs(playerClient: string): string[] {
   if (cookiesPath) args.push('--cookies', cookiesPath);
   // A proxy routes every request through a trusted IP — the most effective
   // fix for "Sign in to confirm you're not a bot" on blocked datacenter IPs.
-  if (config.ytdlpProxy) args.push('--proxy', config.ytdlpProxy);
+  // pickProxy() rotates across the pool so one blocked IP doesn't stop downloads.
+  const proxy = pickProxy();
+  if (proxy) args.push('--proxy', proxy);
   return args;
 }
 

@@ -99,8 +99,9 @@ app.get('/api/health', (_req, res) => {
     // Proxy status for debugging datacenter-IP blocks. Host:port only — never
     // the username/password embedded in the URL.
     proxy: {
-      configured: Boolean(config.ytdlpProxy),
-      host: maskProxy(config.ytdlpProxy),
+      configured: config.proxies.length > 0,
+      count: config.proxies.length,
+      hosts: config.proxies.map(maskProxy),
     },
   });
 });
