@@ -207,7 +207,9 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
       setProgress(INITIAL_PROGRESS);
       setPhase('downloading');
       try {
-        const jobId = await startDownloadJob(url, quality, mode, licenseToken());
+        // Use the SAME normalized URL that /api/info cached under, so the
+        // download reuses that extraction (--load-info-json) instead of re-doing it.
+        const jobId = await startDownloadJob(fetchedUrl.current || url, quality, mode, licenseToken());
         lastJobId.current = jobId;
 
         unsubscribe.current?.();
