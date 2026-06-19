@@ -304,7 +304,7 @@ export async function fetchInfo(url: string): Promise<VideoInfo> {
 
   // Try the sticky proxy first; if YouTube blocks the IP, rotate through the
   // pool (fast-fail) so a single blocked IP self-heals without a manual retry.
-  const maxProxyTries = Math.min(Math.max(config.proxies.length, 1), 3);
+  const maxProxyTries = Math.min(Math.max(config.proxies.length, 1), 5);
   let lastError: YtDlpError | undefined;
 
   for (let proxyTry = 0; proxyTry < maxProxyTries; proxyTry++) {
@@ -555,6 +555,9 @@ export function startDownload(
       const finalPath = code === 0 ? findOutputFile(outputDir) : null;
       if (code === 0 && finalPath) {
         onProgress({ percent: 100, speed: null, eta: null, stage: 'done', streamIndex: streamTotal, streamTotal });
+        // YouTube tends to flag a datacenter IP after it's used, so move the next
+        // video onto a fresh IP from the pool instead of reusing this one.
+        if (config.proxies.length > 1) rotateProxy();
         resolve(finalPath);
       } else {
         logger.warn('yt-dlp download failed:', stderr.slice(0, 500));
