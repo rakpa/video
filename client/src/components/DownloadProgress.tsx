@@ -7,14 +7,9 @@ interface Props {
   qualityLabel: string;
 }
 
-/** Human label for the current phase, aware of which stream is downloading. */
+/** Minimal phase label — no technical "merging"/stream wording. */
 function stageLabel(p: ProgressUpdate): string {
-  if (p.stage === 'merging') return 'Merging video + audio';
-  if (p.stage === 'done') return 'Finishing up';
-  if (p.streamTotal > 1) {
-    return p.streamIndex >= 2 ? 'Downloading audio' : 'Downloading video';
-  }
-  return 'Downloading';
+  return p.stage === 'done' ? 'Finishing up' : 'Downloading';
 }
 
 /**
