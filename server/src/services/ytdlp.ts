@@ -149,6 +149,17 @@ function youtubeHardeningArgs(playerClient: string): string[] {
 
 function ytDlpFailureMessage(stderr: string): string {
   const s = stderr.toLowerCase();
+  // Proxy-level failure (before we even reach YouTube). 402 = the proxy plan is
+  // out of bandwidth/credit; tunnel/proxy errors mean the proxy itself refused.
+  if (
+    s.includes('payment required') ||
+    s.includes('402') ||
+    s.includes('tunnel connection failed') ||
+    s.includes('proxyerror') ||
+    s.includes('cannot connect to proxy')
+  ) {
+    return 'The download proxy is unavailable (it returned a connection/payment error). The proxy plan is likely out of bandwidth or credit — top it up or update YTDLP_PROXY, then redeploy.';
+  }
   if (s.includes('po token') || (s.includes('http error 403') && s.includes('youtube'))) {
     if (config.ytdlpPoToken) {
       return 'YouTube rejected the PO Token (expired or wrong format). Refresh YTDLP_PO_TOKEN — tokens can be per-video and short-lived. See yt-dlp PO Token Guide.';
