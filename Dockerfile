@@ -16,6 +16,14 @@ RUN apt-get update \
   && yt-dlp --version \
   && rm -rf /var/lib/apt/lists/*
 
+# yt-dlp PO-token provider PLUGIN (lightweight — just Python files, no runtime
+# memory cost). It activates only when YTDLP_POT_BASE_URL points at a running
+# bgutil provider service (deploy that as a SEPARATE service); until then it's a
+# harmless no-op. Best-effort so it can never break the build. This is the piece
+# that fixes the intermittent "Sign in to confirm you're not a bot" errors.
+RUN pip3 install --break-system-packages --no-cache-dir bgutil-ytdlp-pot-provider \
+  || echo "WARN: PO-token plugin not installed; downloads still work without it"
+
 # --- BgUtils PO Token provider (OPTIONAL — OFF by default) ---
 # Only needed to bypass YouTube bot-detection WITHOUT a proxy. If you use
 # YTDLP_PROXY (recommended), leave this disabled: running the provider is a
