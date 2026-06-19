@@ -2,6 +2,7 @@ import { spawn } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { config, currentProxy, rotateProxy } from '../config.js';
+import { saveInfoJson, getFreshInfoJson, invalidateInfoJson } from './infoJsonCache.js';
 import { getCookiesStatus, getUsableCookiesPath } from '../utils/cookies.js';
 import { QUALITIES, buildSelector, type CodecMode, type QualityDef, type QualityId } from './formats.js';
 import { detectPlatform } from './platform.js';
@@ -312,6 +313,8 @@ export async function fetchInfo(url: string): Promise<VideoInfo> {
     for (const client of clients) {
       try {
         const stdout = await runJson([...INFO_ARGS, ...youtubeHardeningArgs(client), url]);
+        // Cache the raw dump so the download can skip re-extraction (--load-info-json).
+        saveInfoJson(url, stdout, currentProxy() ?? '');
         return parseInfoDump(stdout);
       } catch (err) {
         if (!(err instanceof YtDlpError)) throw err;
@@ -413,6 +416,12 @@ export function startDownload(
   const cookies = getCookiesStatus();
   const [youtubeClient] = youtubeClientsToTry(cookies.exists);
 
+  // Reuse the extraction from /api/info (same proxy, still fresh) so the download
+  // skips a second ~20s extraction and starts transferring almost immediately.
+  const cachedInfoJson = getFreshInfoJson(url, currentProxy() ?? '');
+  const usedCache = Boolean(cachedInfoJson);
+  if (usedCache) logger.info('Download reusing cached info (skipping re-extraction)');
+
   // NOTE: we intentionally do NOT use `--print after_move:filepath` — it makes
   // yt-dlp suppress the live progress lines on stdout. Instead we parse progress
   // directly and discover the produced file by scanning the (per-job) directory.
@@ -442,7 +451,8 @@ export function startDownload(
     '--socket-timeout', '30',
     ...youtubeHardeningArgs(youtubeClient ?? config.youtubePlayerClient),
     '-o', outTemplate,
-    url,
+    // Load the cached extraction when available; otherwise extract from the URL.
+    ...(cachedInfoJson ? ['--load-info-json', cachedInfoJson] : [url]),
   ];
 
   const child = spawn(config.ytdlpPath, args, { windowsHide: true });
@@ -518,6 +528,7 @@ export function startDownload(
         } catch {
           /* already exited */
         }
+        if (usedCache) invalidateInfoJson(url); // re-extract on retry in case URLs went stale
         if (config.proxies.length > 1) rotateProxy();
         reject(
           new YtDlpError(
@@ -561,6 +572,7 @@ export function startDownload(
         resolve(finalPath);
       } else {
         logger.warn('yt-dlp download failed:', stderr.slice(0, 500));
+        if (usedCache) invalidateInfoJson(url); // cached URLs may be stale — force fresh extraction
         if (config.proxies.length > 1) rotateProxy();
         reject(new YtDlpError(downloadFailureMessage(stderr), 'FAILED'));
       }
