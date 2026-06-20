@@ -2,8 +2,8 @@ import { Router } from 'express';
 import fs from 'node:fs';
 import fsp from 'node:fs/promises';
 import path from 'node:path';
-import { getJob, destroyJob, type Job } from '../jobManager.js';
-import { needsGalleryNormalize, normalizeForGallery } from '../services/normalizeVideo.js';
+import { getJob, destroyJob, isGalleryReady, warmGalleryNormalize, type Job } from '../jobManager.js';
+import { needsGalleryNormalize } from '../services/normalizeVideo.js';
 import { logger } from '../utils/logger.js';
 
 export const fileRouter = Router();
@@ -23,18 +23,16 @@ async function resolveServePath(job: Job): Promise<string> {
   if (job.galleryPath) return job.galleryPath;
 
   if (!job.galleryNormalize) {
-    job.galleryNormalize = normalizeForGallery(raw, job.dir)
-      .then((normalized) => {
-        job.galleryPath = normalized;
-        return normalized;
-      })
-      .catch((err) => {
-        job.galleryNormalize = undefined;
-        logger.warn('Gallery normalize failed — serving original file:', (err as Error).message);
-        return raw;
-      });
+    warmGalleryNormalize(job);
   }
-  return job.galleryNormalize;
+  if (!job.galleryNormalize) return raw;
+
+  return job.galleryNormalize.catch((err) => {
+    job.galleryNormalize = undefined;
+    job.galleryNormalizeFailed = true;
+    logger.warn('Gallery normalize failed — serving original file:', (err as Error).message);
+    return raw;
+  });
 }
 
 /**
@@ -48,7 +46,11 @@ fileRouter.get('/file/:jobId/status', (req, res) => {
   if (job.status !== 'ready' || !job.filePath) {
     return res.status(409).json({ status: 'running', progress: job.progress });
   }
-  return res.json({ status: 'ready', progress: job.progress });
+  return res.json({
+    status: 'ready',
+    progress: job.progress,
+    galleryReady: isGalleryReady(job),
+  });
 });
 
 /**
@@ -83,6 +85,7 @@ fileRouter.get('/file/:jobId', async (req, res) => {
   res.setHeader('Content-Type', 'video/mp4');
   res.setHeader('Content-Length', stat.size);
   res.setHeader('Content-Disposition', `attachment; filename="${downloadName}"`);
+  res.setHeader('Accept-Ranges', 'bytes');
 
   const stream = fs.createReadStream(servePath);
   stream.pipe(res);

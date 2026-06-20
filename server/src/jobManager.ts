@@ -6,6 +6,7 @@ import { config } from './config.js';
 import { startDownload, YtDlpError, type ProgressUpdate } from './services/ytdlp.js';
 import type { CodecMode, QualityDef } from './services/formats.js';
 import { detectPlatform, type PlatformId } from './services/platform.js';
+import { needsGalleryNormalize, normalizeForGallery } from './services/normalizeVideo.js';
 import { logger } from './utils/logger.js';
 
 type JobStatus = 'running' | 'ready' | 'error';
@@ -25,6 +26,8 @@ export interface Job {
   galleryPath?: string;
   /** Shared in-flight normalize promise (avoid duplicate ffmpeg runs). */
   galleryNormalize?: Promise<string>;
+  /** Set when gallery transcode fails — client may fall back to the raw file. */
+  galleryNormalizeFailed?: boolean;
   /** SSE listeners subscribed to this job's progress. */
   listeners: Set<(p: ProgressUpdate | { done: true } | { error: string }) => void>;
 }
@@ -33,6 +36,35 @@ const jobs = new Map<string, Job>();
 
 function emit(job: Job, payload: ProgressUpdate | { done: true } | { error: string }) {
   for (const fn of job.listeners) fn(payload);
+}
+
+/** True when an Instagram/Facebook file is transcoded and safe for iOS "Save Video". */
+export function isGalleryReady(job: Job): boolean {
+  if (!needsGalleryNormalize(job.platformId)) return true;
+  if (job.galleryPath) return true;
+  if (job.galleryNormalizeFailed) return true;
+  if (job.galleryNormalize) return false;
+  return false;
+}
+
+/** Start H.264 transcode in the background so Save to Gallery is instant on mobile. */
+export function warmGalleryNormalize(job: Job): void {
+  if (!job.filePath || !needsGalleryNormalize(job.platformId)) return;
+  if (job.galleryNormalize || job.galleryPath) return;
+
+  const input = job.filePath;
+  job.galleryNormalize = normalizeForGallery(input, job.dir)
+    .then((normalized) => {
+      job.galleryPath = normalized;
+      job.filePath = normalized;
+      return normalized;
+    })
+    .catch((err) => {
+      job.galleryNormalize = undefined;
+      job.galleryNormalizeFailed = true;
+      logger.warn('Background gallery normalize failed — will retry on fetch:', (err as Error).message);
+      return input;
+    });
 }
 
 const FRESH_PROGRESS: ProgressUpdate = {
@@ -102,6 +134,7 @@ async function runWithRetry(job: Job, url: string, quality: QualityDef, mode: Co
       job.status = 'ready';
       job.filePath = filePath;
       job.progress = { ...job.progress, percent: 100, speed: null, eta: null, stage: 'done' };
+      warmGalleryNormalize(job);
       emit(job, { done: true });
       return;
     } catch (err) {

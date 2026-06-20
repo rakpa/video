@@ -109,6 +109,7 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
   const [savingToGallery, setSavingToGallery] = useState(false);
 
   const lastJobId = useRef<string | null>(null);
+  const lastPlatform = useRef<string | null>(null);
   const unsubscribe = useRef<(() => void) | null>(null);
   const fetchedUrl = useRef<string>('');
   const prevUrlLen = useRef(0);
@@ -225,6 +226,7 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
         const platform = detectPlatform(fetchedUrl.current || url);
         const effectiveMode: CodecMode =
           platform?.id === 'instagram' || platform?.id === 'facebook' ? 'compatible' : mode;
+        lastPlatform.current = platform?.id ?? null;
         // Use the SAME normalized URL that /api/info cached under, so the
         // download reuses that extraction (--load-info-json) instead of re-doing it.
         const jobId = await startDownloadJob(fetchedUrl.current || url, quality, effectiveMode, licenseToken());
@@ -259,7 +261,7 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
     setSavingToGallery(true);
     setError(null);
     try {
-      await saveMobileVideoToGallery(lastJobId.current);
+      await saveMobileVideoToGallery(lastJobId.current, lastPlatform.current ?? undefined);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Could not save to gallery.');
     } finally {
@@ -279,6 +281,7 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
     unsubscribe.current?.();
     unsubscribe.current = null;
     lastJobId.current = null;
+    lastPlatform.current = null;
     fetchedUrl.current = '';
     setUrl('');
     setInfo(null);

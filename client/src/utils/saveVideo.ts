@@ -38,7 +38,8 @@ export interface VideoFilePayload {
 }
 
 /** Simple ASCII name — iOS Photos ignores odd unicode filenames from IG titles. */
-export function gallerySafeFilename(original: string): string {
+export function gallerySafeFilename(original: string, forceGeneric = false): string {
+  if (forceGeneric) return 'ClipVault-video.mp4';
   const stem = original
     .replace(/\.[^/.]+$/, '')
     .replace(/[^\w\s-]/g, '')
@@ -47,10 +48,32 @@ export function gallerySafeFilename(original: string): string {
   return `${stem || 'ClipVault-video'}.mp4`;
 }
 
+function needsGalleryWait(platform?: string): boolean {
+  return platform === 'instagram' || platform === 'facebook';
+}
+
+/** Wait until the API finishes H.264 transcode (Instagram/Facebook). */
+async function waitForGalleryReady(jobId: string, maxWaitMs = 120_000): Promise<void> {
+  const start = Date.now();
+  while (Date.now() - start < maxWaitMs) {
+    const res = await fetch(apiUrl(`/api/file/${jobId}/status`));
+    if (!res.ok) throw new Error('Could not check download status.');
+    const data = (await res.json()) as { status?: string; galleryReady?: boolean };
+    if (data.status !== 'ready') throw new Error('Video is not ready yet.');
+    if (data.galleryReady !== false) return;
+    await new Promise((r) => setTimeout(r, 1500));
+  }
+  throw new Error('Still preparing your video for Photos — try again in a moment.');
+}
+
 /** Fetch the finished MP4 and verify it is real video — not an HTML error page. */
-export async function fetchVideoFile(jobId: string): Promise<VideoFilePayload> {
+export async function fetchVideoFile(jobId: string, platform?: string): Promise<VideoFilePayload> {
   if (!isApiConfigured()) {
     throw new Error(API_NOT_CONFIGURED_MSG);
+  }
+
+  if (needsGalleryWait(platform)) {
+    await waitForGalleryReady(jobId);
   }
 
   const res = await fetch(apiUrl(`/api/file/${jobId}`));
@@ -77,7 +100,8 @@ export async function fetchVideoFile(jobId: string): Promise<VideoFilePayload> {
 
   const rawName = parseFilename(res.headers.get('Content-Disposition'));
   const blob = new Blob([buf], { type: 'video/mp4' });
-  return { blob, filename: gallerySafeFilename(rawName) };
+  const forceGeneric = needsGalleryWait(platform);
+  return { blob, filename: gallerySafeFilename(rawName, forceGeneric) };
 }
 
 /** Full-screen video player so the user can Save Video from the native controls. */
@@ -135,15 +159,14 @@ export async function shareVideoToGallery(payload: VideoFilePayload): Promise<vo
 }
 
 /**
- * Mobile save: fetch validated MP4 → share sheet → inline video fallback.
+ * Mobile save: wait for gallery transcode (IG/FB) → fetch validated MP4 → share sheet.
  * Last resort: open the API file URL directly (native browser video player).
  */
-export async function saveMobileVideoToGallery(jobId: string): Promise<void> {
+export async function saveMobileVideoToGallery(jobId: string, platform?: string): Promise<void> {
   try {
-    const payload = await fetchVideoFile(jobId);
+    const payload = await fetchVideoFile(jobId, platform);
     await shareVideoToGallery(payload);
   } catch {
-    // Stream directly from API — avoids corrupt in-memory blobs; opens native player.
     window.location.assign(apiUrl(`/api/file/${jobId}`));
   }
 }
