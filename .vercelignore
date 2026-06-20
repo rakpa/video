@@ -1,2 +1,3 @@
-# Never upload prebuilt output — missing config.json causes deploy failures.
+# Never upload broken prebuilt artifacts (missing config.json crashes deploy).
 .vercel/output
+.vercel/output/**
