@@ -1,6 +1,14 @@
 import { navigate } from '../hooks/useRoute';
 import { LEGAL_LINKS } from '../pages/LegalPages';
+import { CONTENT_ROUTES } from '../pages/ContentPages';
 import { COMPANY } from '../config/company';
+
+const GUIDE_LINKS = [
+  { path: '/how-to-download-videos', label: 'How to download' },
+  { path: '/download-youtube-videos', label: 'YouTube downloader' },
+  { path: '/download-facebook-videos', label: 'Facebook downloader' },
+  { path: '/download-instagram-videos', label: 'Instagram downloader' },
+] satisfies ReadonlyArray<{ path: keyof typeof CONTENT_ROUTES & string; label: string }>;
 
 /** Smooth-scrolls to a landing section, navigating home first if needed. */
 function goToSection(id: string) {
@@ -25,7 +33,7 @@ export function Footer() {
   return (
     <footer className="mt-24 border-t border-slate-200">
       <div className="mx-auto max-w-5xl px-5 py-12">
-        <div className="grid gap-10 sm:grid-cols-2 lg:grid-cols-[1.6fr_1fr_1fr_1fr]">
+        <div className="grid gap-10 sm:grid-cols-2 lg:grid-cols-[1.6fr_1fr_1fr_1fr_1fr]">
           {/* Brand */}
           <div>
             <button onClick={() => navigate('/')} className="flex items-center gap-2.5" aria-label="ClipVault — home">
@@ -52,10 +60,24 @@ export function Footer() {
             </div>
           </div>
 
-          {/* Legal */}
+          {/* Guides */}
           <div>
-            <h3 className="text-xs font-semibold uppercase tracking-wider text-slate-400">Legal</h3>
+            <h3 className="text-xs font-semibold uppercase tracking-wider text-slate-400">Guides</h3>
             <div className="mt-4 flex flex-col items-start gap-2.5">
+              {GUIDE_LINKS.map((l) => (
+                <FootLink key={l.path} onClick={() => navigate(l.path)}>
+                  {l.label}
+                </FootLink>
+              ))}
+            </div>
+          </div>
+
+          {/* Company */}
+          <div>
+            <h3 className="text-xs font-semibold uppercase tracking-wider text-slate-400">Company</h3>
+            <div className="mt-4 flex flex-col items-start gap-2.5">
+              <FootLink onClick={() => navigate('/about')}>About</FootLink>
+              <FootLink onClick={() => navigate('/contact')}>Contact</FootLink>
               {LEGAL_LINKS.map((l) => (
                 <FootLink key={l.path} onClick={() => navigate(l.path)}>
                   {l.label}
@@ -69,7 +91,7 @@ export function Footer() {
             <h3 className="text-xs font-semibold uppercase tracking-wider text-slate-400">Support</h3>
             <div className="mt-4 flex flex-col items-start gap-2.5">
               <a href={`mailto:${COMPANY.contactEmail}`} className="text-sm text-slate-500 transition hover:text-slate-900">
-                Contact us
+                Email support
               </a>
               <a href={`mailto:${COMPANY.dmcaEmail}`} className="text-sm text-slate-500 transition hover:text-slate-900">
                 Copyright / DMCA
