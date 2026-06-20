@@ -6,20 +6,18 @@ interface Props {
   title: string;
   onReset: () => void;
   onRedownload: () => void;
-  /** Mobile: show Save to Gallery (share sheet → Photos) instead of Files download. */
   mobile?: boolean;
   onSaveToGallery?: () => void;
   saving?: boolean;
-  /** Mobile: the gallery-ready MP4 is still being fetched/transcoded in the background. */
   preparing?: boolean;
-  /** Mobile: background prep failed — tap Save to retry. */
   prepFailed?: boolean;
 }
 
-/** Celebratory success card with save-to-gallery on mobile or download-again on desktop. */
 export function SuccessState({ title, onReset, onRedownload, mobile, onSaveToGallery, saving, preparing, prepFailed }: Props) {
-  const saveLabel = preparing ? 'Save to Gallery' : saving ? 'Opening share…' : prepFailed ? 'Retry Save to Gallery' : 'Save to Gallery';
-  const saveBusy = Boolean(saving);
+  const busy = saving || preparing;
+  const saveLabel = saving ? 'Opening share…' : prepFailed ? 'Retry Save to Gallery' : 'Save to Gallery';
+  const heading = busy ? 'Saving to your gallery…' : 'Your download is ready! 🎉';
+
   return (
     <motion.div
       initial={{ opacity: 0, scale: 0.96 }}
@@ -53,29 +51,27 @@ export function SuccessState({ title, onReset, onRedownload, mobile, onSaveToGal
         </motion.svg>
       </motion.div>
 
-      <h3 className="mt-5 text-2xl font-bold text-slate-900">Your download is ready! 🎉</h3>
+      <h3 className="mt-5 text-2xl font-bold text-slate-900">{heading}</h3>
       <p className="mx-auto mt-2 max-w-md text-sm text-slate-500">
         <span className="line-clamp-1 font-medium text-slate-700">{title}</span>
         {mobile ? (
-          preparing ? (
+          busy ? (
             <>
               {' '}
-              is downloading — getting it ready for your Photos gallery. The{' '}
-              <strong className="font-medium text-slate-700">Save to Gallery</strong> button unlocks in a moment.
+              — converting for Photos and opening the share menu. Pick{' '}
+              <strong className="font-medium text-slate-700">Save Video</strong> to add it to your gallery.
             </>
           ) : prepFailed ? (
             <>
               {' '}
-              needs one more step for Photos. Tap{' '}
-              <strong className="font-medium text-slate-700">Retry Save to Gallery</strong> — Instagram videos are
-              converted to a gallery-compatible format first.
+              needs one more step. Tap{' '}
+              <strong className="font-medium text-slate-700">Retry Save to Gallery</strong> below.
             </>
           ) : (
             <>
               {' '}
-              is ready. Tap <strong className="font-medium text-slate-700">Save to Gallery</strong>, then pick{' '}
-              <strong className="font-medium text-slate-700">Save Video</strong> in the share menu.
-              If a video player opens instead, use its Share button → Save Video.
+              was saved. Tap <strong className="font-medium text-slate-700">Save to Gallery</strong> if the share menu
+              did not open, then pick <strong className="font-medium text-slate-700">Save Video</strong>.
             </>
           )
         ) : (
@@ -86,17 +82,29 @@ export function SuccessState({ title, onReset, onRedownload, mobile, onSaveToGal
       <div className="mt-6 flex flex-col justify-center gap-3 sm:flex-row">
         {mobile && onSaveToGallery ? (
           <>
-            <Button onClick={onSaveToGallery} disabled={saveBusy}>
-              {saveLabel}
-            </Button>
-            <Button variant="ghost" onClick={onRedownload} disabled={saveBusy}>
+            {!busy && (
+              <Button onClick={onSaveToGallery} disabled={saving}>
+                {saveLabel}
+              </Button>
+            )}
+            {busy && (
+              <div className="flex items-center justify-center gap-2 text-sm font-medium text-indigo-600">
+                <motion.span
+                  className="h-2.5 w-2.5 rounded-full bg-indigo-500"
+                  animate={{ opacity: [1, 0.3, 1] }}
+                  transition={{ duration: 1.2, repeat: Infinity }}
+                />
+                Preparing for Photos…
+              </div>
+            )}
+            <Button variant="ghost" onClick={onRedownload} disabled={busy}>
               Save again
             </Button>
           </>
         ) : (
           <Button variant="ghost" onClick={onRedownload}>Download again</Button>
         )}
-        <Button variant={mobile ? 'ghost' : undefined} onClick={onReset} disabled={saveBusy}>
+        <Button variant={mobile ? 'ghost' : undefined} onClick={onReset} disabled={busy}>
           Download another
         </Button>
       </div>

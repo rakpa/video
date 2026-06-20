@@ -220,21 +220,23 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
   }, [url]);
 
   /**
-   * Fetch (and, for Instagram/Facebook, transcode to H.264) the finished video
-   * in the background as soon as it's ready, then cache the blob. This moves the
-   * slow "preparing" work off the Save tap so the OS share sheet can open
-   * instantly inside the gesture — instead of the button hanging on
-   * "Preparing video…" or the gesture expiring and the file dropping into Files.
+   * Fetch the gallery-ready MP4 and open the OS share sheet (Save Video → Photos).
+   * Called automatically on mobile when a download finishes.
    */
-  const prepareGalleryFile = useCallback(async (jobId: string, platform?: string) => {
-    galleryPayload.current = null;
+  const saveToGallery = useCallback(async (jobId: string, platform?: string) => {
+    setError(null);
+    setSavingToGallery(true);
     setGalleryPrep('preparing');
     try {
-      galleryPayload.current = await fetchVideoFile(jobId, platform);
+      const payload = await fetchVideoFile(jobId, platform);
+      galleryPayload.current = payload;
       setGalleryPrep('ready');
+      await shareVideoToGallery(payload);
     } catch (e) {
       setGalleryPrep('error');
-      setError(e instanceof Error ? e.message : 'Could not prepare your video for Photos.');
+      setError(e instanceof Error ? e.message : 'Could not save to gallery.');
+    } finally {
+      setSavingToGallery(false);
     }
   }, []);
 
@@ -253,26 +255,36 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
       setGalleryPrep('idle');
       setPhase('downloading');
       try {
-        // Instagram/Facebook often use HEVC — force H.264/AAC for gallery compatibility.
         const platform = detectPlatform(fetchedUrl.current || url);
         const effectiveMode: CodecMode =
           platform?.id === 'instagram' || platform?.id === 'facebook' ? 'compatible' : mode;
+        // Mobile IG/FB: 720p is enough for gallery and transcodes 3–5× faster on the server.
+        let effectiveQuality = quality;
+        if (
+          isMobileDevice() &&
+          (platform?.id === 'instagram' || platform?.id === 'facebook') &&
+          (quality === '1080' || quality === '1440' || quality === '2160')
+        ) {
+          effectiveQuality = '720';
+        }
         lastPlatform.current = platform?.id ?? null;
-        // Use the SAME normalized URL that /api/info cached under, so the
-        // download reuses that extraction (--load-info-json) instead of re-doing it.
-        const jobId = await startDownloadJob(fetchedUrl.current || url, quality, effectiveMode, licenseToken());
+        const jobId = await startDownloadJob(
+          fetchedUrl.current || url,
+          effectiveQuality,
+          effectiveMode,
+          licenseToken(),
+        );
         lastJobId.current = jobId;
 
         unsubscribe.current?.();
         unsubscribe.current = subscribeProgress(jobId, {
           onProgress: setProgress,
           onDone: () => {
-            setPhase('success');
             if (isMobileDevice()) {
-              // Prepare the gallery-ready MP4 now, while the user reads the
-              // success screen, so tapping Save opens the share sheet instantly.
-              void prepareGalleryFile(jobId, lastPlatform.current ?? undefined);
+              setPhase('success');
+              void saveToGallery(jobId, lastPlatform.current ?? undefined);
             } else {
+              setPhase('success');
               void triggerFileDownload(jobId);
             }
           },
@@ -286,13 +298,13 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
         setPhase('error');
       }
     },
-    [info, url, pro, prepareGalleryFile],
+    [info, url, pro, saveToGallery],
   );
 
   const handleSaveToGallery = useCallback(async () => {
-    setError(null);
     if (galleryPayload.current) {
       setSavingToGallery(true);
+      setError(null);
       try {
         await shareVideoToGallery(galleryPayload.current);
       } catch (e) {
@@ -303,20 +315,8 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
       return;
     }
     if (!lastJobId.current) return;
-    setSavingToGallery(true);
-    setGalleryPrep('preparing');
-    try {
-      const payload = await fetchVideoFile(lastJobId.current, lastPlatform.current ?? undefined);
-      galleryPayload.current = payload;
-      setGalleryPrep('ready');
-      await shareVideoToGallery(payload);
-    } catch (e) {
-      setGalleryPrep('error');
-      setError(e instanceof Error ? e.message : 'Could not save to gallery.');
-    } finally {
-      setSavingToGallery(false);
-    }
-  }, []);
+    await saveToGallery(lastJobId.current, lastPlatform.current ?? undefined);
+  }, [saveToGallery]);
 
   const handleRedownload = useCallback(() => {
     if (isMobileDevice()) {
