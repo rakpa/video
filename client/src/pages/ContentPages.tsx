@@ -87,7 +87,7 @@ export function ContentPage({ path, theme, onToggleTheme }: Props) {
 
   return (
     <div className="app-bg min-h-screen text-slate-600">
-      <SiteHeader theme={theme} onToggleTheme={onToggleTheme} maxWidth="max-w-3xl" showNav={false} />
+      <SiteHeader theme={theme} onToggleTheme={onToggleTheme} maxWidth="max-w-5xl" />
 
       <main className="mx-auto max-w-3xl px-5 pb-20">
         <motion.article
