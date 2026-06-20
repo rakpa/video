@@ -1,0 +1,18 @@
+{
+  "git": {
+    "remoteUrl": "https://github.com/rakpa/video.git",
+    "branch": "main",
+    "remoteName": "origin",
+    "authorEmail": "rakpa8@gmail.com",
+    "authorName": "rakpa"
+  },
+  "vercel": {
+    "projectUrl": "https://video1-two.vercel.app",
+    "accountEmail": "rakpa8@gmail.com",
+    "production": true
+  },
+  "commit": {
+    "autoCommit": true,
+    "messagePrefix": "chore:"
+  }
+}

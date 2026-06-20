@@ -15,7 +15,7 @@ services:
       - key: PORT
         value: 10000
       - key: CLIENT_ORIGIN
-        value: https://video77-xi.vercel.app,https://clipvault-web.onrender.com
+        value: https://video77-xi.vercel.app,https://video1-two.vercel.app,https://clipvault-web.onrender.com
       - key: YTDLP_PATH
         value: yt-dlp
       - key: FFMPEG_PATH

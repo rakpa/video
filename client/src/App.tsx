@@ -431,6 +431,7 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
                     mobile={isMobileDevice()}
                     saving={savingToGallery}
                     preparing={galleryPrep === 'preparing'}
+                    prepFailed={galleryPrep === 'error'}
                     onSaveToGallery={handleSaveToGallery}
                     onReset={handleReset}
                     onRedownload={handleRedownload}

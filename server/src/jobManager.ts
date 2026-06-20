@@ -42,8 +42,8 @@ function emit(job: Job, payload: ProgressUpdate | { done: true } | { error: stri
 export function isGalleryReady(job: Job): boolean {
   if (!needsGalleryNormalize(job.platformId)) return true;
   if (job.galleryPath) return true;
-  if (job.galleryNormalizeFailed) return true;
   if (job.galleryNormalize) return false;
+  if (job.galleryNormalizeFailed) return false;
   return false;
 }
 
@@ -53,17 +53,19 @@ export function warmGalleryNormalize(job: Job): void {
   if (job.galleryNormalize || job.galleryPath) return;
 
   const input = job.filePath;
+  job.galleryNormalizeFailed = false;
   job.galleryNormalize = normalizeForGallery(input, job.dir)
     .then((normalized) => {
       job.galleryPath = normalized;
       job.filePath = normalized;
+      job.galleryNormalizeFailed = false;
       return normalized;
     })
     .catch((err) => {
       job.galleryNormalize = undefined;
       job.galleryNormalizeFailed = true;
       logger.warn('Background gallery normalize failed — will retry on fetch:', (err as Error).message);
-      return input;
+      throw err;
     });
 }
 

@@ -12,11 +12,13 @@ interface Props {
   saving?: boolean;
   /** Mobile: the gallery-ready MP4 is still being fetched/transcoded in the background. */
   preparing?: boolean;
+  /** Mobile: background prep failed — tap Save to retry. */
+  prepFailed?: boolean;
 }
 
 /** Celebratory success card with save-to-gallery on mobile or download-again on desktop. */
-export function SuccessState({ title, onReset, onRedownload, mobile, onSaveToGallery, saving, preparing }: Props) {
-  const saveLabel = preparing ? 'Preparing video…' : saving ? 'Opening share…' : 'Save to Gallery';
+export function SuccessState({ title, onReset, onRedownload, mobile, onSaveToGallery, saving, preparing, prepFailed }: Props) {
+  const saveLabel = preparing ? 'Preparing video…' : saving ? 'Opening share…' : prepFailed ? 'Retry Save to Gallery' : 'Save to Gallery';
   const saveBusy = Boolean(saving || preparing);
   return (
     <motion.div
@@ -60,6 +62,13 @@ export function SuccessState({ title, onReset, onRedownload, mobile, onSaveToGal
               {' '}
               is downloading — getting it ready for your Photos gallery. The{' '}
               <strong className="font-medium text-slate-700">Save to Gallery</strong> button unlocks in a moment.
+            </>
+          ) : prepFailed ? (
+            <>
+              {' '}
+              needs one more step for Photos. Tap{' '}
+              <strong className="font-medium text-slate-700">Retry Save to Gallery</strong> — Instagram videos are
+              converted to a gallery-compatible format first.
             </>
           ) : (
             <>
