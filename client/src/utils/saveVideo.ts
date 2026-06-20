@@ -52,18 +52,39 @@ function needsGalleryWait(platform?: string): boolean {
   return platform === 'instagram' || platform === 'facebook';
 }
 
-/** Wait until the API finishes H.264 transcode (Instagram/Facebook). */
-async function waitForGalleryReady(jobId: string, maxWaitMs = 120_000): Promise<void> {
+/**
+ * Wait until the API finishes the H.264 transcode (Instagram/Facebook) so iOS
+ * offers "Save Video" (Photos) instead of only "Save to Files".
+ *
+ * Tolerant by design: a single status-check hiccup or a slow free-tier transcode
+ * must NOT abort the gallery flow — aborting used to drop the user onto a raw
+ * file download (→ Files). Transient errors are retried; on timeout we simply
+ * proceed (the file fetch itself blocks server-side until the H.264 is ready).
+ */
+async function waitForGalleryReady(jobId: string, maxWaitMs = 180_000): Promise<void> {
   const start = Date.now();
+  let transientErrors = 0;
   while (Date.now() - start < maxWaitMs) {
-    const res = await fetch(apiUrl(`/api/file/${jobId}/status`));
-    if (!res.ok) throw new Error('Could not check download status.');
-    const data = (await res.json()) as { status?: string; galleryReady?: boolean };
-    if (data.status !== 'ready') throw new Error('Video is not ready yet.');
-    if (data.galleryReady !== false) return;
+    try {
+      const res = await fetch(apiUrl(`/api/file/${jobId}/status`));
+      if (res.status === 404 || res.status === 410) {
+        throw new Error('That download session has expired — please download again.');
+      }
+      if (res.ok) {
+        const data = (await res.json()) as { status?: string; galleryReady?: boolean };
+        // status 'ready' + galleryReady true → transcode done. Otherwise keep waiting.
+        if (data.status === 'ready' && data.galleryReady !== false) return;
+      }
+      // 409 (still running) / 5xx (transient) → fall through and poll again.
+    } catch (err) {
+      // Expired sessions are fatal; network blips are not.
+      if (err instanceof Error && err.message.includes('expired')) throw err;
+      if (++transientErrors > 6) throw new Error('Could not check the video status. Check your connection and try Save again.');
+    }
     await new Promise((r) => setTimeout(r, 1500));
   }
-  throw new Error('Still preparing your video for Photos — try again in a moment.');
+  // Timed out waiting for "ready" — proceed anyway; the file fetch blocks until
+  // the transcode finishes server-side, so we still get the gallery-safe MP4.
 }
 
 /** Fetch the finished MP4 and verify it is real video — not an HTML error page. */
@@ -160,15 +181,17 @@ export async function shareVideoToGallery(payload: VideoFilePayload): Promise<vo
 
 /**
  * Mobile save: wait for gallery transcode (IG/FB) → fetch validated MP4 → share sheet.
- * Last resort: open the API file URL directly (native browser video player).
+ *
+ * Deliberately NO raw-file-URL fallback: navigating to /api/file/:id serves the
+ * MP4 as an attachment, which mobile browsers drop into Files/Downloads — the
+ * exact "it saved to Files, not my gallery" bug. `shareVideoToGallery` already
+ * falls back to an in-page video player ("Save Video" → Photos) when the OS share
+ * sheet is unavailable, so every path keeps the user in the gallery flow. A real
+ * failure (e.g. expired session) surfaces as an error the caller can show.
  */
 export async function saveMobileVideoToGallery(jobId: string, platform?: string): Promise<void> {
-  try {
-    const payload = await fetchVideoFile(jobId, platform);
-    await shareVideoToGallery(payload);
-  } catch {
-    window.location.assign(apiUrl(`/api/file/${jobId}`));
-  }
+  const payload = await fetchVideoFile(jobId, platform);
+  await shareVideoToGallery(payload);
 }
 
 /** Desktop: stream via hidden link (no full-file memory buffer). */
