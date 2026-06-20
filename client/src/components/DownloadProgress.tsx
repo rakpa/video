@@ -9,17 +9,18 @@ interface Props {
 
 /** Minimal phase label — no technical "merging"/stream wording. */
 function stageLabel(p: ProgressUpdate): string {
+  if (p.percent < 1) return 'Processing';
   return p.stage === 'done' ? 'Finishing up' : 'Downloading';
 }
 
 /**
- * Clean, professional download progress: a "Download started" header, the large
- * percentage, and a progress bar. Speed/ETA are shown only when available — no
- * cold-start or "preparing" placeholder copy.
+ * Download progress card: shows a processing message at 0%, then the live
+ * percentage and bar once progress reaches 1%.
  */
 export function DownloadProgress({ progress, qualityLabel }: Props) {
   const pct = Math.max(0, Math.min(100, progress.percent));
-  const display = useCountUp(pct);
+  const showPercent = pct >= 1;
+  const display = useCountUp(showPercent ? pct : 0);
 
   return (
     <motion.div
@@ -34,7 +35,9 @@ export function DownloadProgress({ progress, qualityLabel }: Props) {
             animate={{ opacity: [1, 0.3, 1] }}
             transition={{ duration: 1.2, repeat: Infinity }}
           />
-          <span className="font-semibold text-slate-900">Download started</span>
+          <span className="font-semibold text-slate-900">
+            {showPercent ? 'Downloading your video' : 'We are processing your download'}
+          </span>
           {qualityLabel && (
             <span className="rounded-md bg-slate-100 px-1.5 py-0.5 text-xs font-medium text-slate-600">{qualityLabel}</span>
           )}
@@ -43,10 +46,14 @@ export function DownloadProgress({ progress, qualityLabel }: Props) {
       </div>
 
       <div className="mt-5 flex items-end justify-between">
-        <span className="text-4xl font-bold tabular-nums text-slate-900">
-          {Math.round(display)}<span className="text-2xl font-semibold text-slate-400">%</span>
-        </span>
-        {(progress.speed || progress.eta) && (
+        {showPercent ? (
+          <span className="text-4xl font-bold tabular-nums text-slate-900">
+            {Math.round(display)}<span className="text-2xl font-semibold text-slate-400">%</span>
+          </span>
+        ) : (
+          <p className="text-base text-slate-500">Preparing your file — this usually takes a few seconds.</p>
+        )}
+        {showPercent && (progress.speed || progress.eta) && (
           <div className="flex items-center gap-4 text-sm text-slate-500">
             {progress.speed && (
               <span className="inline-flex items-center gap-1.5 tabular-nums">
@@ -63,11 +70,21 @@ export function DownloadProgress({ progress, qualityLabel }: Props) {
 
       {/* Linear progress bar */}
       <div className="relative mt-4 h-2.5 w-full overflow-hidden rounded-full bg-slate-100">
-        <motion.div
-          className="btn-gradient absolute inset-y-0 left-0 rounded-full"
-          animate={{ width: `${Math.max(pct, 2)}%` }}
-          transition={{ ease: 'easeOut', duration: 0.4 }}
-        />
+        {showPercent ? (
+          <motion.div
+            className="btn-gradient absolute inset-y-0 left-0 rounded-full"
+            animate={{ width: `${Math.max(pct, 2)}%` }}
+            transition={{ ease: 'easeOut', duration: 0.4 }}
+          />
+        ) : (
+          <motion.div
+            className="btn-gradient absolute inset-y-0 rounded-full"
+            initial={{ width: '30%', x: '-100%' }}
+            animate={{ x: ['-100%', '350%'] }}
+            transition={{ duration: 1.4, repeat: Infinity, ease: 'easeInOut' }}
+            style={{ width: '30%' }}
+          />
+        )}
       </div>
 
       {/* Stream pips when there are multiple streams */}
