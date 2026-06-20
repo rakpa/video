@@ -20,6 +20,12 @@ services:
         value: yt-dlp
       - key: FFMPEG_PATH
         value: ffmpeg
+      - key: LOW_MEMORY_MODE
+        value: 'true'
+      - key: MAX_CONCURRENT_JOBS
+        value: '1'
+      - key: NODE_OPTIONS
+        value: '--max-old-space-size=192'
       - key: TMP_TTL_MINUTES
         value: 30
       - key: MAX_DURATION_MINUTES

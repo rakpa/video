@@ -151,4 +151,7 @@ app.listen(config.port, () => {
   } else {
     logger.info('yt-dlp proxy: none configured (direct connection)');
   }
+  if (config.lowMemoryMode) {
+    logger.info(`Low-memory mode ON — max ${config.maxConcurrentJobs} concurrent job(s), serialized ffmpeg`);
+  }
 });

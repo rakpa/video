@@ -14,8 +14,16 @@ export function needsGalleryNormalize(platformId: string | undefined): boolean {
   return platformId != null && GALLERY_NORMALIZE_PLATFORMS.has(platformId);
 }
 
-/** Confirm the output is H.264 (avc1) — iOS only offers "Save Video" for this codec. */
-async function verifyH264Mp4(filePath: string): Promise<boolean> {
+/** Only one ffmpeg transcode at a time — prevents OOM on 512 MB Render free tier. */
+let normalizeChain: Promise<unknown> = Promise.resolve();
+
+function enqueueNormalize<T>(fn: () => Promise<T>): Promise<T> {
+  const next = normalizeChain.then(fn, fn);
+  normalizeChain = next.catch(() => undefined);
+  return next;
+}
+
+async function probeVideoCodec(filePath: string): Promise<'h264' | 'hevc' | 'other'> {
   const ffprobe = config.ffmpegPath.replace(/ffmpeg$/i, 'ffprobe');
   try {
     const { stdout } = await exec(
@@ -26,26 +34,61 @@ async function verifyH264Mp4(filePath: string): Promise<boolean> {
         '-select_streams',
         'v:0',
         '-show_entries',
-        'stream=codec_name,codec_tag_string',
+        'stream=codec_name',
         '-of',
         'csv=p=0',
         filePath,
       ],
       { windowsHide: true, timeout: 15_000 },
     );
-    const line = stdout.trim().toLowerCase();
-    return line.includes('h264') || line.includes('avc1');
+    const name = stdout.trim().toLowerCase();
+    if (name.includes('h264') || name.includes('avc')) return 'h264';
+    if (name.includes('hevc') || name.includes('h265')) return 'hevc';
+    return 'other';
   } catch {
     try {
       const head = await fsp.readFile(filePath);
       const slice = head.subarray(0, Math.min(head.length, 512 * 1024));
       const hasAvc1 = slice.includes(Buffer.from('avc1'));
       const hasHevc = slice.includes(Buffer.from('hvc1')) || slice.includes(Buffer.from('hev1'));
-      return hasAvc1 && !hasHevc;
+      if (hasAvc1 && !hasHevc) return 'h264';
+      if (hasHevc) return 'hevc';
     } catch {
-      return false;
+      /* fall through */
     }
+    return 'other';
   }
+}
+
+/** Confirm the output is H.264 (avc1) — iOS only offers "Save Video" for this codec. */
+async function verifyH264Mp4(filePath: string): Promise<boolean> {
+  return (await probeVideoCodec(filePath)) === 'h264';
+}
+
+/** Remux H.264 in a new container — near-zero RAM vs full transcode. */
+async function remuxForGallery(inputPath: string, jobDir: string): Promise<string> {
+  const outputPath = path.join(jobDir, 'gallery-ready.mp4');
+  const args = [
+    '-hide_banner',
+    '-loglevel',
+    'error',
+    '-i',
+    inputPath,
+    '-map',
+    '0:v:0',
+    '-map',
+    '0:a:0?',
+    '-c',
+    'copy',
+    '-movflags',
+    '+faststart',
+    '-y',
+    outputPath,
+  ];
+  await exec(config.ffmpegPath, args, { windowsHide: true, timeout: 3 * 60_000 });
+  if (!(await verifyH264Mp4(outputPath))) throw new Error('Remux did not produce H.264');
+  await fsp.unlink(inputPath).catch(() => undefined);
+  return outputPath;
 }
 
 interface TranscodeStrategy {
@@ -54,107 +97,136 @@ interface TranscodeStrategy {
   extraArgs: string[];
 }
 
-const TRANSCODE_STRATEGIES: TranscodeStrategy[] = [
-  {
-    label: 'H.264 fast 720p',
-    outputName: 'gallery-ready-lite.mp4',
-    extraArgs: [
-      '-map',
-      '0:v:0',
-      '-map',
-      '0:a:0?',
-      '-vf',
-      "scale='min(720,iw)':-2:force_original_aspect_ratio=decrease,format=yuv420p,setsar=1",
-      '-c:v',
-      'libx264',
-      '-preset',
-      'ultrafast',
-      '-crf',
-      '26',
-      '-profile:v',
-      'main',
-      '-level',
-      '3.1',
-      '-pix_fmt',
-      'yuv420p',
-      '-tag:v',
-      'avc1',
-      '-c:a',
-      'aac',
-      '-b:a',
-      '96k',
-      '-ar',
-      '44100',
-      '-ac',
-      '2',
-    ],
-  },
-  {
-    label: 'H.264 video-only',
-    outputName: 'gallery-ready-vo.mp4',
-    extraArgs: [
-      '-map',
-      '0:v:0',
-      '-an',
-      '-vf',
-      "scale='min(720,iw)':-2:force_original_aspect_ratio=decrease,format=yuv420p,setsar=1",
-      '-c:v',
-      'libx264',
-      '-preset',
-      'ultrafast',
-      '-crf',
-      '26',
-      '-profile:v',
-      'main',
-      '-level',
-      '3.1',
-      '-pix_fmt',
-      'yuv420p',
-      '-tag:v',
-      'avc1',
-    ],
-  },
-  {
-    label: 'H.264 + AAC (full res)',
-    outputName: 'gallery-ready.mp4',
-    extraArgs: [
-      '-map',
-      '0:v:0',
-      '-map',
-      '0:a:0?',
-      '-vf',
-      'scale=trunc(iw/2)*2:trunc(ih/2)*2,format=yuv420p,setsar=1',
-      '-c:v',
-      'libx264',
-      '-preset',
-      'veryfast',
-      '-crf',
-      '23',
-      '-profile:v',
-      'main',
-      '-level',
-      '4.1',
-      '-pix_fmt',
-      'yuv420p',
-      '-tag:v',
-      'avc1',
-      '-c:a',
-      'aac',
-      '-b:a',
-      '128k',
-      '-ar',
-      '44100',
-      '-ac',
-      '2',
-    ],
-  },
-];
+/** Memory-safe ffmpeg flags for Render's 512 MB free tier. */
+const FFMPEG_LOW_MEM = ['-threads', '1', '-max_muxing_queue_size', '512'];
 
-/**
- * Transcode Instagram/Facebook HEVC → H.264 so iOS shows "Save Video" in the share sheet.
- * Tries several ffmpeg strategies — IG reels often have odd audio or portrait HEVC.
- */
-export async function normalizeForGallery(inputPath: string, jobDir: string): Promise<string> {
+const TRANSCODE_STRATEGIES: TranscodeStrategy[] = config.lowMemoryMode
+  ? [
+      {
+        label: 'H.264 480p ultrafast',
+        outputName: 'gallery-ready-lite.mp4',
+        extraArgs: [
+          '-map',
+          '0:v:0',
+          '-map',
+          '0:a:0?',
+          '-vf',
+          "scale='min(480,iw)':-2:force_original_aspect_ratio=decrease,format=yuv420p,setsar=1",
+          '-c:v',
+          'libx264',
+          '-preset',
+          'ultrafast',
+          '-tune',
+          'fastdecode',
+          '-crf',
+          '28',
+          '-profile:v',
+          'baseline',
+          '-level',
+          '3.0',
+          '-pix_fmt',
+          'yuv420p',
+          '-tag:v',
+          'avc1',
+          '-c:a',
+          'aac',
+          '-b:a',
+          '64k',
+          '-ar',
+          '44100',
+          '-ac',
+          '2',
+        ],
+      },
+      {
+        label: 'H.264 480p video-only',
+        outputName: 'gallery-ready-vo.mp4',
+        extraArgs: [
+          '-map',
+          '0:v:0',
+          '-an',
+          '-vf',
+          "scale='min(480,iw)':-2:force_original_aspect_ratio=decrease,format=yuv420p,setsar=1",
+          '-c:v',
+          'libx264',
+          '-preset',
+          'ultrafast',
+          '-crf',
+          '28',
+          '-profile:v',
+          'baseline',
+          '-level',
+          '3.0',
+          '-pix_fmt',
+          'yuv420p',
+          '-tag:v',
+          'avc1',
+        ],
+      },
+    ]
+  : [
+      {
+        label: 'H.264 fast 720p',
+        outputName: 'gallery-ready-lite.mp4',
+        extraArgs: [
+          '-map',
+          '0:v:0',
+          '-map',
+          '0:a:0?',
+          '-vf',
+          "scale='min(720,iw)':-2:force_original_aspect_ratio=decrease,format=yuv420p,setsar=1",
+          '-c:v',
+          'libx264',
+          '-preset',
+          'ultrafast',
+          '-crf',
+          '26',
+          '-profile:v',
+          'main',
+          '-level',
+          '3.1',
+          '-pix_fmt',
+          'yuv420p',
+          '-tag:v',
+          'avc1',
+          '-c:a',
+          'aac',
+          '-b:a',
+          '96k',
+          '-ar',
+          '44100',
+          '-ac',
+          '2',
+        ],
+      },
+      {
+        label: 'H.264 video-only',
+        outputName: 'gallery-ready-vo.mp4',
+        extraArgs: [
+          '-map',
+          '0:v:0',
+          '-an',
+          '-vf',
+          "scale='min(720,iw)':-2:force_original_aspect_ratio=decrease,format=yuv420p,setsar=1",
+          '-c:v',
+          'libx264',
+          '-preset',
+          'ultrafast',
+          '-crf',
+          '26',
+          '-profile:v',
+          'main',
+          '-level',
+          '3.1',
+          '-pix_fmt',
+          'yuv420p',
+          '-tag:v',
+          'avc1',
+        ],
+      },
+    ];
+
+async function transcodeForGallery(inputPath: string, jobDir: string): Promise<string> {
   const errors: string[] = [];
 
   for (const strategy of TRANSCODE_STRATEGIES) {
@@ -168,10 +240,9 @@ export async function normalizeForGallery(inputPath: string, jobDir: string): Pr
       '-i',
       inputPath,
       ...strategy.extraArgs,
+      ...FFMPEG_LOW_MEM,
       '-movflags',
       '+faststart',
-      '-max_muxing_queue_size',
-      '4096',
       '-avoid_negative_ts',
       'make_zero',
       '-y',
@@ -211,4 +282,19 @@ export async function normalizeForGallery(inputPath: string, jobDir: string): Pr
   }
 
   throw new Error(`Gallery transcode failed — ${errors.join('; ')}`);
+}
+
+/**
+ * Convert Instagram/Facebook video to iOS-Photos-compatible H.264.
+ * Serialized globally and uses remux (zero transcode RAM) when input is already H.264.
+ */
+export function normalizeForGallery(inputPath: string, jobDir: string): Promise<string> {
+  return enqueueNormalize(async () => {
+    const codec = await probeVideoCodec(inputPath);
+    if (codec === 'h264') {
+      logger.info(`Gallery remux (already H.264): ${path.basename(inputPath)}`);
+      return remuxForGallery(inputPath, jobDir);
+    }
+    return transcodeForGallery(inputPath, jobDir);
+  });
 }

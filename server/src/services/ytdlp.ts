@@ -440,12 +440,9 @@ export function startDownload(
     '--progress',
     '--restrict-filenames',
     '--postprocessor-args', 'ffmpeg:-movflags +faststart',
-    // Resilience + speed for slow/flaky proxies: download in ranged chunks (a
-    // dropped connection costs one chunk, not the whole file, and resets
-    // per-request throttling), pull several chunks in parallel to beat
-    // per-connection proxy throttling, and retry transient errors generously.
-    '--http-chunk-size', '5M',
-    '--concurrent-fragments', '8',
+    // Low-memory hosts (Render free = 512 MB): one fragment at a time, smaller chunks.
+    '--http-chunk-size', config.lowMemoryMode ? '1M' : '5M',
+    '--concurrent-fragments', config.lowMemoryMode ? '1' : '4',
     '--retries', '10',
     '--fragment-retries', '20',
     '--retry-sleep', 'linear=1::5',

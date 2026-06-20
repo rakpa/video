@@ -54,6 +54,18 @@ export const config = {
   ytdlpPath: process.env.YTDLP_PATH ?? 'yt-dlp',
   ffmpegPath: process.env.FFMPEG_PATH ?? 'ffmpeg',
 
+  /**
+   * Render free tier = 512 MB RAM. yt-dlp + ffmpeg HEVC transcode can exceed that
+   * unless downloads are serialized and ffmpeg uses minimal threads/buffers.
+   * Auto-enabled on Render; override with LOW_MEMORY_MODE=false to disable.
+   */
+  lowMemoryMode:
+    process.env.LOW_MEMORY_MODE !== 'false' &&
+    (process.env.LOW_MEMORY_MODE === 'true' || process.env.RENDER === 'true'),
+
+  /** Max simultaneous download jobs (1 on free tier keeps RAM under 512 MB). */
+  maxConcurrentJobs: Number(process.env.MAX_CONCURRENT_JOBS ?? (process.env.RENDER === 'true' ? 1 : 3)),
+
   // --- yt-dlp hardening for cloud hosts (YouTube bot-detection) ---
   // Path to a Netscape-format cookies.txt so yt-dlp can authenticate. This is
   // the most reliable fix for "Sign in to confirm you're not a bot" errors that

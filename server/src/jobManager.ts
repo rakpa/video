@@ -4,7 +4,7 @@ import path from 'node:path';
 import { nanoid } from 'nanoid';
 import { config } from './config.js';
 import { startDownload, YtDlpError, type ProgressUpdate } from './services/ytdlp.js';
-import type { CodecMode, QualityDef } from './services/formats.js';
+import { getQuality, type CodecMode, type QualityDef } from './services/formats.js';
 import { detectPlatform, type PlatformId } from './services/platform.js';
 import { needsGalleryNormalize, normalizeForGallery } from './services/normalizeVideo.js';
 import { logger } from './utils/logger.js';
@@ -33,6 +33,27 @@ export interface Job {
 }
 
 const jobs = new Map<string, Job>();
+
+function countRunningJobs(): number {
+  let n = 0;
+  for (const job of jobs.values()) {
+    if (job.status === 'running') n += 1;
+  }
+  return n;
+}
+
+/** Cap IG/FB quality on low-memory hosts — 1080p HEVC transcode exceeds 512 MB. */
+function effectiveQuality(url: string, quality: QualityDef): QualityDef {
+  const platform = detectPlatform(url)?.id;
+  if (
+    config.lowMemoryMode &&
+    (platform === 'instagram' || platform === 'facebook') &&
+    quality.height > 720
+  ) {
+    return getQuality('720') ?? quality;
+  }
+  return quality;
+}
 
 function emit(job: Job, payload: ProgressUpdate | { done: true } | { error: string }) {
   for (const fn of job.listeners) fn(payload);
@@ -79,6 +100,18 @@ const FRESH_PROGRESS: ProgressUpdate = {
 
 /** Creates a temp dir, spawns the download (with auto-retry), and tracks it as a job. */
 export async function createJob(url: string, quality: QualityDef, mode: CodecMode): Promise<Job> {
+  if (countRunningJobs() >= config.maxConcurrentJobs) {
+    throw new YtDlpError(
+      'The server is busy with another download. Wait a moment and try again.',
+      'FAILED',
+    );
+  }
+
+  const q = effectiveQuality(url, quality);
+  if (q.id !== quality.id) {
+    logger.info(`Low-memory cap: ${quality.label} → ${q.label} for ${detectPlatform(url)?.id ?? 'video'}`);
+  }
+
   await fsp.mkdir(config.tmpRoot, { recursive: true });
   const id = nanoid();
   const dir = path.join(config.tmpRoot, id);
@@ -96,7 +129,7 @@ export async function createJob(url: string, quality: QualityDef, mode: CodecMod
   };
   jobs.set(id, job);
 
-  void runWithRetry(job, url, quality, mode);
+  void runWithRetry(job, url, q, mode);
   return job;
 }
 
