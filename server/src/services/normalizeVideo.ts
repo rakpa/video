@@ -65,6 +65,11 @@ async function verifyH264Mp4(filePath: string): Promise<boolean> {
   return (await probeVideoCodec(filePath)) === 'h264';
 }
 
+/** iOS Photos accepts H.264 in these containers directly — no remux needed. */
+function isGalleryContainer(filePath: string): boolean {
+  return /\.(mp4|mov|m4v)$/i.test(filePath);
+}
+
 /** Remux H.264 in a new container — near-zero RAM vs full transcode. */
 async function remuxForGallery(inputPath: string, jobDir: string): Promise<string> {
   const outputPath = path.join(jobDir, 'gallery-ready.mp4');
@@ -285,14 +290,25 @@ async function transcodeForGallery(inputPath: string, jobDir: string): Promise<s
 }
 
 /**
- * Convert Instagram/Facebook video to iOS-Photos-compatible H.264.
- * Serialized globally and uses remux (zero transcode RAM) when input is already H.264.
+ * Make an Instagram/Facebook video iOS-Photos-compatible (H.264).
+ *
+ * Because IG/FB downloads run in `compatible` mode (yt-dlp forces avc1), the file
+ * is normally ALREADY H.264 in an MP4 container — exactly like a YouTube download,
+ * which saves to the gallery with no extra processing. In that common case we
+ * serve the file as-is and skip ffmpeg entirely: the previous unconditional remux
+ * was the single point of failure that made IG/FB saves hang/fail on Render's
+ * 512 MB free tier. Only a non-MP4 container needs a (zero-RAM) container remux,
+ * and only a genuine HEVC/other codec needs the heavier transcode.
  */
 export function normalizeForGallery(inputPath: string, jobDir: string): Promise<string> {
   return enqueueNormalize(async () => {
     const codec = await probeVideoCodec(inputPath);
     if (codec === 'h264') {
-      logger.info(`Gallery remux (already H.264): ${path.basename(inputPath)}`);
+      if (isGalleryContainer(inputPath)) {
+        logger.info(`Gallery ready (H.264 MP4, no transcode): ${path.basename(inputPath)}`);
+        return inputPath;
+      }
+      logger.info(`Gallery remux (H.264, container → MP4): ${path.basename(inputPath)}`);
       return remuxForGallery(inputPath, jobDir);
     }
     return transcodeForGallery(inputPath, jobDir);
