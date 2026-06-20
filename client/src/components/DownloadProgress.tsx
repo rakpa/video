@@ -10,7 +10,10 @@ interface Props {
 /** Minimal phase label — no technical "merging"/stream wording. */
 function stageLabel(p: ProgressUpdate): string {
   if (p.percent < 1) return 'Processing';
-  return p.stage === 'done' ? 'Finishing up' : 'Downloading';
+  if (p.stage === 'done') return 'Finishing up';
+  if (p.stage === 'merging' && p.percent >= 96) return 'Preparing for Photos';
+  if (p.stage === 'merging') return 'Merging audio';
+  return 'Downloading';
 }
 
 /**

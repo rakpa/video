@@ -77,7 +77,7 @@ function needsGalleryWait(platform?: string): boolean {
  * Wait until the API finishes the H.264 transcode (Instagram/Facebook) so iOS
  * offers "Save Video" (Photos) instead of only "Save to Files".
  */
-async function waitForGalleryReady(jobId: string, maxWaitMs = 180_000): Promise<void> {
+async function waitForGalleryReady(jobId: string, maxWaitMs = 120_000): Promise<void> {
   const start = Date.now();
   let transientErrors = 0;
   while (Date.now() - start < maxWaitMs) {
@@ -87,18 +87,20 @@ async function waitForGalleryReady(jobId: string, maxWaitMs = 180_000): Promise<
         throw new Error('That download session has expired — please download again.');
       }
       if (res.ok) {
-        const data = (await res.json()) as { status?: string; galleryReady?: boolean };
+        const data = (await res.json()) as { status?: string; galleryReady?: boolean; galleryFailed?: boolean };
         if (data.status === 'ready' && data.galleryReady === true) return;
+        // Server is retrying transcode — keep polling.
+        if (data.galleryFailed) transientErrors = 0;
       }
     } catch (err) {
       if (err instanceof Error && err.message.includes('expired')) throw err;
-      if (++transientErrors > 6) {
+      if (++transientErrors > 8) {
         throw new Error('Could not check the video status. Check your connection and try Save again.');
       }
     }
-    await new Promise((r) => setTimeout(r, 1500));
+    await new Promise((r) => setTimeout(r, 1200));
   }
-  throw new Error('Still preparing your video for Photos — try Save to Gallery again in a moment.');
+  throw new Error('Still preparing your video for Photos — tap Save to Gallery to try again.');
 }
 
 /** Fetch the finished MP4 and verify it is real H.264 video — not HEVC or an error page. */
@@ -112,7 +114,7 @@ export async function fetchVideoFile(jobId: string, platform?: string): Promise<
     await waitForGalleryReady(jobId);
   }
 
-  const maxAttempts = requireH264 ? 4 : 1;
+  const maxAttempts = requireH264 ? 8 : 1;
   let lastError: Error | null = null;
 
   for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {

@@ -18,7 +18,6 @@ import {
 } from './api/client';
 import {
   fetchVideoFile,
-  saveMobileVideoToGallery,
   shareVideoToGallery,
   type VideoFilePayload,
 } from './utils/saveVideo';
@@ -292,9 +291,6 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
 
   const handleSaveToGallery = useCallback(async () => {
     setError(null);
-    // Fast path: the MP4 was pre-fetched on the success screen — share it
-    // synchronously inside this tap so iOS/Android show "Save Video" (Photos),
-    // never a Files download.
     if (galleryPayload.current) {
       setSavingToGallery(true);
       try {
@@ -306,12 +302,16 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
       }
       return;
     }
-    // Background prep failed earlier — re-run the full fetch + share as a fallback.
     if (!lastJobId.current) return;
     setSavingToGallery(true);
+    setGalleryPrep('preparing');
     try {
-      await saveMobileVideoToGallery(lastJobId.current, lastPlatform.current ?? undefined);
+      const payload = await fetchVideoFile(lastJobId.current, lastPlatform.current ?? undefined);
+      galleryPayload.current = payload;
+      setGalleryPrep('ready');
+      await shareVideoToGallery(payload);
     } catch (e) {
+      setGalleryPrep('error');
       setError(e instanceof Error ? e.message : 'Could not save to gallery.');
     } finally {
       setSavingToGallery(false);

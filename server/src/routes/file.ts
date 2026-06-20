@@ -53,10 +53,17 @@ fileRouter.get('/file/:jobId/status', (req, res) => {
   if (job.status !== 'ready' || !job.filePath) {
     return res.status(409).json({ status: 'running', progress: job.progress });
   }
+
+  // Kick off a background retry if a previous transcode attempt failed.
+  if (needsGalleryNormalize(job.platformId) && !job.galleryPath && !job.galleryNormalize) {
+    warmGalleryNormalize(job);
+  }
+
   return res.json({
     status: 'ready',
     progress: job.progress,
     galleryReady: isGalleryReady(job),
+    galleryFailed: Boolean(job.galleryNormalizeFailed && !job.galleryPath),
   });
 });
 

@@ -18,8 +18,8 @@ interface Props {
 
 /** Celebratory success card with save-to-gallery on mobile or download-again on desktop. */
 export function SuccessState({ title, onReset, onRedownload, mobile, onSaveToGallery, saving, preparing, prepFailed }: Props) {
-  const saveLabel = preparing ? 'Preparing video…' : saving ? 'Opening share…' : prepFailed ? 'Retry Save to Gallery' : 'Save to Gallery';
-  const saveBusy = Boolean(saving || preparing);
+  const saveLabel = preparing ? 'Save to Gallery' : saving ? 'Opening share…' : prepFailed ? 'Retry Save to Gallery' : 'Save to Gallery';
+  const saveBusy = Boolean(saving);
   return (
     <motion.div
       initial={{ opacity: 0, scale: 0.96 }}

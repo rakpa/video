@@ -43,11 +43,10 @@ export function isGalleryReady(job: Job): boolean {
   if (!needsGalleryNormalize(job.platformId)) return true;
   if (job.galleryPath) return true;
   if (job.galleryNormalize) return false;
-  if (job.galleryNormalizeFailed) return false;
   return false;
 }
 
-/** Start H.264 transcode in the background so Save to Gallery is instant on mobile. */
+/** Start H.264 transcode in the background (fallback if inline normalize failed). */
 export function warmGalleryNormalize(job: Job): void {
   if (!job.filePath || !needsGalleryNormalize(job.platformId)) return;
   if (job.galleryNormalize || job.galleryPath) return;
@@ -64,9 +63,50 @@ export function warmGalleryNormalize(job: Job): void {
     .catch((err) => {
       job.galleryNormalize = undefined;
       job.galleryNormalizeFailed = true;
-      logger.warn('Background gallery normalize failed — will retry on fetch:', (err as Error).message);
+      logger.warn('Background gallery normalize failed:', (err as Error).message);
       throw err;
     });
+}
+
+/** Block until gallery transcode finishes (Instagram/Facebook) or all attempts fail. */
+async function ensureGalleryReady(job: Job): Promise<void> {
+  if (!needsGalleryNormalize(job.platformId) || job.galleryPath) return;
+
+  job.progress = {
+    ...job.progress,
+    percent: Math.max(job.progress.percent, 96),
+    stage: 'merging',
+    speed: null,
+    eta: null,
+  };
+  emit(job, job.progress);
+
+  // Keep SSE alive during ffmpeg — Render proxies drop silent connections.
+  const heartbeat = setInterval(() => {
+    job.progress = { ...job.progress, percent: Math.min(99, job.progress.percent + 0.5), stage: 'merging' };
+    emit(job, job.progress);
+  }, 8000);
+
+  try {
+    if (job.filePath) {
+      try {
+        const normalized = await normalizeForGallery(job.filePath, job.dir);
+        job.galleryPath = normalized;
+        job.filePath = normalized;
+        job.galleryNormalizeFailed = false;
+        return;
+      } catch (err) {
+        logger.warn(`Inline gallery normalize failed for ${job.id}:`, (err as Error).message);
+        job.galleryNormalizeFailed = true;
+      }
+    }
+
+    warmGalleryNormalize(job);
+    if (!job.galleryNormalize) throw new Error('Gallery transcode could not start.');
+    await job.galleryNormalize;
+  } finally {
+    clearInterval(heartbeat);
+  }
 }
 
 const FRESH_PROGRESS: ProgressUpdate = {
@@ -133,10 +173,18 @@ async function runWithRetry(job: Job, url: string, quality: QualityDef, mode: Co
 
     try {
       const filePath = await handle.done;
-      job.status = 'ready';
       job.filePath = filePath;
+      job.status = 'ready';
+
+      // Instagram/Facebook: transcode to H.264 BEFORE telling the client we're done,
+      // so "Save to Gallery" never hangs on "Preparing video…".
+      try {
+        await ensureGalleryReady(job);
+      } catch (err) {
+        logger.warn(`Gallery prep failed for ${job.id} — client can retry on Save:`, (err as Error).message);
+      }
+
       job.progress = { ...job.progress, percent: 100, speed: null, eta: null, stage: 'done' };
-      warmGalleryNormalize(job);
       emit(job, { done: true });
       return;
     } catch (err) {

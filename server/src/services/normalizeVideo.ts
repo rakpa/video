@@ -48,66 +48,167 @@ async function verifyH264Mp4(filePath: string): Promise<boolean> {
   }
 }
 
+interface TranscodeStrategy {
+  label: string;
+  outputName: string;
+  extraArgs: string[];
+}
+
+const TRANSCODE_STRATEGIES: TranscodeStrategy[] = [
+  {
+    label: 'H.264 + AAC (full)',
+    outputName: 'gallery-ready.mp4',
+    extraArgs: [
+      '-map',
+      '0:v:0',
+      '-map',
+      '0:a:0?',
+      '-vf',
+      'scale=trunc(iw/2)*2:trunc(ih/2)*2,format=yuv420p,setsar=1',
+      '-c:v',
+      'libx264',
+      '-preset',
+      'veryfast',
+      '-crf',
+      '23',
+      '-profile:v',
+      'main',
+      '-level',
+      '4.1',
+      '-pix_fmt',
+      'yuv420p',
+      '-tag:v',
+      'avc1',
+      '-c:a',
+      'aac',
+      '-b:a',
+      '128k',
+      '-ar',
+      '44100',
+      '-ac',
+      '2',
+    ],
+  },
+  {
+    label: 'H.264 video-only',
+    outputName: 'gallery-ready-vo.mp4',
+    extraArgs: [
+      '-map',
+      '0:v:0',
+      '-an',
+      '-vf',
+      'scale=trunc(iw/2)*2:trunc(ih/2)*2,format=yuv420p,setsar=1',
+      '-c:v',
+      'libx264',
+      '-preset',
+      'veryfast',
+      '-crf',
+      '23',
+      '-profile:v',
+      'main',
+      '-level',
+      '4.1',
+      '-pix_fmt',
+      'yuv420p',
+      '-tag:v',
+      'avc1',
+    ],
+  },
+  {
+    label: 'H.264 scaled (memory-safe)',
+    outputName: 'gallery-ready-lite.mp4',
+    extraArgs: [
+      '-map',
+      '0:v:0',
+      '-map',
+      '0:a:0?',
+      '-vf',
+      "scale='min(1080,iw)':'min(1920,ih)':force_original_aspect_ratio=decrease,trunc(iw/2)*2:trunc(ih/2)*2,format=yuv420p,setsar=1",
+      '-c:v',
+      'libx264',
+      '-preset',
+      'ultrafast',
+      '-crf',
+      '26',
+      '-profile:v',
+      'baseline',
+      '-level',
+      '3.1',
+      '-pix_fmt',
+      'yuv420p',
+      '-tag:v',
+      'avc1',
+      '-c:a',
+      'aac',
+      '-b:a',
+      '96k',
+      '-ar',
+      '44100',
+      '-ac',
+      '2',
+    ],
+  },
+];
+
 /**
- * Always transcode to H.264 + AAC with faststart.
- * Copy/remux is not enough for Instagram — iOS share sheet shows "Save to Files"
- * instead of "Save Video" unless the MP4 is a Photos-compatible H.264 file.
- *
- * Instagram Reels are portrait 1080×1920 HEVC — level 4.1 + main profile keeps
- * the stream within what iOS Photos accepts (level 3.1 is too low for portrait HD).
+ * Transcode Instagram/Facebook HEVC → H.264 so iOS shows "Save Video" in the share sheet.
+ * Tries several ffmpeg strategies — IG reels often have odd audio or portrait HEVC.
  */
 export async function normalizeForGallery(inputPath: string, jobDir: string): Promise<string> {
-  const outputPath = path.join(jobDir, 'gallery-ready.mp4');
+  const errors: string[] = [];
 
-  const args = [
-    '-i',
-    inputPath,
-    '-map',
-    '0:v:0',
-    '-map',
-    '0:a:0?',
-    '-vf',
-    'scale=trunc(iw/2)*2:trunc(ih/2)*2,format=yuv420p,setsar=1',
-    '-c:v',
-    'libx264',
-    '-preset',
-    'fast',
-    '-crf',
-    '23',
-    '-profile:v',
-    'main',
-    '-level',
-    '4.1',
-    '-pix_fmt',
-    'yuv420p',
-    '-tag:v',
-    'avc1',
-    '-c:a',
-    'aac',
-    '-b:a',
-    '128k',
-    '-ar',
-    '44100',
-    '-ac',
-    '2',
-    '-movflags',
-    '+faststart',
-    '-max_muxing_queue_size',
-    '4096',
-    '-avoid_negative_ts',
-    'make_zero',
-    '-y',
-    outputPath,
-  ];
+  for (const strategy of TRANSCODE_STRATEGIES) {
+    const outputPath = path.join(jobDir, strategy.outputName);
+    await fsp.unlink(outputPath).catch(() => undefined);
 
-  logger.info(`Gallery transcode (→ H.264 main, Photos-compatible): ${path.basename(inputPath)}`);
+    const args = [
+      '-hide_banner',
+      '-loglevel',
+      'error',
+      '-i',
+      inputPath,
+      ...strategy.extraArgs,
+      '-movflags',
+      '+faststart',
+      '-max_muxing_queue_size',
+      '4096',
+      '-avoid_negative_ts',
+      'make_zero',
+      '-y',
+      outputPath,
+    ];
 
-  await exec(config.ffmpegPath, args, { windowsHide: true, timeout: 10 * 60_000 });
+    try {
+      logger.info(`Gallery transcode (${strategy.label}): ${path.basename(inputPath)}`);
+      await exec(config.ffmpegPath, args, { windowsHide: true, timeout: 10 * 60_000 });
 
-  if (!(await verifyH264Mp4(outputPath))) {
-    throw new Error('Gallery transcode did not produce a Photos-compatible H.264 file.');
+      if (!(await verifyH264Mp4(outputPath))) {
+        throw new Error('Output is not H.264');
+      }
+
+      const finalPath = path.join(jobDir, 'gallery-ready.mp4');
+      if (outputPath !== finalPath) {
+        await fsp.rename(outputPath, finalPath).catch(async () => {
+          await fsp.copyFile(outputPath, finalPath);
+          await fsp.unlink(outputPath).catch(() => undefined);
+        });
+      }
+
+      await fsp.unlink(inputPath).catch(() => undefined);
+      for (const other of TRANSCODE_STRATEGIES) {
+        if (other.outputName !== 'gallery-ready.mp4') {
+          await fsp.unlink(path.join(jobDir, other.outputName)).catch(() => undefined);
+        }
+      }
+
+      return finalPath;
+    } catch (err) {
+      const msg = (err as Error).message;
+      errors.push(`${strategy.label}: ${msg}`);
+      logger.warn(`Gallery transcode failed (${strategy.label}):`, msg);
+      await fsp.unlink(outputPath).catch(() => undefined);
+    }
   }
 
-  await fsp.unlink(inputPath).catch(() => undefined);
-  return outputPath;
+  throw new Error(`Gallery transcode failed — ${errors.join('; ')}`);
 }
