@@ -3,9 +3,11 @@
   "version": "1.0.0",
   "private": true,
   "description": "ClipVault — premium video downloader (client + server)",
+  "engines": {
+    "node": "22.x"
+  },
   "scripts": {
     "setup": "npm install --prefix server && npm install --prefix client",
-    "postinstall": "npm install --prefix client",
     "dev": "concurrently --kill-others-on-fail -n server,client -c blue,green \"npm run dev --prefix server\" \"npm run dev --prefix client\"",
     "dev:server": "npm run dev --prefix server",
     "dev:client": "npm run dev --prefix client",
