@@ -108,7 +108,7 @@ export function ContentPage({ path, theme, onToggleTheme }: Props) {
 
           <h1 className="text-3xl font-extrabold tracking-tight text-slate-900 sm:text-4xl">{route.title}</h1>
 
-          <div className="mt-6 space-y-6 text-[15px] leading-relaxed text-slate-600">
+          <div className="mt-6 space-y-6 text-base leading-relaxed text-slate-600">
             <p className="text-slate-500">{route.description}</p>
             {route.render()}
           </div>

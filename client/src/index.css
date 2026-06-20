@@ -12,9 +12,9 @@ body,
   height: 100%;
 }
 
-/* Slightly larger base type across the whole site (rem-based sizes scale from this). */
+/* Base type scale — rem sizes inherit this; bumped one step above browser default. */
 html {
-  font-size: 17px;
+  font-size: 18px;
 }
 
 body {

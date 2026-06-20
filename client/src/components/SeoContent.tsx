@@ -8,7 +8,7 @@ import { navigate } from '../hooks/useRoute';
  */
 export function SeoContent() {
   return (
-    <section className="mx-auto mt-24 max-w-3xl text-[15px] leading-relaxed text-slate-600">
+    <section className="mx-auto mt-24 max-w-3xl text-base leading-relaxed text-slate-600">
       <h2 className="text-center text-2xl font-bold tracking-tight text-slate-900 sm:text-3xl">
         Download any video, the easy way
       </h2>
