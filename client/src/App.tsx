@@ -11,10 +11,13 @@ import {
   ApiError,
   fetchVideoInfo,
   fetchVideoPreview,
+  isMobileDevice,
   startDownloadJob,
   subscribeProgress,
   triggerFileDownload,
 } from './api/client';
+import type { VideoFilePayload } from './utils/saveVideo';
+import { fetchVideoFile, shareVideoToGallery } from './utils/saveVideo';
 
 import { useRoute, navigate } from './hooks/useRoute';
 import { useDocumentMeta } from './hooks/useDocumentMeta';
@@ -106,6 +109,7 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
   const [refining, setRefining] = useState(false);
 
   const lastJobId = useRef<string | null>(null);
+  const cachedVideoRef = useRef<VideoFilePayload | null>(null);
   const unsubscribe = useRef<(() => void) | null>(null);
   const fetchedUrl = useRef<string>('');
   const prevUrlLen = useRef(0);
@@ -205,6 +209,18 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [url]);
 
+  // Prefetch the MP4 on mobile so "Save to Gallery" opens the share sheet instantly.
+  useEffect(() => {
+    if (phase !== 'success' || !isMobileDevice() || !lastJobId.current || cachedVideoRef.current) return;
+    void fetchVideoFile(lastJobId.current)
+      .then((payload) => {
+        cachedVideoRef.current = payload;
+      })
+      .catch(() => {
+        /* Save button will retry and surface errors */
+      });
+  }, [phase]);
+
   const handleDownload = useCallback(
     async (quality: QualityId, mode: CodecMode) => {
       if (!info) return;
@@ -227,8 +243,12 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
         unsubscribe.current = subscribeProgress(jobId, {
           onProgress: setProgress,
           onDone: () => {
-            triggerFileDownload(jobId);
-            setPhase('success');
+            if (isMobileDevice()) {
+              setPhase('success');
+            } else {
+              void triggerFileDownload(jobId);
+              setPhase('success');
+            }
           },
           onError: (message) => {
             setError(message);
@@ -243,13 +263,32 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
     [info, url, pro],
   );
 
-  const handleRedownload = useCallback(() => {
-    if (lastJobId.current) triggerFileDownload(lastJobId.current);
+  const handleSaveToGallery = useCallback(async () => {
+    try {
+      if (!cachedVideoRef.current && lastJobId.current) {
+        cachedVideoRef.current = await fetchVideoFile(lastJobId.current);
+      }
+      if (!cachedVideoRef.current) {
+        throw new Error('The video file is no longer available. Please download again.');
+      }
+      await shareVideoToGallery(cachedVideoRef.current);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not save to gallery.');
+    }
   }, []);
+
+  const handleRedownload = useCallback(() => {
+    if (isMobileDevice()) {
+      void handleSaveToGallery();
+      return;
+    }
+    if (lastJobId.current) void triggerFileDownload(lastJobId.current);
+  }, [handleSaveToGallery]);
 
   const handleReset = useCallback(() => {
     unsubscribe.current?.();
     unsubscribe.current = null;
+    cachedVideoRef.current = null;
     lastJobId.current = null;
     fetchedUrl.current = '';
     setUrl('');
@@ -344,7 +383,13 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
                 className="space-y-5"
               >
                 {view === 'success' ? (
-                  <SuccessState title={info.title} onReset={handleReset} onRedownload={handleRedownload} />
+                  <SuccessState
+                    title={info.title}
+                    mobile={isMobileDevice()}
+                    onSaveToGallery={handleSaveToGallery}
+                    onReset={handleReset}
+                    onRedownload={handleRedownload}
+                  />
                 ) : (
                   <>
                     {info.thumbnail ? (

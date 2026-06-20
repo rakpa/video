@@ -1,5 +1,6 @@
 import type { CodecMode, ProgressUpdate, QualityId, VideoInfo } from '../types';
 import { API_NOT_CONFIGURED_MSG, API_UNREACHABLE_MSG, apiUrl, isApiConfigured } from '../config/api';
+import { classicFileDownload, fetchVideoFile, isMobileDevice, shareVideoToGallery } from '../utils/saveVideo';
 import { detectPlatform } from '../utils/platform';
 import { fetchClientYoutubePreview } from '../utils/youtube';
 import { retryFetch } from '../utils/retryFetch';
@@ -186,14 +187,16 @@ export function subscribeProgress(jobId: string, handlers: ProgressHandlers): ()
 }
 
 /**
- * Triggers the browser to download the finished file. We navigate via a hidden
- * anchor so the server's Content-Disposition controls the filename.
+ * Delivers the finished file. Desktop: direct download. Mobile: fetch + OS share
+ * sheet (Save Video / Photos) so users can store in gallery instead of Files.
  */
-export function triggerFileDownload(jobId: string): void {
-  const a = document.createElement('a');
-  a.href = apiUrl(`/api/file/${jobId}`);
-  a.rel = 'noopener';
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
+export async function triggerFileDownload(jobId: string): Promise<void> {
+  if (!isMobileDevice()) {
+    classicFileDownload(jobId);
+    return;
+  }
+  const payload = await fetchVideoFile(jobId);
+  await shareVideoToGallery(payload);
 }
+
+export { isMobileDevice };

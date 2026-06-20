@@ -6,10 +6,13 @@ interface Props {
   title: string;
   onReset: () => void;
   onRedownload: () => void;
+  /** Mobile: show Save to Gallery (share sheet → Photos) instead of Files download. */
+  mobile?: boolean;
+  onSaveToGallery?: () => void;
 }
 
-/** Celebratory success card with a check-burst, confetti, and "Download another" CTA. */
-export function SuccessState({ title, onReset, onRedownload }: Props) {
+/** Celebratory success card with save-to-gallery on mobile or download-again on desktop. */
+export function SuccessState({ title, onReset, onRedownload, mobile, onSaveToGallery }: Props) {
   return (
     <motion.div
       initial={{ opacity: 0, scale: 0.96 }}
@@ -46,12 +49,26 @@ export function SuccessState({ title, onReset, onRedownload }: Props) {
       <h3 className="mt-5 text-2xl font-bold text-slate-900">Your download is ready! 🎉</h3>
       <p className="mx-auto mt-2 max-w-md text-sm text-slate-500">
         <span className="line-clamp-1 font-medium text-slate-700">{title}</span>
-        has been saved to your device as an MP4 with sound.
+        {mobile ? (
+          <> is ready. Tap <strong className="font-medium text-slate-700">Save to Gallery</strong>, then choose{' '}
+            <strong className="font-medium text-slate-700">Save Video</strong> (iPhone) or{' '}
+            <strong className="font-medium text-slate-700">Photos</strong> (Android) to add it to your camera roll.
+          </>
+        ) : (
+          <> has been saved to your device as an MP4 with sound.</>
+        )}
       </p>
 
       <div className="mt-6 flex flex-col justify-center gap-3 sm:flex-row">
-        <Button variant="ghost" onClick={onRedownload}>Download again</Button>
-        <Button onClick={onReset}>Download another</Button>
+        {mobile && onSaveToGallery ? (
+          <>
+            <Button onClick={onSaveToGallery}>Save to Gallery</Button>
+            <Button variant="ghost" onClick={onRedownload}>Save again</Button>
+          </>
+        ) : (
+          <Button variant="ghost" onClick={onRedownload}>Download again</Button>
+        )}
+        <Button variant={mobile ? 'ghost' : undefined} onClick={onReset}>Download another</Button>
       </div>
     </motion.div>
   );
