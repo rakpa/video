@@ -4,6 +4,7 @@ import { COMPANY } from '../config/company';
 import { navigate } from '../hooks/useRoute';
 import { SiteHeader } from '../components/SiteHeader';
 import { Button } from '../components/Button';
+import { useDocumentMeta } from '../hooks/useDocumentMeta';
 import type { Theme } from '../hooks/useTheme';
 
 /* ----------------------------------------------------------------------------
@@ -36,6 +37,12 @@ interface Props {
 /** Full-page legal document shell with header, prose, and footer nav. */
 export function LegalPage({ path, theme, onToggleTheme }: Props) {
   const route = LEGAL_ROUTES[path];
+  useDocumentMeta({
+    title: route?.title ?? 'Not found',
+    description: route
+      ? `${route.title} for ${COMPANY.brand} — ${COMPANY.domain}. Last updated ${COMPANY.lastUpdated}.`
+      : '',
+  });
   if (!route) return <NotFound />;
 
   return (

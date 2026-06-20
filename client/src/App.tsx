@@ -17,13 +17,16 @@ import {
 } from './api/client';
 
 import { useRoute, navigate } from './hooks/useRoute';
+import { useDocumentMeta } from './hooks/useDocumentMeta';
 import { LegalPage, LEGAL_ROUTES } from './pages/LegalPages';
+import { ContentPage, CONTENT_ROUTES } from './pages/ContentPages';
 import { PricingPage } from './pages/PricingPage';
 import { SiteHeader } from './components/SiteHeader';
 import { Hero } from './components/Hero';
 import { HowItWorks } from './components/HowItWorks';
 import { FeatureGrid } from './components/FeatureGrid';
 import { Faq } from './components/Faq';
+import { SeoContent } from './components/SeoContent';
 import { UrlInput } from './components/UrlInput';
 import { VideoPreview, VideoPreviewSkeleton } from './components/VideoPreview';
 import { QualitySelector } from './components/QualitySelector';
@@ -73,6 +76,9 @@ export default function App() {
   if (LEGAL_ROUTES[route]) {
     return <LegalPage path={route} theme={theme} onToggleTheme={toggle} />;
   }
+  if (CONTENT_ROUTES[route]) {
+    return <ContentPage path={route} theme={theme} onToggleTheme={toggle} />;
+  }
   if (route === '/pricing') {
     return <PricingPage theme={theme} onToggleTheme={toggle} />;
   }
@@ -80,6 +86,11 @@ export default function App() {
 }
 
 function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: () => void }) {
+  useDocumentMeta({
+    title: 'ClipVault — Free Video Downloader for YouTube, Facebook & Instagram',
+    description:
+      'Download YouTube, Facebook and Instagram videos in HD, 2K and 4K — always with sound, no watermark, no sign-up. Free online video downloader.',
+  });
   const [url, setUrl] = useState('');
   const [phase, setPhase] = useState<Phase>('idle');
   const [info, setInfo] = useState<VideoInfo | null>(null);
@@ -385,6 +396,7 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
             <HowItWorks />
             <FeatureGrid />
             <Faq items={HOME_FAQ} subtitle="Everything you might want to know before your first download." />
+            <SeoContent />
           </>
         )}
       </main>
