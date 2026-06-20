@@ -1,6 +1,6 @@
 import type { CodecMode, ProgressUpdate, QualityId, VideoInfo } from '../types';
 import { API_NOT_CONFIGURED_MSG, API_UNREACHABLE_MSG, apiUrl, isApiConfigured } from '../config/api';
-import { classicFileDownload, fetchVideoFile, isMobileDevice, shareVideoToGallery } from '../utils/saveVideo';
+import { classicFileDownload, isMobileDevice, saveMobileVideoToGallery } from '../utils/saveVideo';
 import { detectPlatform } from '../utils/platform';
 import { fetchClientYoutubePreview } from '../utils/youtube';
 import { retryFetch } from '../utils/retryFetch';
@@ -235,16 +235,14 @@ export function subscribeProgress(jobId: string, handlers: ProgressHandlers): ()
 }
 
 /**
- * Delivers the finished file. Desktop: direct download. Mobile: fetch + OS share
- * sheet (Save Video / Photos) so users can store in gallery instead of Files.
+ * Delivers the finished file. Desktop: direct download. Mobile: validated fetch + share.
  */
 export async function triggerFileDownload(jobId: string): Promise<void> {
   if (!isMobileDevice()) {
     classicFileDownload(jobId);
     return;
   }
-  const payload = await fetchVideoFile(jobId);
-  await shareVideoToGallery(payload);
+  await saveMobileVideoToGallery(jobId);
 }
 
 export { isMobileDevice };
