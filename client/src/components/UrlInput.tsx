@@ -30,7 +30,7 @@ export function UrlInput({ value, onChange }: Props) {
 
   return (
     <div className="w-full">
-      <div className="relative flex items-center gap-3 rounded-2xl border border-slate-200 bg-white p-2 pl-4 shadow-glow-soft transition-shadow focus-within:border-accent focus-within:shadow-glow">
+      <div className="relative flex items-center gap-3 rounded-2xl border-2 border-indigo-400/80 bg-white p-2 pl-4 shadow-glow-soft ring-1 ring-indigo-200/50 transition-all duration-200 focus-within:border-indigo-500 focus-within:shadow-glow focus-within:ring-2 focus-within:ring-indigo-300/40">
         {/* Leading platform / link icon */}
         <AnimatePresence mode="wait">
           {platform ? (
