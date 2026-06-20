@@ -14,7 +14,9 @@ Ship the current work to GitHub and Vercel for this repo.
 - **Deploy mechanism (primary):** a **Vercel Deploy Hook**. The hook URL is
   provided via the `VERCEL_DEPLOY_HOOK` environment variable (set in the Claude
   Code web environment settings — never commit it; it is a secret trigger URL).
-  After pushing `main`, POST to it to start a production build:
+  REQUIRES `api.vercel.com` to be in the environment's network egress allowlist,
+  otherwise the POST fails with 403 "Host not in allowlist". After pushing
+  `main`, POST to it to start a production build:
   ```bash
   if [ -n "$VERCEL_DEPLOY_HOOK" ]; then
     curl -fsS -X POST "$VERCEL_DEPLOY_HOOK" && echo "Vercel build triggered"
