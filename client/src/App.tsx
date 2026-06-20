@@ -254,6 +254,7 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
       galleryPayload.current = null;
       setGalleryPrep('idle');
       setPhase('downloading');
+      setProgress({ ...INITIAL_PROGRESS, percent: 1 });
       try {
         const platform = detectPlatform(fetchedUrl.current || url);
         const effectiveMode: CodecMode =

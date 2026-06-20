@@ -9,9 +9,10 @@ interface Props {
 
 /** Minimal phase label — no technical "merging"/stream wording. */
 function stageLabel(p: ProgressUpdate): string {
-  if (p.percent < 1) return 'Processing';
+  if (p.percent < 1) return 'Connecting';
   if (p.stage === 'done') return 'Finishing up';
   if (p.stage === 'merging') return 'Merging audio';
+  if (p.percent < 3) return 'Starting';
   return 'Downloading';
 }
 
@@ -38,7 +39,7 @@ export function DownloadProgress({ progress, qualityLabel }: Props) {
             transition={{ duration: 1.2, repeat: Infinity }}
           />
           <span className="font-semibold text-slate-900">
-            {showPercent ? 'Downloading your video' : 'We are processing your download'}
+            {showPercent ? 'Downloading your video' : 'Connecting to server…'}
           </span>
           {qualityLabel && (
             <span className="rounded-md bg-slate-100 px-1.5 py-0.5 text-xs font-medium text-slate-600">{qualityLabel}</span>
@@ -53,7 +54,7 @@ export function DownloadProgress({ progress, qualityLabel }: Props) {
             {Math.round(display)}<span className="text-2xl font-semibold text-slate-400">%</span>
           </span>
         ) : (
-          <p className="text-base text-slate-500">Preparing your file — this usually takes a few seconds.</p>
+          <p className="text-base text-slate-500">Getting your video ready…</p>
         )}
         {showPercent && (progress.speed || progress.eta) && (
           <div className="flex items-center gap-4 text-sm text-slate-500">

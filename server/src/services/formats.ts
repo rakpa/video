@@ -94,8 +94,14 @@ export const COMPATIBLE_MAX_HEIGHT = 1080;
 /**
  * Builds the yt-dlp `-f` selector for a quality + codec mode. The download
  * service always remuxes to MP4 (`--merge-output-format mp4`).
+ *
+ * YouTube uses a fast selector that prefers single-file progressive MP4 when
+ * available — avoids a separate audio download + ffmpeg merge (major speed win).
  */
-export function buildSelector(quality: QualityDef, mode: CodecMode): string {
+export function buildSelector(quality: QualityDef, mode: CodecMode, platformId?: string): string {
+  if (platformId === 'youtube' && mode === 'best') {
+    return fastYoutubeSelector(quality.height);
+  }
   if (mode === 'compatible') {
     // Cap at 1080p and strongly prefer avc1 (H.264) + mp4a (AAC), with
     // progressively looser fallbacks so a download still succeeds.
@@ -111,4 +117,15 @@ export function buildSelector(quality: QualityDef, mode: CodecMode): string {
     ].join('/');
   }
   return quality.selector;
+}
+
+/** YouTube: prefer progressive MP4 (one file) → faster start, no merge wait. */
+function fastYoutubeSelector(h: number): string {
+  const tiers = [
+    `b[height<=${h}][ext=mp4]`,
+    `b[height<=${h}]`,
+  ];
+  if (h <= 1080) tiers.push(`bv*[height<=${h}][vcodec^=avc1]+ba[ext=m4a]`);
+  tiers.push(`bv*[height<=${h}]+ba[ext=m4a]`, `bv*[height<=${h}]+ba`, `bv*+ba/b`);
+  return tiers.join('/');
 }

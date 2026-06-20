@@ -393,6 +393,15 @@ function findOutputFile(dir: string): string | null {
   return media.length ? path.join(dir, media[0].f) : null;
 }
 
+/** IG/FB need low RAM; YouTube benefits from parallel fragment downloads. */
+function downloadTuning(url: string): { httpChunkSize: string; concurrentFragments: string } {
+  const platform = detectPlatform(url)?.id;
+  if (platform === 'instagram' || platform === 'facebook') {
+    return { httpChunkSize: '1M', concurrentFragments: '1' };
+  }
+  return { httpChunkSize: '5M', concurrentFragments: '6' };
+}
+
 function safeSize(p: string): number {
   try {
     return fs.statSync(p).size;
@@ -422,11 +431,14 @@ export function startDownload(
   const usedCache = Boolean(cachedInfoJson);
   if (usedCache) logger.info('Download reusing cached info (skipping re-extraction)');
 
+  const platformId = detectPlatform(url)?.id;
+  const tuning = downloadTuning(url);
+
   // NOTE: we intentionally do NOT use `--print after_move:filepath` — it makes
   // yt-dlp suppress the live progress lines on stdout. Instead we parse progress
   // directly and discover the produced file by scanning the (per-job) directory.
   const args = [
-    '-f', buildSelector(quality, mode),
+    '-f', buildSelector(quality, mode, platformId),
     '--merge-output-format', 'mp4',
     // Only pass --ffmpeg-location for a real path. A bare name like "ffmpeg"
     // is rejected by yt-dlp ("ffmpeg-location ffmpeg does not exist") and makes
@@ -440,9 +452,8 @@ export function startDownload(
     '--progress',
     '--restrict-filenames',
     '--postprocessor-args', 'ffmpeg:-movflags +faststart',
-    // Low-memory hosts (Render free = 512 MB): one fragment at a time, smaller chunks.
-    '--http-chunk-size', config.lowMemoryMode ? '1M' : '5M',
-    '--concurrent-fragments', config.lowMemoryMode ? '1' : '4',
+    '--http-chunk-size', tuning.httpChunkSize,
+    '--concurrent-fragments', tuning.concurrentFragments,
     '--retries', '10',
     '--fragment-retries', '20',
     '--retry-sleep', 'linear=1::5',
@@ -455,6 +466,16 @@ export function startDownload(
 
   const child = spawn(config.ytdlpPath, args, { windowsHide: true });
   let stderr = '';
+
+  // Instant feedback — yt-dlp is silent during extraction; don't leave UI at 0% for 30s+.
+  onProgress({
+    percent: 1,
+    speed: null,
+    eta: null,
+    stage: 'downloading',
+    streamIndex: 1,
+    streamTotal: 1,
+  });
 
   // Progress state across the (possibly two) streams.
   let streamTotal = 1; // updated from the "format(s): a+b" line
