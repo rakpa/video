@@ -25,6 +25,16 @@ export interface VideoFilePayload {
   filename: string;
 }
 
+/** Simple ASCII name — iOS Photos ignores some unicode / odd filenames from IG titles. */
+export function gallerySafeFilename(original: string): string {
+  const stem = original
+    .replace(/\.[^/.]+$/, '')
+    .replace(/[^\w\s-]/g, '')
+    .trim()
+    .slice(0, 48);
+  return `${stem || 'ClipVault-video'}.mp4`;
+}
+
 /** Fetch the finished MP4 once (job is removed server-side after stream). */
 export async function fetchVideoFile(jobId: string): Promise<VideoFilePayload> {
   const res = await fetch(apiUrl(`/api/file/${jobId}`));
@@ -32,15 +42,14 @@ export async function fetchVideoFile(jobId: string): Promise<VideoFilePayload> {
     const data = (await res.json().catch(() => ({}))) as { error?: string };
     throw new Error(data.error ?? 'Could not fetch the video file.');
   }
-  const filename = parseFilename(res.headers.get('Content-Disposition'));
-  const blob = await res.blob();
-  return { blob, filename };
+  const rawName = parseFilename(res.headers.get('Content-Disposition'));
+  const blob = new Blob([await res.arrayBuffer()], { type: 'video/mp4' });
+  return { blob, filename: gallerySafeFilename(rawName) };
 }
 
 /** Open the OS share sheet so the user can pick Save Video / Photos / Gallery. */
 export async function shareVideoToGallery(payload: VideoFilePayload): Promise<void> {
-  const type = payload.blob.type || 'video/mp4';
-  const file = new File([payload.blob], payload.filename, { type });
+  const file = new File([payload.blob], payload.filename, { type: 'video/mp4' });
 
   if (navigator.share && navigator.canShare?.({ files: [file] })) {
     try {

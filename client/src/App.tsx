@@ -234,9 +234,13 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
       setProgress(INITIAL_PROGRESS);
       setPhase('downloading');
       try {
+        // Instagram/Facebook often use HEVC — force H.264/AAC for gallery compatibility.
+        const platform = detectPlatform(fetchedUrl.current || url);
+        const effectiveMode: CodecMode =
+          platform?.id === 'instagram' || platform?.id === 'facebook' ? 'compatible' : mode;
         // Use the SAME normalized URL that /api/info cached under, so the
         // download reuses that extraction (--load-info-json) instead of re-doing it.
-        const jobId = await startDownloadJob(fetchedUrl.current || url, quality, mode, licenseToken());
+        const jobId = await startDownloadJob(fetchedUrl.current || url, quality, effectiveMode, licenseToken());
         lastJobId.current = jobId;
 
         unsubscribe.current?.();

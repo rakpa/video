@@ -5,6 +5,8 @@ import { nanoid } from 'nanoid';
 import { config } from './config.js';
 import { startDownload, YtDlpError, type ProgressUpdate } from './services/ytdlp.js';
 import type { CodecMode, QualityDef } from './services/formats.js';
+import { detectPlatform } from './services/platform.js';
+import { needsGalleryNormalize, normalizeForGallery } from './services/normalizeVideo.js';
 import { logger } from './utils/logger.js';
 
 type JobStatus = 'running' | 'ready' | 'error';
@@ -90,7 +92,15 @@ async function runWithRetry(job: Job, url: string, quality: QualityDef, mode: Co
     job.cancel = handle.cancel;
 
     try {
-      const filePath = await handle.done;
+      let filePath = await handle.done;
+      const platformId = detectPlatform(url)?.id;
+      if (needsGalleryNormalize(platformId)) {
+        try {
+          filePath = await normalizeForGallery(filePath, job.dir);
+        } catch (err) {
+          logger.warn('Gallery normalize failed — serving original file:', (err as Error).message);
+        }
+      }
       job.status = 'ready';
       job.filePath = filePath;
       job.progress = { ...job.progress, percent: 100, speed: null, eta: null, stage: 'done' };

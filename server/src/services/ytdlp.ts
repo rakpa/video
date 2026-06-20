@@ -439,6 +439,7 @@ export function startDownload(
     '--no-part',
     '--progress',
     '--restrict-filenames',
+    '--postprocessor-args', 'ffmpeg:-movflags +faststart',
     // Resilience + speed for slow/flaky proxies: download in ranged chunks (a
     // dropped connection costs one chunk, not the whole file, and resets
     // per-request throttling), pull several chunks in parallel to beat
