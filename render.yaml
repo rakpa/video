@@ -15,7 +15,7 @@ services:
       - key: PORT
         value: 10000
       - key: CLIENT_ORIGIN
-        value: https://video-beige-five.vercel.app
+        value: https://video77-xi.vercel.app,https://clipvault-web.onrender.com
       - key: YTDLP_PATH
         value: yt-dlp
       - key: FFMPEG_PATH
@@ -42,3 +42,19 @@ services:
       #   value: http://user:pass@proxy.example.com:8080
       # The BgUtils PO-token provider runs inside the container (port 4416) and is
       # used automatically; set YTDLP_POT_BASE_URL only to point at an external one.
+
+  # Static frontend mirror — deploys when Vercel free-tier daily limit (100) is hit.
+  - type: web
+    name: clipvault-web
+    runtime: static
+    plan: free
+    buildCommand: npm install --prefix client && npm run build --prefix client
+    staticPublishPath: client/dist
+    pullRequestPreviewsEnabled: false
+    envVars:
+      - key: VITE_API_URL
+        value: https://clipvault-api-wbnx.onrender.com
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
