@@ -121,7 +121,7 @@ export function SiteHeader({ theme, onToggleTheme, maxWidth = 'max-w-5xl', showN
             <button
               key={l.path}
               onClick={() => go(l.path)}
-              className="block w-full rounded-xl px-4 py-3 text-left text-base font-medium text-slate-700 transition hover:bg-slate-50 hover:text-slate-900"
+              className="block w-full rounded-xl px-4 py-3 text-left text-[15px] font-medium text-slate-700 transition hover:bg-slate-50 hover:text-slate-900"
             >
               {l.label}
             </button>

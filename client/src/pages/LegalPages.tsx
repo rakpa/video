@@ -69,7 +69,7 @@ export function LegalPage({ path, theme, onToggleTheme }: Props) {
           <h1 className="text-3xl font-extrabold tracking-tight text-slate-900 sm:text-4xl">{route.title}</h1>
           <p className="mt-3 text-sm text-slate-400">Last updated: {COMPANY.lastUpdated}</p>
 
-          <div className="mt-10 space-y-6 border-t border-slate-100 pt-8 text-base leading-relaxed text-slate-600">{route.render()}</div>
+          <div className="mt-10 space-y-6 border-t border-slate-100 pt-8 text-[16px] leading-relaxed text-slate-600">{route.render()}</div>
         </motion.article>
 
         {/* Cross-links between legal docs */}
