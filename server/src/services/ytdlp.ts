@@ -533,7 +533,7 @@ export function startDownload(
         reject(
           new YtDlpError(
             'The download stalled — the proxy may be slow or blocked. Please try again; it will use a different proxy.',
-            'FAILED',
+            'BLOCKED',
           ),
         );
       }, DOWNLOAD_IDLE_TIMEOUT_MS);
@@ -574,7 +574,7 @@ export function startDownload(
         logger.warn('yt-dlp download failed:', stderr.slice(0, 500));
         if (usedCache) invalidateInfoJson(url); // cached URLs may be stale — force fresh extraction
         if (config.proxies.length > 1) rotateProxy();
-        reject(new YtDlpError(downloadFailureMessage(stderr), 'FAILED'));
+        reject(new YtDlpError(downloadFailureMessage(stderr), isBlockedStderr(stderr) ? 'BLOCKED' : 'FAILED'));
       }
     });
 
