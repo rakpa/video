@@ -15,9 +15,15 @@ export function needsGalleryNormalize(platformId: string | undefined): boolean {
 }
 
 /**
- * Always transcode to H.264 baseline + AAC with faststart.
+ * Always transcode to H.264 + AAC with faststart.
  * Copy/remux is not enough for Instagram — iOS share sheet shows "Save to Files"
  * instead of "Save Video" unless the MP4 is a Photos-compatible H.264 file.
+ *
+ * Profile/level: use High profile and let x264 auto-pick the level. Instagram
+ * reels are portrait 1080x1920, which EXCEEDS H.264 level 3.1 (max 1280x720) —
+ * forcing a too-low level produced a non-conformant stream that iOS refused to
+ * import to Photos (only "Save to Files" appeared). High profile + yuv420p is
+ * exactly what the iPhone camera records, so Photos always accepts it.
  */
 export async function normalizeForGallery(inputPath: string, jobDir: string): Promise<string> {
   const outputPath = path.join(jobDir, 'gallery-ready.mp4');
@@ -36,9 +42,7 @@ export async function normalizeForGallery(inputPath: string, jobDir: string): Pr
     '-crf',
     '23',
     '-profile:v',
-    'baseline',
-    '-level',
-    '3.1',
+    'high',
     '-pix_fmt',
     'yuv420p',
     '-tag:v',
@@ -53,7 +57,7 @@ export async function normalizeForGallery(inputPath: string, jobDir: string): Pr
     outputPath,
   ];
 
-  logger.info(`Gallery transcode (→ H.264 baseline): ${path.basename(inputPath)}`);
+  logger.info(`Gallery transcode (→ H.264 high, Photos-compatible): ${path.basename(inputPath)}`);
 
   await exec(config.ffmpegPath, args, { windowsHide: true, timeout: 10 * 60_000 });
 
