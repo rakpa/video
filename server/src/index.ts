@@ -12,6 +12,7 @@ import { infoRouter } from './routes/info.js';
 import { downloadRouter } from './routes/download.js';
 import { progressRouter } from './routes/progress.js';
 import { fileRouter } from './routes/file.js';
+import { thumbRouter } from './routes/thumb.js';
 import { billingRouter, handleWebhook } from './routes/billing.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -111,6 +112,7 @@ app.use('/api', infoRouter);
 app.use('/api', downloadRouter);
 app.use('/api', progressRouter);
 app.use('/api', fileRouter);
+app.use('/api', thumbRouter);
 app.use('/api', billingRouter);
 
 // 404 + error fallbacks (never leak stack traces to the client)

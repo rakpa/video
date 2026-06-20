@@ -1,6 +1,8 @@
 import { motion } from 'framer-motion';
+import { useState } from 'react';
 import type { VideoInfo } from '../types';
 import { formatDuration } from '../utils/format';
+import { apiUrl } from '../config/api';
 import { PlatformIcon } from './PlatformIcon';
 
 /** Shimmer skeleton shown while metadata is being fetched. */
@@ -25,6 +27,16 @@ interface Props {
 
 /** Rich metadata card: thumbnail, title, author, duration, platform badge. */
 export function VideoPreview({ info }: Props) {
+  const [portrait, setPortrait] = useState(false);
+
+  // YouTube thumbnails load directly (fast); Facebook/Instagram CDNs block
+  // hotlinking, so route those through our /api/thumb proxy so they render.
+  const thumbSrc = info.thumbnail
+    ? info.platform === 'youtube'
+      ? info.thumbnail
+      : apiUrl(`/api/thumb?url=${encodeURIComponent(info.thumbnail)}`)
+    : null;
+
   return (
     <motion.div
       initial={{ opacity: 0, y: 14 }}
@@ -33,12 +45,17 @@ export function VideoPreview({ info }: Props) {
       className="glass overflow-hidden rounded-3xl p-4 shadow-card sm:p-5"
     >
       <div className="flex flex-col gap-4 sm:flex-row">
-        <div className="relative aspect-video w-full shrink-0 overflow-hidden rounded-2xl bg-slate-100 sm:w-64">
-          {info.thumbnail ? (
+        <div
+          className={`relative shrink-0 overflow-hidden rounded-2xl bg-slate-100 ${
+            portrait ? 'mx-auto aspect-[9/16] w-44 sm:mx-0' : 'aspect-video w-full sm:w-64'
+          }`}
+        >
+          {thumbSrc ? (
             <img
-              src={info.thumbnail}
+              src={thumbSrc}
               alt={info.title}
               loading="lazy"
+              onLoad={(e) => setPortrait(e.currentTarget.naturalHeight > e.currentTarget.naturalWidth)}
               className="h-full w-full object-cover"
             />
           ) : (
