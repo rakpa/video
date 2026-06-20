@@ -16,7 +16,12 @@ import {
   subscribeProgress,
   triggerFileDownload,
 } from './api/client';
-import { saveMobileVideoToGallery } from './utils/saveVideo';
+import {
+  fetchVideoFile,
+  saveMobileVideoToGallery,
+  shareVideoToGallery,
+  type VideoFilePayload,
+} from './utils/saveVideo';
 
 import { useRoute, navigate } from './hooks/useRoute';
 import { useDocumentMeta } from './hooks/useDocumentMeta';
@@ -107,9 +112,15 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
   // in the background, after the fast preview has already shown the cards.
   const [refining, setRefining] = useState(false);
   const [savingToGallery, setSavingToGallery] = useState(false);
+  // Mobile gallery prep: 'preparing' while the H.264 MP4 is fetched/transcoded
+  // in the background, 'ready' once it's cached for an instant share-on-tap.
+  const [galleryPrep, setGalleryPrep] = useState<'idle' | 'preparing' | 'ready' | 'error'>('idle');
 
   const lastJobId = useRef<string | null>(null);
   const lastPlatform = useRef<string | null>(null);
+  // The pre-fetched, gallery-ready video so the Save tap can open the share
+  // sheet synchronously (Web Share needs a live user gesture).
+  const galleryPayload = useRef<VideoFilePayload | null>(null);
   const unsubscribe = useRef<(() => void) | null>(null);
   const fetchedUrl = useRef<string>('');
   const prevUrlLen = useRef(0);
@@ -209,6 +220,25 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [url]);
 
+  /**
+   * Fetch (and, for Instagram/Facebook, transcode to H.264) the finished video
+   * in the background as soon as it's ready, then cache the blob. This moves the
+   * slow "preparing" work off the Save tap so the OS share sheet can open
+   * instantly inside the gesture — instead of the button hanging on
+   * "Preparing video…" or the gesture expiring and the file dropping into Files.
+   */
+  const prepareGalleryFile = useCallback(async (jobId: string, platform?: string) => {
+    galleryPayload.current = null;
+    setGalleryPrep('preparing');
+    try {
+      galleryPayload.current = await fetchVideoFile(jobId, platform);
+      setGalleryPrep('ready');
+    } catch (e) {
+      setGalleryPrep('error');
+      setError(e instanceof Error ? e.message : 'Could not prepare your video for Photos.');
+    }
+  }, []);
+
   const handleDownload = useCallback(
     async (quality: QualityId, mode: CodecMode) => {
       if (!info) return;
@@ -220,6 +250,8 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
       setError(null);
       setActiveQuality(quality);
       setProgress(INITIAL_PROGRESS);
+      galleryPayload.current = null;
+      setGalleryPrep('idle');
       setPhase('downloading');
       try {
         // Instagram/Facebook often use HEVC — force H.264/AAC for gallery compatibility.
@@ -236,11 +268,13 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
         unsubscribe.current = subscribeProgress(jobId, {
           onProgress: setProgress,
           onDone: () => {
+            setPhase('success');
             if (isMobileDevice()) {
-              setPhase('success');
+              // Prepare the gallery-ready MP4 now, while the user reads the
+              // success screen, so tapping Save opens the share sheet instantly.
+              void prepareGalleryFile(jobId, lastPlatform.current ?? undefined);
             } else {
               void triggerFileDownload(jobId);
-              setPhase('success');
             }
           },
           onError: (message) => {
@@ -253,13 +287,28 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
         setPhase('error');
       }
     },
-    [info, url, pro],
+    [info, url, pro, prepareGalleryFile],
   );
 
   const handleSaveToGallery = useCallback(async () => {
+    setError(null);
+    // Fast path: the MP4 was pre-fetched on the success screen — share it
+    // synchronously inside this tap so iOS/Android show "Save Video" (Photos),
+    // never a Files download.
+    if (galleryPayload.current) {
+      setSavingToGallery(true);
+      try {
+        await shareVideoToGallery(galleryPayload.current);
+      } catch (e) {
+        setError(e instanceof Error ? e.message : 'Could not save to gallery.');
+      } finally {
+        setSavingToGallery(false);
+      }
+      return;
+    }
+    // Background prep failed earlier — re-run the full fetch + share as a fallback.
     if (!lastJobId.current) return;
     setSavingToGallery(true);
-    setError(null);
     try {
       await saveMobileVideoToGallery(lastJobId.current, lastPlatform.current ?? undefined);
     } catch (e) {
@@ -282,6 +331,8 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
     unsubscribe.current = null;
     lastJobId.current = null;
     lastPlatform.current = null;
+    galleryPayload.current = null;
+    setGalleryPrep('idle');
     fetchedUrl.current = '';
     setUrl('');
     setInfo(null);
@@ -379,6 +430,7 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
                     title={info.title}
                     mobile={isMobileDevice()}
                     saving={savingToGallery}
+                    preparing={galleryPrep === 'preparing'}
                     onSaveToGallery={handleSaveToGallery}
                     onReset={handleReset}
                     onRedownload={handleRedownload}

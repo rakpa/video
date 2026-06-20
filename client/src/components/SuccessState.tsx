@@ -10,10 +10,14 @@ interface Props {
   mobile?: boolean;
   onSaveToGallery?: () => void;
   saving?: boolean;
+  /** Mobile: the gallery-ready MP4 is still being fetched/transcoded in the background. */
+  preparing?: boolean;
 }
 
 /** Celebratory success card with save-to-gallery on mobile or download-again on desktop. */
-export function SuccessState({ title, onReset, onRedownload, mobile, onSaveToGallery, saving }: Props) {
+export function SuccessState({ title, onReset, onRedownload, mobile, onSaveToGallery, saving, preparing }: Props) {
+  const saveLabel = preparing ? 'Preparing video…' : saving ? 'Opening share…' : 'Save to Gallery';
+  const saveBusy = Boolean(saving || preparing);
   return (
     <motion.div
       initial={{ opacity: 0, scale: 0.96 }}
@@ -51,12 +55,20 @@ export function SuccessState({ title, onReset, onRedownload, mobile, onSaveToGal
       <p className="mx-auto mt-2 max-w-md text-sm text-slate-500">
         <span className="line-clamp-1 font-medium text-slate-700">{title}</span>
         {mobile ? (
-          <>
-            {' '}
-            is ready. Tap <strong className="font-medium text-slate-700">Save to Gallery</strong>, then pick{' '}
-            <strong className="font-medium text-slate-700">Save Video</strong> in the share menu.
-            If a video player opens instead, use its Share button → Save Video.
-          </>
+          preparing ? (
+            <>
+              {' '}
+              is downloading — getting it ready for your Photos gallery. The{' '}
+              <strong className="font-medium text-slate-700">Save to Gallery</strong> button unlocks in a moment.
+            </>
+          ) : (
+            <>
+              {' '}
+              is ready. Tap <strong className="font-medium text-slate-700">Save to Gallery</strong>, then pick{' '}
+              <strong className="font-medium text-slate-700">Save Video</strong> in the share menu.
+              If a video player opens instead, use its Share button → Save Video.
+            </>
+          )
         ) : (
           <> has been saved to your device as an MP4 with sound.</>
         )}
@@ -65,17 +77,17 @@ export function SuccessState({ title, onReset, onRedownload, mobile, onSaveToGal
       <div className="mt-6 flex flex-col justify-center gap-3 sm:flex-row">
         {mobile && onSaveToGallery ? (
           <>
-            <Button onClick={onSaveToGallery} disabled={saving}>
-              {saving ? 'Preparing video…' : 'Save to Gallery'}
+            <Button onClick={onSaveToGallery} disabled={saveBusy}>
+              {saveLabel}
             </Button>
-            <Button variant="ghost" onClick={onRedownload} disabled={saving}>
+            <Button variant="ghost" onClick={onRedownload} disabled={saveBusy}>
               Save again
             </Button>
           </>
         ) : (
           <Button variant="ghost" onClick={onRedownload}>Download again</Button>
         )}
-        <Button variant={mobile ? 'ghost' : undefined} onClick={onReset} disabled={saving}>
+        <Button variant={mobile ? 'ghost' : undefined} onClick={onReset} disabled={saveBusy}>
           Download another
         </Button>
       </div>
