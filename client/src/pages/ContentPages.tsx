@@ -107,9 +107,9 @@ export function ContentPage({ path, theme, onToggleTheme }: Props) {
           </button>
 
           <h1 className="text-3xl font-extrabold tracking-tight text-slate-900 sm:text-4xl">{route.title}</h1>
-          <p className="mt-2 text-[15px] leading-relaxed text-slate-500">{route.description}</p>
+          <p className="mt-3 text-[15px] leading-relaxed text-slate-500">{route.description}</p>
 
-          <div className="mt-8 space-y-6 text-[15px] leading-relaxed text-slate-600">{route.render()}</div>
+          <div className="mt-10 space-y-6 border-t border-slate-100 pt-8 text-[15px] leading-relaxed text-slate-600">{route.render()}</div>
 
           <div className="mt-10 rounded-2xl border border-indigo-100 bg-indigo-50/60 p-5">
             <p className="font-semibold text-slate-900">Ready to try it?</p>
