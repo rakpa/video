@@ -155,35 +155,83 @@ export interface ProgressHandlers {
  */
 export function subscribeProgress(jobId: string, handlers: ProgressHandlers): () => void {
   const es = new EventSource(apiUrl(`/api/progress/${jobId}`));
+  let settled = false;
+  let lastPercent = 0;
+  let pollTimer: ReturnType<typeof setTimeout> | undefined;
+
+  const settle = (fn: () => void) => {
+    if (settled) return;
+    settled = true;
+    if (pollTimer) clearTimeout(pollTimer);
+    fn();
+    es.close();
+  };
+
+  /** SSE can drop while ffmpeg prepares IG/FB files — poll until the job is ready. */
+  const pollUntilReady = () => {
+    let attempts = 0;
+    const tick = async () => {
+      if (settled) return;
+      attempts += 1;
+      try {
+        const res = await fetch(apiUrl(`/api/file/${jobId}/status`));
+        if (res.ok) {
+          const data = (await res.json()) as { status?: string };
+          if (data.status === 'ready') {
+            settle(() => handlers.onDone());
+            return;
+          }
+        }
+      } catch {
+        /* retry */
+      }
+      if (attempts >= 90) {
+        settle(() => handlers.onError('Lost connection to the server.'));
+        return;
+      }
+      pollTimer = setTimeout(() => void tick(), 2000);
+    };
+    void tick();
+  };
 
   es.addEventListener('progress', (e) => {
     try {
-      handlers.onProgress(JSON.parse((e as MessageEvent).data));
+      const p = JSON.parse((e as MessageEvent).data) as ProgressUpdate;
+      lastPercent = p.percent;
+      handlers.onProgress(p);
     } catch {
       /* ignore malformed frame */
     }
   });
 
   es.addEventListener('done', () => {
-    handlers.onDone();
-    es.close();
+    settle(() => handlers.onDone());
   });
 
   es.addEventListener('error', (e) => {
     const data = (e as MessageEvent).data;
     if (data) {
       try {
-        handlers.onError(JSON.parse(data).message ?? 'The download failed.');
+        settle(() => handlers.onError(JSON.parse(data).message ?? 'The download failed.'));
       } catch {
-        handlers.onError('The download failed.');
+        settle(() => handlers.onError('The download failed.'));
       }
-    } else {
-      handlers.onError('Lost connection to the server.');
+      return;
     }
-    es.close();
+    // Near 100% the connection often drops during gallery prep — recover via poll.
+    if (lastPercent >= 95) {
+      es.close();
+      pollUntilReady();
+      return;
+    }
+    settle(() => handlers.onError('Lost connection to the server.'));
   });
 
-  return () => es.close();
+  return () => {
+    settled = true;
+    if (pollTimer) clearTimeout(pollTimer);
+    es.close();
+  };
 }
 
 /**

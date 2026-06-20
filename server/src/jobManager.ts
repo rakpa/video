@@ -5,8 +5,7 @@ import { nanoid } from 'nanoid';
 import { config } from './config.js';
 import { startDownload, YtDlpError, type ProgressUpdate } from './services/ytdlp.js';
 import type { CodecMode, QualityDef } from './services/formats.js';
-import { detectPlatform } from './services/platform.js';
-import { needsGalleryNormalize, normalizeForGallery } from './services/normalizeVideo.js';
+import { detectPlatform, type PlatformId } from './services/platform.js';
 import { logger } from './utils/logger.js';
 
 type JobStatus = 'running' | 'ready' | 'error';
@@ -20,6 +19,12 @@ export interface Job {
   errorMessage?: string;
   createdAt: number;
   cancel: () => void;
+  /** Source platform — used when serving the file (gallery normalize). */
+  platformId?: PlatformId;
+  /** Cached H.264 path after gallery normalize (Instagram/Facebook). */
+  galleryPath?: string;
+  /** Shared in-flight normalize promise (avoid duplicate ffmpeg runs). */
+  galleryNormalize?: Promise<string>;
   /** SSE listeners subscribed to this job's progress. */
   listeners: Set<(p: ProgressUpdate | { done: true } | { error: string }) => void>;
 }
@@ -52,6 +57,7 @@ export async function createJob(url: string, quality: QualityDef, mode: CodecMod
     status: 'running',
     progress: { ...FRESH_PROGRESS },
     createdAt: Date.now(),
+    platformId: detectPlatform(url)?.id,
     cancel: () => undefined, // replaced per attempt
     listeners: new Set(),
   };
@@ -92,15 +98,7 @@ async function runWithRetry(job: Job, url: string, quality: QualityDef, mode: Co
     job.cancel = handle.cancel;
 
     try {
-      let filePath = await handle.done;
-      const platformId = detectPlatform(url)?.id;
-      if (needsGalleryNormalize(platformId)) {
-        try {
-          filePath = await normalizeForGallery(filePath, job.dir);
-        } catch (err) {
-          logger.warn('Gallery normalize failed — serving original file:', (err as Error).message);
-        }
-      }
+      const filePath = await handle.done;
       job.status = 'ready';
       job.filePath = filePath;
       job.progress = { ...job.progress, percent: 100, speed: null, eta: null, stage: 'done' };

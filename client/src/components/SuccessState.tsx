@@ -52,7 +52,8 @@ export function SuccessState({ title, onReset, onRedownload, mobile, onSaveToGal
         {mobile ? (
           <> is ready. Tap <strong className="font-medium text-slate-700">Save to Gallery</strong>, then choose{' '}
             <strong className="font-medium text-slate-700">Save Video</strong> (iPhone) or{' '}
-            <strong className="font-medium text-slate-700">Photos</strong> (Android) to add it to your camera roll.
+            <strong className="font-medium text-slate-700">Photos</strong> (Android).
+            {' '}Instagram videos may take a few extra seconds to prepare the first time.
           </>
         ) : (
           <> has been saved to your device as an MP4 with sound.</>
