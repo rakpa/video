@@ -1,0 +1,2 @@
+# Never upload prebuilt output — missing config.json causes deploy failures.
+.vercel/output
