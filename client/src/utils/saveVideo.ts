@@ -81,7 +81,7 @@ export async function fetchVideoFile(jobId: string): Promise<VideoFilePayload> {
 }
 
 /** Full-screen video player so the user can Save Video from the native controls. */
-function openVideoSaveViewer(blob: Blob, filename: string): void {
+function openVideoSaveViewer(blob: Blob, _filename: string): void {
   const url = URL.createObjectURL(blob);
   const overlay = document.createElement('div');
   overlay.setAttribute('role', 'dialog');

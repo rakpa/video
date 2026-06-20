@@ -16,7 +16,7 @@ import {
   subscribeProgress,
   triggerFileDownload,
 } from './api/client';
-import { isMobileDevice, saveMobileVideoToGallery } from './utils/saveVideo';
+import { saveMobileVideoToGallery } from './utils/saveVideo';
 
 import { useRoute, navigate } from './hooks/useRoute';
 import { useDocumentMeta } from './hooks/useDocumentMeta';
