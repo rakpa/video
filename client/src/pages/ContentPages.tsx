@@ -87,7 +87,7 @@ export function ContentPage({ path, theme, onToggleTheme }: Props) {
 
   return (
     <div className="app-bg min-h-screen text-slate-600">
-      <SiteHeader theme={theme} onToggleTheme={onToggleTheme} maxWidth="max-w-3xl" showNav={false} />
+      <SiteHeader theme={theme} onToggleTheme={onToggleTheme} maxWidth="max-w-5xl" />
 
       <main className="mx-auto max-w-3xl px-5 pb-20">
         <motion.article
@@ -107,9 +107,11 @@ export function ContentPage({ path, theme, onToggleTheme }: Props) {
           </button>
 
           <h1 className="text-3xl font-extrabold tracking-tight text-slate-900 sm:text-4xl">{route.title}</h1>
-          <p className="mt-6 text-base leading-relaxed text-slate-500">{route.description}</p>
 
-          <div className="mt-10 space-y-6 border-t border-slate-100 pt-8 text-base leading-relaxed text-slate-600">{route.render()}</div>
+          <div className="mt-6 space-y-6 text-[16px] leading-relaxed text-slate-600">
+            <p className="text-slate-500">{route.description}</p>
+            {route.render()}
+          </div>
 
           <div className="mt-10 rounded-2xl border border-indigo-100 bg-indigo-50/60 p-5">
             <p className="font-semibold text-slate-900">Ready to try it?</p>

@@ -17,10 +17,10 @@ export function PaymentBadges() {
           </span>
         </CardChip>
         <CardChip label="American Express">
-          <span className="rounded-[2px] bg-[#006fcf] px-1 text-[9px] font-bold leading-tight text-white">AMEX</span>
+          <span className="rounded-[2px] bg-[#006fcf] px-1 text-[10px] font-bold leading-tight text-white">AMEX</span>
         </CardChip>
         <CardChip label="PayPal">
-          <span className="text-[11px] font-extrabold italic">
+          <span className="text-xs font-extrabold italic">
             <span className="text-[#003087]">Pay</span><span className="text-[#0070e0]">Pal</span>
           </span>
         </CardChip>

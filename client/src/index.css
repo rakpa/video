@@ -12,14 +12,14 @@ body,
   height: 100%;
 }
 
-/* Slightly larger base type across the whole site (rem-based sizes scale from this). */
+/* Moderate base type — slightly above 16px default; pairs with default Tailwind scale. */
 html {
   font-size: 17px;
 }
 
 body {
   margin: 0;
-  font-family: 'Aptos', 'Segoe UI', 'Inter', ui-sans-serif, system-ui, -apple-system, sans-serif;
+  font-family: 'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
   color: #0f172a;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;

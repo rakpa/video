@@ -105,7 +105,7 @@ export function QualitySelector({ formats, selected, onSelect, mode, onModeChang
                 )}
               </AnimatePresence>
               {!active && locked && (
-                <span className="absolute right-2.5 top-2.5 inline-flex items-center gap-0.5 rounded-full bg-amber-100 px-1.5 py-0.5 text-[9px] font-bold text-amber-600">
+                <span className="absolute right-2.5 top-2.5 inline-flex items-center gap-0.5 rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold text-amber-600">
                   <svg viewBox="0 0 24 24" className="h-2.5 w-2.5" fill="currentColor" aria-hidden="true">
                     <path d="M12 1a5 5 0 0 0-5 5v3H6a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-9a2 2 0 0 0-2-2h-1V6a5 5 0 0 0-5-5Zm3 8H9V6a3 3 0 0 1 6 0v3Z" />
                   </svg>
@@ -114,7 +114,7 @@ export function QualitySelector({ formats, selected, onSelect, mode, onModeChang
               )}
 
               <span className="text-lg font-bold text-slate-900">{f.label}</span>
-              <span className="rounded-md bg-indigo-50 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-indigo-600">
+              <span className="rounded-md bg-indigo-50 px-1.5 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-indigo-600">
                 {f.tag}
               </span>
 
@@ -129,7 +129,7 @@ export function QualitySelector({ formats, selected, onSelect, mode, onModeChang
               </span>
 
               {!disabled && (
-                <span className="inline-flex items-center gap-1 text-[11px] font-medium text-emerald-600">
+                <span className="inline-flex items-center gap-1 text-xs font-medium text-emerald-600">
                   <svg viewBox="0 0 24 24" className="h-3 w-3" fill="currentColor" aria-hidden="true">
                     <path d="M3 10v4h4l5 5V5L7 10H3Zm13.5 2a4.5 4.5 0 0 0-2.5-4v8a4.5 4.5 0 0 0 2.5-4Z" />
                   </svg>

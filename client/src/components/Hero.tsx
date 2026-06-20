@@ -24,7 +24,7 @@ export function Hero() {
         initial={{ opacity: 0, y: 16 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.6, delay: 0.05 }}
-        className="text-[clamp(1.85rem,6.2vw,3.5rem)] font-bold leading-[1.15] tracking-tight text-slate-900"
+        className="text-[clamp(1.9rem,6.3vw,3.6rem)] font-bold leading-[1.15] tracking-tight text-slate-900"
       >
         Best <span className="gradient-text">Free Online</span> Video Downloader
       </motion.h1>

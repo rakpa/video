@@ -193,7 +193,7 @@ function PlanCard({
       ].join(' ')}
     >
       {badge && (
-        <span className="absolute -top-2 right-3 rounded-full bg-accent-gradient px-2 py-0.5 text-[10px] font-bold text-white">
+        <span className="absolute -top-2 right-3 rounded-full bg-accent-gradient px-2 py-0.5 text-[11px] font-bold text-white">
           {badge}
         </span>
       )}
