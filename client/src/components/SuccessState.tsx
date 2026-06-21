@@ -7,33 +7,16 @@ interface Props {
   onReset: () => void;
   onRedownload: () => void;
   mobile?: boolean;
-  iosThirdParty?: boolean;
   onSaveToGallery?: () => void;
-  onOpenInSafari?: () => void;
   saving?: boolean;
   preparing?: boolean;
   prepFailed?: boolean;
 }
 
-export function SuccessState({
-  title,
-  onReset,
-  onRedownload,
-  mobile,
-  iosThirdParty,
-  onSaveToGallery,
-  onOpenInSafari,
-  saving,
-  preparing,
-  prepFailed,
-}: Props) {
+export function SuccessState({ title, onReset, onRedownload, mobile, onSaveToGallery, saving, preparing, prepFailed }: Props) {
   const busy = saving || preparing;
   const saveLabel = saving ? 'Opening share…' : prepFailed ? 'Retry Save to Gallery' : 'Save to Gallery';
-  const heading = iosThirdParty
-    ? 'Almost there — open in Safari'
-    : busy
-      ? 'Saving to your gallery…'
-      : 'Your download is ready! 🎉';
+  const heading = busy ? 'Saving to your gallery…' : 'Your download is ready! 🎉';
 
   return (
     <motion.div
@@ -71,15 +54,7 @@ export function SuccessState({
       <h3 className="mt-5 text-2xl font-bold text-slate-900">{heading}</h3>
       <p className="mx-auto mt-2 max-w-md text-sm text-slate-500">
         <span className="line-clamp-1 font-medium text-slate-700">{title}</span>
-        {iosThirdParty ? (
-          <>
-            {' '}
-            is ready. On iPhone, only <strong className="font-medium text-slate-700">Safari</strong> can save videos
-            to your <strong className="font-medium text-slate-700">Photos</strong> gallery — other browsers can only
-            save to Files. Tap <strong className="font-medium text-slate-700">Open in Safari</strong>, then download
-            again to save to your gallery.
-          </>
-        ) : mobile ? (
+        {mobile ? (
           busy ? (
             <>
               {' '}
@@ -105,9 +80,7 @@ export function SuccessState({
       </p>
 
       <div className="mt-6 flex flex-col justify-center gap-3 sm:flex-row">
-        {iosThirdParty ? (
-          <Button onClick={onOpenInSafari}>Open in Safari</Button>
-        ) : mobile && onSaveToGallery ? (
+        {mobile && onSaveToGallery ? (
           <>
             {!busy && (
               <Button onClick={onSaveToGallery} disabled={saving}>

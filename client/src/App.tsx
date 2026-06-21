@@ -19,8 +19,6 @@ import {
 import {
   fetchVideoFile,
   shareVideoToGallery,
-  isIosThirdPartyBrowser,
-  openInSafari,
   type VideoFilePayload,
 } from './utils/saveVideo';
 
@@ -118,7 +116,6 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
   const [galleryPrep, setGalleryPrep] = useState<'idle' | 'preparing' | 'ready' | 'error'>('idle');
 
   const lastJobId = useRef<string | null>(null);
-  const lastPlatform = useRef<string | null>(null);
   // The pre-fetched, gallery-ready video so the Save tap can open the share
   // sheet synchronously (Web Share needs a live user gesture).
   const galleryPayload = useRef<VideoFilePayload | null>(null);
@@ -225,12 +222,12 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
    * Fetch the gallery-ready MP4 and open the OS share sheet (Save Video → Photos).
    * Called automatically on mobile when a download finishes.
    */
-  const saveToGallery = useCallback(async (jobId: string, platform?: string) => {
+  const saveToGallery = useCallback(async (jobId: string) => {
     setError(null);
     setSavingToGallery(true);
     setGalleryPrep('preparing');
     try {
-      const payload = await fetchVideoFile(jobId, platform);
+      const payload = await fetchVideoFile(jobId);
       galleryPayload.current = payload;
       setGalleryPrep('ready');
       await shareVideoToGallery(payload);
@@ -270,7 +267,6 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
         ) {
           effectiveQuality = '720';
         }
-        lastPlatform.current = platform?.id ?? null;
         const jobId = await startDownloadJob(
           fetchedUrl.current || url,
           effectiveQuality,
@@ -284,13 +280,8 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
           onProgress: setProgress,
           onDone: () => {
             setPhase('success');
-            if (isIosThirdPartyBrowser()) {
-              // Chrome/Firefox/etc. on iOS can't save to Photos — the success
-              // screen prompts the user to reopen in Safari. Don't auto-share.
-              return;
-            }
             if (isMobileDevice()) {
-              void saveToGallery(jobId, lastPlatform.current ?? undefined);
+              void saveToGallery(jobId);
             } else {
               void triggerFileDownload(jobId);
             }
@@ -322,7 +313,7 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
       return;
     }
     if (!lastJobId.current) return;
-    await saveToGallery(lastJobId.current, lastPlatform.current ?? undefined);
+    await saveToGallery(lastJobId.current);
   }, [saveToGallery]);
 
   const handleRedownload = useCallback(() => {
@@ -337,7 +328,6 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
     unsubscribe.current?.();
     unsubscribe.current = null;
     lastJobId.current = null;
-    lastPlatform.current = null;
     galleryPayload.current = null;
     setGalleryPrep('idle');
     fetchedUrl.current = '';
@@ -436,12 +426,10 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
                   <SuccessState
                     title={info.title}
                     mobile={isMobileDevice()}
-                    iosThirdParty={isIosThirdPartyBrowser()}
                     saving={savingToGallery}
                     preparing={galleryPrep === 'preparing'}
                     prepFailed={galleryPrep === 'error'}
                     onSaveToGallery={handleSaveToGallery}
-                    onOpenInSafari={openInSafari}
                     onReset={handleReset}
                     onRedownload={handleRedownload}
                   />

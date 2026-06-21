@@ -8,36 +8,6 @@ export function isMobileDevice(): boolean {
   return mobileUa || (coarse && navigator.maxTouchPoints > 0);
 }
 
-/** iPhone/iPad (incl. iPadOS Safari reporting as Mac with touch). */
-export function isIosDevice(): boolean {
-  if (typeof navigator === 'undefined') return false;
-  return (
-    /iPhone|iPad|iPod/i.test(navigator.userAgent) ||
-    (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)
-  );
-}
-
-/**
- * iOS in a NON-Safari browser (Chrome/Firefox/Edge/Opera…). Apple only exposes
- * the share sheet's "Save Video → Photos" action in Safari; third-party iOS
- * browsers can only "Save to Files". We detect them so we can route the user to
- * Safari, where the gallery save actually works.
- */
-export function isIosThirdPartyBrowser(): boolean {
-  if (!isIosDevice()) return false;
-  return /CriOS|FxiOS|EdgiOS|OPiOS|OPT\/|mercury|GSA\//i.test(navigator.userAgent);
-}
-
-/**
- * Reopen the current page in Safari from a third-party iOS browser. Chrome for
- * iOS honours the `x-safari-` URL-scheme prefix; other browsers fall back to a
- * normal navigation (the user can then use the Share → "Open in Safari" action).
- */
-export function openInSafari(): void {
-  if (typeof window === 'undefined') return;
-  window.location.href = `x-safari-${window.location.href}`;
-}
-
 function parseFilename(header: string | null): string {
   if (!header) return 'ClipVault-video.mp4';
   const match = /filename\*=UTF-8''([^;]+)|filename="([^"]+)"|filename=([^\s;]+)/i.exec(header);
@@ -62,35 +32,13 @@ function looksLikeHtmlOrJson(buf: ArrayBuffer): boolean {
   return head.startsWith('<!doctype') || head.startsWith('<html') || head.startsWith('{');
 }
 
-/** Scan the MP4 header for H.264 (avc1) vs HEVC (hvc1/hev1) track tags. */
-function mp4VideoCodec(buf: ArrayBuffer): 'h264' | 'hevc' | 'unknown' {
-  const bytes = new Uint8Array(buf.slice(0, Math.min(buf.byteLength, 512 * 1024)));
-  let hasAvc1 = false;
-  let hasHevc = false;
-  for (let i = 0; i <= bytes.length - 4; i += 1) {
-    const c0 = bytes[i];
-    const c1 = bytes[i + 1];
-    const c2 = bytes[i + 2];
-    const c3 = bytes[i + 3];
-    if (c0 === 0x61 && c1 === 0x76 && c2 === 0x63 && c3 === 0x31) hasAvc1 = true;
-    if ((c0 === 0x68 && c1 === 0x76 && c2 === 0x63 && c3 === 0x31) || (c0 === 0x68 && c1 === 0x65 && c2 === 0x76 && c3 === 0x31)) {
-      hasHevc = true;
-    }
-  }
-  if (hasAvc1 && !hasHevc) return 'h264';
-  if (hasHevc && !hasAvc1) return 'hevc';
-  if (hasAvc1) return 'h264';
-  return 'unknown';
-}
-
 export interface VideoFilePayload {
   blob: Blob;
   filename: string;
 }
 
-/** Simple ASCII name — iOS Photos ignores odd unicode filenames from IG titles. */
-export function gallerySafeFilename(original: string, forceGeneric = false): string {
-  if (forceGeneric) return 'ClipVault-video.mp4';
+/** Simple ASCII name so iOS Photos reliably accepts the file. */
+export function gallerySafeFilename(original: string): string {
   const stem = original
     .replace(/\.[^/.]+$/, '')
     .replace(/[^\w\s-]/g, '')
@@ -99,62 +47,30 @@ export function gallerySafeFilename(original: string, forceGeneric = false): str
   return `${stem || 'ClipVault-video'}.mp4`;
 }
 
-function needsGalleryWait(platform?: string): boolean {
-  return platform === 'instagram' || platform === 'facebook';
-}
-
 /**
- * Wait until the API finishes the H.264 transcode (Instagram/Facebook) so iOS
- * offers "Save Video" (Photos) instead of only "Save to Files".
+ * Fetch the finished MP4 for sharing. Every platform takes the SAME path that
+ * YouTube already uses successfully: the server serves a gallery-compatible
+ * H.264 MP4 (Instagram/Facebook are downloaded in compatible mode and
+ * transcoded server-side when needed), so no client-side codec gate or
+ * platform-specific waiting is required — that special-casing is exactly what
+ * made IG/FB behave differently from YouTube. A few retries cover the brief
+ * window where the server is still finalising the file.
  */
-async function waitForGalleryReady(jobId: string, maxWaitMs = 120_000): Promise<void> {
-  const start = Date.now();
-  let transientErrors = 0;
-  while (Date.now() - start < maxWaitMs) {
-    try {
-      const res = await fetch(apiUrl(`/api/file/${jobId}/status`));
-      if (res.status === 404 || res.status === 410) {
-        throw new Error('That download session has expired — please download again.');
-      }
-      if (res.ok) {
-        const data = (await res.json()) as { status?: string; galleryReady?: boolean; galleryFailed?: boolean };
-        if (data.status === 'ready' && data.galleryReady === true) return;
-        // Server is retrying transcode — keep polling.
-        if (data.galleryFailed) transientErrors = 0;
-      }
-    } catch (err) {
-      if (err instanceof Error && err.message.includes('expired')) throw err;
-      if (++transientErrors > 8) {
-        throw new Error('Could not check the video status. Check your connection and try Save again.');
-      }
-    }
-    await new Promise((r) => setTimeout(r, 1200));
-  }
-  // Timed out waiting for the optional transcode — proceed anyway. The file route
-  // blocks until ready (and falls back to the original H.264 download), so a
-  // best-effort fetch still succeeds instead of dead-ending on an error screen.
-}
-
-/** Fetch the finished MP4 and verify it is real H.264 video — not HEVC or an error page. */
-export async function fetchVideoFile(jobId: string, platform?: string): Promise<VideoFilePayload> {
+export async function fetchVideoFile(jobId: string): Promise<VideoFilePayload> {
   if (!isApiConfigured()) {
     throw new Error(API_NOT_CONFIGURED_MSG);
   }
 
-  const requireH264 = needsGalleryWait(platform);
-  if (requireH264) {
-    await waitForGalleryReady(jobId);
-  }
-
-  const maxAttempts = requireH264 ? 8 : 1;
+  const maxAttempts = 6;
   let lastError: Error | null = null;
 
   for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
     const res = await fetch(apiUrl(`/api/file/${jobId}`));
     const buf = await res.arrayBuffer();
 
-    if (res.status === 503 && requireH264 && attempt < maxAttempts) {
-      await new Promise((r) => setTimeout(r, 2500));
+    // 503 = server still finalising the file; wait briefly and retry.
+    if (res.status === 503 && attempt < maxAttempts) {
+      await new Promise((r) => setTimeout(r, 2000));
       continue;
     }
 
@@ -165,8 +81,8 @@ export async function fetchVideoFile(jobId: string, platform?: string): Promise<
       } catch {
         lastError = new Error('Could not fetch the video file.');
       }
-      if (requireH264 && attempt < maxAttempts) {
-        await new Promise((r) => setTimeout(r, 2500));
+      if (attempt < maxAttempts) {
+        await new Promise((r) => setTimeout(r, 2000));
         continue;
       }
       throw lastError;
@@ -181,19 +97,9 @@ export async function fetchVideoFile(jobId: string, platform?: string): Promise<
       throw new Error('Video file is too small — the download may have failed.');
     }
 
-    // Give the background transcode a few more tries to deliver H.264; if it is
-    // still HEVC on the final attempt, share it anyway — landing in Files beats a
-    // dead-end error, and IG/FB run in compatible (H.264) mode so this is rare.
-    const codec = mp4VideoCodec(buf);
-    if (requireH264 && codec === 'hevc' && attempt < maxAttempts) {
-      await new Promise((r) => setTimeout(r, 2500));
-      continue;
-    }
-
     const rawName = parseFilename(res.headers.get('Content-Disposition'));
     const blob = new Blob([buf], { type: 'video/mp4' });
-    const forceGeneric = requireH264;
-    return { blob, filename: gallerySafeFilename(rawName, forceGeneric) };
+    return { blob, filename: gallerySafeFilename(rawName) };
   }
 
   throw lastError ?? new Error('Could not fetch the video file.');
@@ -255,11 +161,9 @@ export async function shareVideoToGallery(payload: VideoFilePayload): Promise<vo
   openVideoSaveViewer(payload.blob, payload.filename);
 }
 
-/**
- * Mobile save: wait for gallery transcode (IG/FB) → fetch validated H.264 MP4 → share sheet.
- */
-export async function saveMobileVideoToGallery(jobId: string, platform?: string): Promise<void> {
-  const payload = await fetchVideoFile(jobId, platform);
+/** Mobile save: fetch the MP4 → open the OS share sheet (Save Video → Photos). */
+export async function saveMobileVideoToGallery(jobId: string): Promise<void> {
+  const payload = await fetchVideoFile(jobId);
   await shareVideoToGallery(payload);
 }
 
