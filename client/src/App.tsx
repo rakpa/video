@@ -7,6 +7,7 @@ import { API_NOT_CONFIGURED_MSG, isApiConfigured } from './config/api';
 import { PLACEHOLDER_FORMATS } from './utils/formats';
 import { fetchClientInstagramPreview } from './utils/instagram';
 import { fetchClientFacebookPreview } from './utils/facebook';
+import { preloadThumbnail, type PreloadedThumb } from './utils/preloadThumb';
 import { isPro, licenseToken } from './lib/license';
 import { useStripeReturn } from './hooks/useStripeReturn';
 import {
@@ -112,6 +113,8 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
   // True while the slow full /api/info (real sizes/availability) is still loading
   // in the background, after the fast preview has already shown the cards.
   const [refining, setRefining] = useState(false);
+  /** IG/FB: decoded thumbnail — card stays on skeleton until this is set. */
+  const [preloadedThumb, setPreloadedThumb] = useState<PreloadedThumb | null>(null);
   const [savingToGallery, setSavingToGallery] = useState(false);
   // Mobile gallery prep: 'preparing' while the H.264 MP4 is fetched/transcoded
   // in the background, 'ready' once it's cached for an instant share-on-tap.
@@ -142,9 +145,11 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
     setError(null);
     setPhase('preview');
     setRefining(true);
+    setPreloadedThumb(null);
     fetchedUrl.current = normalized;
 
     const platform = detectPlatform(normalized)!;
+    const isSocial = platform.id === 'instagram' || platform.id === 'facebook';
     const instant =
       platform.id === 'instagram'
         ? fetchClientInstagramPreview(normalized)
@@ -155,55 +160,87 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
     setInfo({
       platform: platform.id,
       id: instant?.id ?? '',
-      title: instant?.title ?? 'Loading…',
-      author: instant?.author ?? '…',
+      title: isSocial ? 'Loading…' : (instant?.title ?? 'Loading…'),
+      author: isSocial ? '…' : (instant?.author ?? '…'),
       durationSeconds: null,
-      thumbnail: instant?.thumbnail ?? null,
+      thumbnail: null,
       formats: PLACEHOLDER_FORMATS,
     });
-    if (instant) setPhase('ready');
+    if (instant && !isSocial) setPhase('ready');
 
-    // Preview (thumbnail/title) and full info run in parallel — IG/FB no longer
-    // block the card on a slow yt-dlp extraction.
     const previewPromise = fetchVideoPreview(normalized).catch(() => null);
     const infoPromise = fetchVideoInfo(normalized);
-    let hasPreview = Boolean(instant);
+    let hasPreview = Boolean(instant && !isSocial);
 
-    void previewPromise.then((preview) => {
-      if (!preview || fetchedUrl.current !== normalized) return;
-      hasPreview = true;
-      const skipThumb = platform.id === 'instagram' || platform.id === 'facebook';
-      setInfo((prev) => ({
-        ...prev!,
-        ...preview,
-        formats: prev?.formats ?? PLACEHOLDER_FORMATS,
-        title: preview.title || prev?.title || 'Untitled video',
-        author: preview.author || prev?.author || 'Unknown',
-        thumbnail: skipThumb ? (prev?.thumbnail ?? null) : (preview.thumbnail ?? prev?.thumbnail ?? null),
-      }));
-      setPhase((p) => (p === 'preview' ? 'ready' : p));
-    });
-
-    // Full info (accurate sizes/availability) refines the cards in the background.
-    try {
-      const data = await infoPromise;
-      if (fetchedUrl.current !== normalized) return;
-      setInfo((prev) => ({
-        ...data,
-        title: data.title || prev?.title || 'Untitled video',
-        author: data.author || prev?.author || 'Unknown',
-        thumbnail: data.thumbnail ?? prev?.thumbnail ?? null,
-      }));
-      setSelected((current) => {
-        const chosen = data.formats.find((f) => f.id === current);
-        return chosen?.available ? current : pickDefault(data.formats);
+    if (!isSocial) {
+      void previewPromise.then((preview) => {
+        if (!preview || fetchedUrl.current !== normalized) return;
+        hasPreview = true;
+        setInfo((prev) => ({
+          ...prev!,
+          ...preview,
+          formats: prev?.formats ?? PLACEHOLDER_FORMATS,
+          title: preview.title || prev?.title || 'Untitled video',
+          author: preview.author || prev?.author || 'Unknown',
+          thumbnail: preview.thumbnail ?? prev?.thumbnail ?? null,
+        }));
+        setPhase((p) => (p === 'preview' ? 'ready' : p));
       });
-      setPhase((p) => (p === 'preview' || p === 'fetching' ? 'ready' : p));
+    }
+
+    try {
+      if (isSocial) {
+        const [preview, data] = await Promise.all([previewPromise, infoPromise]);
+        if (fetchedUrl.current !== normalized) return;
+        hasPreview = Boolean(preview);
+        const merged: VideoInfo = {
+          ...data,
+          title: data.title || preview?.title || 'Untitled video',
+          author: data.author || preview?.author || 'Unknown',
+          thumbnail: data.thumbnail ?? null,
+        };
+        const loaded = merged.thumbnail ? await preloadThumbnail(merged) : null;
+        if (fetchedUrl.current !== normalized) return;
+        setPreloadedThumb(loaded);
+        setInfo(merged);
+        setSelected((current) => {
+          const chosen = merged.formats.find((f) => f.id === current);
+          return chosen?.available ? current : pickDefault(merged.formats);
+        });
+        setPhase('ready');
+      } else {
+        const data = await infoPromise;
+        if (fetchedUrl.current !== normalized) return;
+        setInfo((prev) => ({
+          ...data,
+          title: data.title || prev?.title || 'Untitled video',
+          author: data.author || prev?.author || 'Unknown',
+          thumbnail: data.thumbnail ?? prev?.thumbnail ?? null,
+        }));
+        setSelected((current) => {
+          const chosen = data.formats.find((f) => f.id === current);
+          return chosen?.available ? current : pickDefault(data.formats);
+        });
+        setPhase((p) => (p === 'preview' || p === 'fetching' ? 'ready' : p));
+      }
     } catch (e) {
       if (fetchedUrl.current !== normalized) return;
-      if (hasPreview || instant) {
-        // Full info failed but the preview gave us a usable card — keep it and
-        // let the user try the download (it extracts independently).
+      if (isSocial) {
+        const preview = await previewPromise.catch(() => null);
+        if (preview) {
+          hasPreview = true;
+          setInfo({
+            ...preview,
+            platform: platform.id,
+            thumbnail: null,
+            formats: PLACEHOLDER_FORMATS,
+          });
+          setPhase('ready');
+        } else {
+          setError(e instanceof ApiError ? e.message : 'Could not fetch that video.');
+          setPhase((p) => (p === 'downloading' || p === 'success' ? p : 'error'));
+        }
+      } else if (hasPreview || instant) {
         setPhase((p) => (p === 'downloading' || p === 'success' ? p : 'ready'));
       } else {
         setError(e instanceof ApiError ? e.message : 'Could not fetch that video.');
@@ -353,6 +390,7 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
     lastJobId.current = null;
     galleryPayload.current = null;
     setGalleryPrep('idle');
+    setPreloadedThumb(null);
     fetchedUrl.current = '';
     setUrl('');
     setInfo(null);
@@ -366,6 +404,9 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
   const selectedFmt = info?.formats.find((f) => f.id === selected);
   const showProUpgrade = !pro && Boolean(selectedFmt?.premium);
   const isBusy = phase === 'fetching' || phase === 'preview' || phase === 'downloading';
+  const isSocialPreview = info?.platform === 'instagram' || info?.platform === 'facebook';
+  const previewCardReady =
+    !isSocialPreview || Boolean(preloadedThumb) || (phase === 'ready' && !info?.thumbnail);
 
   const view: 'ready' | 'downloading' | 'success' | null =
     phase === 'downloading'
@@ -458,10 +499,10 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
                   />
                 ) : (
                   <>
-                    {info.title === 'Loading…' && !info.thumbnail ? (
+                    {!previewCardReady || (info.title === 'Loading…' && !info.thumbnail) ? (
                       <VideoPreviewSkeleton />
                     ) : (
-                      <VideoPreview info={info} />
+                      <VideoPreview info={info} preloadedThumb={preloadedThumb} />
                     )}
                     {view === 'downloading' ? (
                       <DownloadProgress progress={progress} qualityLabel={qualityLabel} />

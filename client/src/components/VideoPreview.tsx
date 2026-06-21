@@ -2,7 +2,7 @@ import { motion } from 'framer-motion';
 import { useEffect, useState } from 'react';
 import type { VideoInfo } from '../types';
 import { formatDuration } from '../utils/format';
-import { apiUrl } from '../config/api';
+import { type PreloadedThumb, resolveThumbSrc } from '../utils/preloadThumb';
 import { PlatformIcon } from './PlatformIcon';
 
 /** Shimmer skeleton shown while metadata is being fetched. */
@@ -23,23 +23,23 @@ export function VideoPreviewSkeleton() {
 
 interface Props {
   info: VideoInfo;
-}
-
-function resolveThumbSrc(info: VideoInfo): string | null {
-  if (!info.thumbnail) return null;
-  return info.platform === 'youtube'
-    ? info.thumbnail
-    : apiUrl(`/api/thumb?url=${encodeURIComponent(info.thumbnail)}`);
+  /** When set, the thumbnail is already decoded — show it on the first frame. */
+  preloadedThumb?: PreloadedThumb | null;
 }
 
 /** Rich metadata card: thumbnail, title, author, duration, platform badge. */
-export function VideoPreview({ info }: Props) {
-  const [portrait, setPortrait] = useState(false);
+export function VideoPreview({ info, preloadedThumb }: Props) {
   const thumbSrc = resolveThumbSrc(info);
-  const [shownSrc, setShownSrc] = useState<string | null>(null);
+  const [portrait, setPortrait] = useState(preloadedThumb?.portrait ?? false);
+  const [shownSrc, setShownSrc] = useState<string | null>(preloadedThumb?.src ?? null);
 
-  // Preload before swapping src so IG/FB never flash a low-res OG still then the real frame.
   useEffect(() => {
+    if (preloadedThumb && preloadedThumb.src === thumbSrc) {
+      setShownSrc(preloadedThumb.src);
+      setPortrait(preloadedThumb.portrait);
+      return;
+    }
+
     if (!thumbSrc) {
       setShownSrc(null);
       setPortrait(false);
@@ -63,7 +63,7 @@ export function VideoPreview({ info }: Props) {
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps -- shownSrc intentionally excluded
-  }, [thumbSrc]);
+  }, [thumbSrc, preloadedThumb]);
 
   return (
     <motion.div
@@ -79,11 +79,7 @@ export function VideoPreview({ info }: Props) {
           }`}
         >
           {shownSrc ? (
-            <img
-              src={shownSrc}
-              alt={info.title}
-              className="h-full w-full object-cover"
-            />
+            <img src={shownSrc} alt={info.title} className="h-full w-full object-cover" />
           ) : (
             <div className="shimmer relative h-full w-full overflow-hidden bg-slate-100" aria-label="Loading thumbnail" />
           )}
