@@ -419,7 +419,7 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
           onProgress: () => {},
           onDone: () => {
             void triggerFileDownload(jobId);
-            setPhase('ready');
+            setPhase('success');
           },
           onError: (message) => {
             setError(message);
@@ -444,30 +444,6 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
     else setAwaitingShareTap(true);
   }, []);
 
-  const handleRedownload = useCallback(() => {
-    if (isMobileDevice()) {
-      void handleSaveToGallery();
-      return;
-    }
-    if (lastJobId.current) void triggerFileDownload(lastJobId.current);
-  }, [handleSaveToGallery]);
-
-  const handleReset = useCallback(() => {
-    unsubscribe.current?.();
-    unsubscribe.current = null;
-    lastJobId.current = null;
-    galleryPayload.current = null;
-    setAwaitingShareTap(false);
-    setPreloadedThumb(null);
-    fetchedUrl.current = '';
-    setUrl('');
-    setInfo(null);
-    setError(null);
-    setActiveQuality(null);
-    setProgress(INITIAL_PROGRESS);
-    setPhase('idle');
-  }, []);
-
   const qualityLabel = info?.formats.find((f) => f.id === activeQuality)?.label ?? '';
   const selectedFmt = info?.formats.find((f) => f.id === selected);
   const showProUpgrade = !pro && Boolean(selectedFmt?.premium);
@@ -481,11 +457,11 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
   const view: 'ready' | 'downloading' | 'success' | null =
     phase === 'downloading' && !isMobileDevice()
       ? 'downloading'
-      : phase === 'success'
+      : phase === 'success' && !isMobileDevice()
         ? 'success'
-      : phase === 'ready' || phase === 'preview' || phase === 'error'
-        ? 'ready'
-      : null;
+        : phase === 'ready' || phase === 'preview' || phase === 'error'
+          ? 'ready'
+          : null;
 
   return (
     <div className="app-bg min-h-screen text-slate-600">
@@ -556,64 +532,58 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
                 transition={{ duration: 0.25 }}
                 className="space-y-5"
               >
-                {view === 'success' && !isMobileDevice() ? (
-                  <SuccessState
-                    title={info.title}
-                    onReset={handleReset}
-                    onRedownload={handleRedownload}
-                  />
-                ) : (
-                  <>
-                    {!previewCardReady || (info.title === 'Loading…' && !info.thumbnail) ? (
-                      <VideoPreviewSkeleton />
-                    ) : (
-                      <VideoPreview info={info} preloadedThumb={preloadedThumb} />
-                    )}
-                    {view === 'downloading' ? (
-                      <DownloadProgress
-                        progress={progress}
-                        qualityLabel={qualityLabel}
-                        processingOnly
+                <>
+                  {!previewCardReady || (info.title === 'Loading…' && !info.thumbnail) ? (
+                    <VideoPreviewSkeleton />
+                  ) : (
+                    <VideoPreview info={info} preloadedThumb={preloadedThumb} />
+                  )}
+                  {view === 'downloading' ? (
+                    <DownloadProgress
+                      progress={progress}
+                      qualityLabel={qualityLabel}
+                      processingOnly
+                    />
+                  ) : view === 'success' ? (
+                    <SuccessState />
+                  ) : (
+                    <>
+                      <QualitySelector
+                        formats={info.formats}
+                        selected={selected}
+                        onSelect={setSelected}
+                        mode={codecMode}
+                        onModeChange={setCodecMode}
+                        pro={pro}
+                        refining={refining}
+                        downloadReady={
+                          isMobileDevice()
+                            ? previewCardReady && phase === 'ready'
+                            : (info.platform !== 'instagram' && info.platform !== 'facebook') || infoWarm
+                        }
+                        saving={mobileSaving}
+                        saveFallback={awaitingShareTap}
+                        onDownload={() => handleDownload(selected, codecMode)}
+                        onUpgrade={() => proPanelRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })}
                       />
-                    ) : (
-                      <>
-                        <QualitySelector
-                          formats={info.formats}
-                          selected={selected}
-                          onSelect={setSelected}
-                          mode={codecMode}
-                          onModeChange={setCodecMode}
-                          pro={pro}
-                          refining={refining}
-                          downloadReady={
-                            isMobileDevice()
-                              ? previewCardReady && phase === 'ready'
-                              : (info.platform !== 'instagram' && info.platform !== 'facebook') || infoWarm
-                          }
-                          saving={mobileSaving}
-                          saveFallback={awaitingShareTap}
-                          onDownload={() => handleDownload(selected, codecMode)}
-                          onUpgrade={() => proPanelRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })}
-                        />
-                        <AnimatePresence>
-                          {showProUpgrade && (
-                            <motion.div
-                              ref={proPanelRef}
-                              id="pro-upgrade"
-                              key="pro-panel"
-                              initial={{ opacity: 0, y: 16 }}
-                              animate={{ opacity: 1, y: 0 }}
-                              exit={{ opacity: 0, y: 8 }}
-                              transition={{ duration: 0.35 }}
-                            >
-                              <ProUpgradePanel inline selectedQuality={selectedFmt?.label} />
-                            </motion.div>
-                          )}
-                        </AnimatePresence>
-                      </>
-                    )}
-                  </>
-                )}
+                      <AnimatePresence>
+                        {showProUpgrade && (
+                          <motion.div
+                            ref={proPanelRef}
+                            id="pro-upgrade"
+                            key="pro-panel"
+                            initial={{ opacity: 0, y: 16 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            exit={{ opacity: 0, y: 8 }}
+                            transition={{ duration: 0.35 }}
+                          >
+                            <ProUpgradePanel inline selectedQuality={selectedFmt?.label} />
+                          </motion.div>
+                        )}
+                      </AnimatePresence>
+                    </>
+                  )}
+                </>
               </motion.div>
             )}
           </AnimatePresence>

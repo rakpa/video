@@ -1,26 +1,17 @@
 import { motion } from 'framer-motion';
-import { Confetti } from './Confetti';
-import { Button } from './Button';
 
-interface Props {
-  title: string;
-  onReset: () => void;
-  onRedownload: () => void;
-}
-
-export function SuccessState({ title, onReset, onRedownload }: Props) {
+/** Desktop: shown after browser download starts — replaces quality/download controls. */
+export function SuccessState() {
   return (
     <motion.div
-      initial={{ opacity: 0, scale: 0.96 }}
-      animate={{ opacity: 1, scale: 1 }}
+      initial={{ opacity: 0, y: 14 }}
+      animate={{ opacity: 1, y: 0 }}
       className="glass relative overflow-hidden rounded-3xl p-8 text-center shadow-card"
     >
-      <Confetti />
-
       <motion.div
         initial={{ scale: 0 }}
         animate={{ scale: 1 }}
-        transition={{ type: 'spring', stiffness: 400, damping: 16, delay: 0.1 }}
+        transition={{ type: 'spring', stiffness: 400, damping: 16, delay: 0.05 }}
         className="mx-auto grid h-16 w-16 place-items-center rounded-full bg-emerald-50"
       >
         <motion.svg
@@ -37,21 +28,17 @@ export function SuccessState({ title, onReset, onRedownload }: Props) {
             d="m5 13 4 4L19 7"
             initial={{ pathLength: 0 }}
             animate={{ pathLength: 1 }}
-            transition={{ duration: 0.4, delay: 0.25 }}
+            transition={{ duration: 0.4, delay: 0.15 }}
           />
         </motion.svg>
       </motion.div>
 
-      <h3 className="mt-5 text-2xl font-bold text-slate-900">Your download is ready! 🎉</h3>
-      <p className="mx-auto mt-2 max-w-md text-sm text-slate-500">
-        <span className="line-clamp-1 font-medium text-slate-700">{title}</span>
-        {' '}has been saved to your device as an MP4 with sound.
+      <h3 className="mt-5 text-2xl font-bold text-slate-900">Download Successful! 🎉</h3>
+      <p className="mx-auto mt-2 max-w-md text-sm leading-relaxed text-slate-500">
+        Your file has been downloaded successfully.
+        <br />
+        You can now access it from your Downloads folder.
       </p>
-
-      <div className="mt-6 flex flex-col justify-center gap-3 sm:flex-row">
-        <Button variant="ghost" onClick={onRedownload}>Download again</Button>
-        <Button onClick={onReset}>Download another</Button>
-      </div>
     </motion.div>
   );
 }
