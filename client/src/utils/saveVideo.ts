@@ -67,6 +67,8 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 const GALLERY_POLL_MS = 100;
 const FILE_RETRY_MS = 150;
+const STATUS_404_GRACE_MS = 3_000;
+const STATUS_404_RETRIES = 15;
 
 async function readVideoPayloadFromResponse(res: Response): Promise<VideoFilePayload> {
   const buf = await res.arrayBuffer();
@@ -128,15 +130,28 @@ export async function waitForGalleryReady(jobId: string, timeoutMs = 12 * 60_000
   if (!isApiConfigured()) return;
 
   const started = Date.now();
+  let notFoundSince: number | null = null;
+
   while (Date.now() - started < timeoutMs) {
     const res = await fetch(apiUrl(`/api/file/${jobId}/status`));
+
     if (res.status === 404) {
-      throw new Error('That download session has expired.');
+      if (Date.now() - started < STATUS_404_GRACE_MS) {
+        await sleep(GALLERY_POLL_MS);
+        continue;
+      }
+      notFoundSince ??= Date.now();
+      if (Date.now() - notFoundSince < STATUS_404_GRACE_MS * STATUS_404_RETRIES) {
+        await sleep(GALLERY_POLL_MS);
+        continue;
+      }
+      throw new Error('That download session has expired. Try downloading again.');
     }
+    notFoundSince = null;
 
     const data = (await res.json().catch(() => ({}))) as FileStatus;
 
-    if (res.status === 500 || data.galleryFailed) {
+    if (res.status === 500 || data.galleryFailed || data.status === 'error') {
       throw new Error(data.message ?? 'Could not prepare this video for your gallery.');
     }
 
@@ -160,20 +175,29 @@ export async function waitForMobileGalleryPayload(
   }
 
   const started = Date.now();
+  let notFoundSince: number | null = null;
+
   while (Date.now() - started < timeoutMs) {
     const res = await fetch(apiUrl(`/api/file/${jobId}/status`));
+
     if (res.status === 404) {
-      throw new Error('That download session has expired.');
+      if (Date.now() - started < STATUS_404_GRACE_MS) {
+        await sleep(GALLERY_POLL_MS);
+        continue;
+      }
+      notFoundSince ??= Date.now();
+      if (Date.now() - notFoundSince < STATUS_404_GRACE_MS * STATUS_404_RETRIES) {
+        await sleep(GALLERY_POLL_MS);
+        continue;
+      }
+      throw new Error('That download session has expired. Try downloading again.');
     }
+    notFoundSince = null;
 
     const data = (await res.json().catch(() => ({}))) as FileStatus;
 
-    if (res.status === 500 || data.galleryFailed) {
+    if (res.status === 500 || data.galleryFailed || data.status === 'error') {
       throw new Error(data.message ?? 'Could not prepare this video for your gallery.');
-    }
-
-    if (data.status === 'error') {
-      throw new Error(data.message ?? 'Download failed.');
     }
 
     if (res.ok && data.status === 'ready' && data.galleryReady !== false) {

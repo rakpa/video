@@ -511,7 +511,7 @@ export function startDownload(
   const igFbMaxHeight =
     platformId === 'instagram' || platformId === 'facebook'
       ? fast
-        ? 360
+        ? 480
         : mode === 'compatible'
           ? 720
           : Math.min(quality.height, 1080)
@@ -519,10 +519,7 @@ export function startDownload(
 
   const args = [
     '-f',
-    buildSelector(quality, mode, platformId, {
-      maxHeight: igFbMaxHeight,
-      h264Only: fast && (platformId === 'instagram' || platformId === 'facebook'),
-    }),
+    buildSelector(quality, mode, platformId, { maxHeight: igFbMaxHeight }),
     '--merge-output-format', 'mp4',
     // Only pass --ffmpeg-location for a real path. A bare name like "ffmpeg"
     // is rejected by yt-dlp ("ffmpeg-location ffmpeg does not exist") and makes

@@ -102,13 +102,13 @@ export function buildSelector(
   quality: QualityDef,
   mode: CodecMode,
   platformId?: string,
-  options?: { maxHeight?: number; h264Only?: boolean },
+  options?: { maxHeight?: number },
 ): string {
   if (platformId === 'youtube' && mode === 'best') {
     return fastYoutubeSelector(quality.height);
   }
   if (platformId === 'instagram' || platformId === 'facebook') {
-    return socialGallerySelector(quality, mode, options?.maxHeight, options?.h264Only);
+    return socialGallerySelector(quality, mode, options?.maxHeight);
   }
   if (mode === 'compatible') {
     // Cap at 1080p and strongly prefer avc1 (H.264) + mp4a (AAC), with
@@ -135,20 +135,15 @@ function socialGallerySelector(
   quality: QualityDef,
   mode: CodecMode,
   maxHeight = 720,
-  h264Only = false,
 ): string {
   const cap =
     mode === 'compatible'
       ? Math.min(quality.height, maxHeight)
       : Math.min(quality.height, maxHeight, 1080);
-  const h264Tiers = [
+  return [
     `b[ext=mp4][vcodec^=avc1][height<=${cap}]`,
     `b[ext=mp4][vcodec*=avc][height<=${cap}]`,
     `b[vcodec^=avc1][height<=${cap}]`,
-  ];
-  if (h264Only) return h264Tiers.join('/');
-  return [
-    ...h264Tiers,
     `b[ext=mp4][height<=${cap}]`,
     `b[height<=${cap}]`,
     'b',

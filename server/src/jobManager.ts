@@ -209,7 +209,7 @@ async function runWithRetry(job: Job, url: string, quality: QualityDef, mode: Co
               job.errorMessage =
                 'Could not prepare this video for your gallery. Try again or pick 720p.';
               emit(job, { error: job.errorMessage });
-              void destroyJob(job.id);
+              scheduleDestroyJob(job.id);
               return;
             }
             logger.warn('Gallery normalize failed, retrying once:', (err as Error).message);
@@ -223,7 +223,7 @@ async function runWithRetry(job: Job, url: string, quality: QualityDef, mode: Co
               job.errorMessage =
                 'Could not prepare this video for your gallery. Try again or pick 720p.';
               emit(job, { error: job.errorMessage });
-              void destroyJob(job.id);
+              scheduleDestroyJob(job.id);
               return;
             }
           }
@@ -246,7 +246,7 @@ async function runWithRetry(job: Job, url: string, quality: QualityDef, mode: Co
       job.status = 'error';
       job.errorMessage = (err as Error).message;
       emit(job, { error: (err as Error).message });
-      void destroyJob(job.id);
+      scheduleDestroyJob(job.id);
       return;
     }
   }
@@ -267,6 +267,11 @@ export async function destroyJob(id: string): Promise<void> {
     /* already exited */
   }
   await fsp.rm(job.dir, { recursive: true, force: true }).catch(() => undefined);
+}
+
+/** Keep failed jobs alive briefly so /status can return the real error (not 404). */
+function scheduleDestroyJob(id: string, delayMs = 10 * 60_000): void {
+  setTimeout(() => void destroyJob(id), delayMs).unref();
 }
 
 /**

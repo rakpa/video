@@ -361,19 +361,24 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
 
         if (mobile) {
           let sseError: string | null = null;
-          unsubscribe.current = subscribeProgress(jobId, {
-            onProgress: () => {
-              /* Mobile shows processing-only UI — no 0–100% bar. */
-            },
-            onDone: () => {},
-            onError: (message) => {
-              sseError = message;
-            },
+          const sseFailed = new Promise<never>((_, reject) => {
+            unsubscribe.current = subscribeProgress(jobId, {
+              onProgress: () => {
+                /* Mobile shows processing-only UI — no 0–100% bar. */
+              },
+              onDone: () => {},
+              onError: (message) => {
+                sseError = message;
+                reject(new Error(message));
+              },
+            });
           });
 
           try {
-            const payload = await waitForMobileGalleryPayload(jobId);
-            if (sseError) throw new Error(sseError);
+            const payload = await Promise.race([
+              waitForMobileGalleryPayload(jobId),
+              sseFailed,
+            ]);
             galleryPayload.current = payload;
             const result = await openGalleryShareSheet(payload);
             if (result === 'unavailable') {
@@ -383,6 +388,7 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
               setPhase('ready');
             }
           } catch (e) {
+            if (sseError) throw new Error(sseError);
             throw e;
           }
         } else {
