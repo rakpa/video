@@ -118,8 +118,10 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
   const [infoWarm, setInfoWarm] = useState(false);
   /** IG/FB: decoded thumbnail — card stays on skeleton until this is set. */
   const [preloadedThumb, setPreloadedThumb] = useState<PreloadedThumb | null>(null);
-  /** Mobile: user tapped Download — preparing video then auto-opens save prompt. */
+  /** Mobile: preparing video / auto-opening save prompt. */
   const [mobileSaving, setMobileSaving] = useState(false);
+  /** Mobile: auto-share blocked — show Download as fallback. */
+  const [mobileShareFallback, setMobileShareFallback] = useState(false);
 
   const lastJobId = useRef<string | null>(null);
   // The pre-fetched, gallery-ready video so the Save tap can open the share
@@ -134,6 +136,8 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
   const prefetchUrl = useRef('');
   const prefetchKeyRef = useRef('');
   const prefetchPayloadPromise = useRef<Promise<VideoFilePayload | null> | null>(null);
+  const autoShareKeyRef = useRef('');
+  const mobileAutoSaveInflightRef = useRef('');
   const proPanelRef = useRef<HTMLDivElement>(null);
 
   const mobilePrefetchKey = useCallback(
@@ -203,13 +207,44 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
     [mobilePrefetchKey],
   );
 
-  const startMobilePrefetch = useCallback(
-    (normalized: string, quality: QualityId, isIgFb: boolean) => {
+  const runMobileAutoSave = useCallback(
+    async (normalized: string, quality: QualityId, isIgFb: boolean) => {
       if (!isMobileDevice() || !isApiConfigured()) return;
-      if (isIgFb && !infoWarmRef.current) return;
-      void ensureMobilePayload(normalized, quality, isIgFb).catch(() => undefined);
+
+      const key = mobilePrefetchKey(normalized, quality, isIgFb);
+      if (autoShareKeyRef.current === key || mobileAutoSaveInflightRef.current === key) return;
+
+      mobileAutoSaveInflightRef.current = key;
+      setMobileShareFallback(false);
+      setMobileSaving(true);
+      setError(null);
+
+      try {
+        const payload = await ensureMobilePayload(normalized, quality, isIgFb);
+        if (fetchedUrl.current !== normalized) return;
+        if (mobilePrefetchKey(fetchedUrl.current, quality, isIgFb) !== key) return;
+
+        autoShareKeyRef.current = key;
+        const result = await openGalleryShareSheet(payload);
+        if (result === 'shared') return;
+        setMobileShareFallback(true);
+        if (result === 'unavailable') {
+          setError('Tap Download to open the save menu.');
+        }
+      } catch (e) {
+        setMobileShareFallback(true);
+        setError(
+          e instanceof ApiError ? e.message : e instanceof Error ? e.message : 'Could not prepare this video.',
+        );
+        setPhase('error');
+      } finally {
+        if (mobileAutoSaveInflightRef.current === key) {
+          mobileAutoSaveInflightRef.current = '';
+        }
+        setMobileSaving(false);
+      }
     },
-    [ensureMobilePayload],
+    [ensureMobilePayload, mobilePrefetchKey],
   );
 
   useStripeReturn(useCallback(() => setPro(true), []));
@@ -236,7 +271,10 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
     prefetchKeyRef.current = '';
     prefetchPayloadPromise.current = null;
     galleryPayload.current = null;
+    autoShareKeyRef.current = '';
+    mobileAutoSaveInflightRef.current = '';
     setMobileSaving(false);
+    setMobileShareFallback(false);
     setPreloadedThumb(null);
     fetchedUrl.current = normalized;
 
@@ -416,14 +454,6 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [url]);
 
-  /** Mobile: prefetch gallery-ready file in background so Download opens the share sheet on first tap. */
-  useEffect(() => {
-    if (!isMobileDevice() || phase !== 'ready' || !fetchedUrl.current || !info) return;
-    const isIgFb = info.platform === 'instagram' || info.platform === 'facebook';
-    if (isIgFb && !infoWarm) return;
-    startMobilePrefetch(fetchedUrl.current, selected, isIgFb);
-  }, [phase, infoWarm, selected, info, startMobilePrefetch]);
-
   const handleDownload = useCallback(
     async (quality: QualityId, mode: CodecMode) => {
       if (!info) return;
@@ -508,6 +538,33 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
     !isSocialPreview ||
     Boolean(preloadedThumb) ||
     (phase === 'ready' && (!info?.thumbnail || infoWarm));
+
+  /** Mobile: prepare video then auto-open save prompt — no Download tap required. */
+  useEffect(() => {
+    if (!isMobileDevice() || phase !== 'ready' || !fetchedUrl.current || !info || mobileShareFallback) {
+      return;
+    }
+    if (!previewCardReady) return;
+
+    const isIgFb = info.platform === 'instagram' || info.platform === 'facebook';
+    if (isIgFb && !infoWarm) {
+      setMobileSaving(true);
+      return;
+    }
+
+    const key = mobilePrefetchKey(fetchedUrl.current, selected, isIgFb);
+    if (autoShareKeyRef.current === key) return;
+
+    void runMobileAutoSave(fetchedUrl.current, selected, isIgFb);
+  }, [
+    phase,
+    infoWarm,
+    selected,
+    info,
+    previewCardReady,
+    mobileShareFallback,
+    runMobileAutoSave,
+  ]);
 
   const view: 'ready' | 'downloading' | 'success' | null =
     phase === 'downloading' && !isMobileDevice()
@@ -613,7 +670,7 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
                         refining={refining}
                         downloadReady={
                           isMobileDevice()
-                            ? previewCardReady && phase === 'ready'
+                            ? mobileShareFallback && previewCardReady && phase === 'ready'
                             : (info.platform !== 'instagram' && info.platform !== 'facebook') || infoWarm
                         }
                         saving={mobileSaving}
@@ -629,6 +686,8 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
                             void openGalleryShareSheet(cached).then((result) => {
                               if (result === 'unavailable') {
                                 setError('Could not open the save menu. Tap Download again.');
+                              } else {
+                                setMobileShareFallback(false);
                               }
                             });
                             return;
