@@ -21,7 +21,7 @@ import {
 } from './api/client';
 import {
   fetchVideoFile,
-  shareVideoToGallery,
+  openGalleryShareSheet,
   type VideoFilePayload,
 } from './utils/saveVideo';
 
@@ -41,7 +41,6 @@ import { VideoPreview, VideoPreviewSkeleton } from './components/VideoPreview';
 import { QualitySelector } from './components/QualitySelector';
 import { ProUpgradePanel } from './components/ProUpgradePanel';
 import { DownloadProgress } from './components/DownloadProgress';
-import { MobileSavePrompt } from './components/MobileSavePrompt';
 import { SuccessState } from './components/SuccessState';
 import { ErrorBanner } from './components/ErrorBanner';
 import { Footer } from './components/Footer';
@@ -116,7 +115,7 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
   const [refining, setRefining] = useState(false);
   /** IG/FB: decoded thumbnail — card stays on skeleton until this is set. */
   const [preloadedThumb, setPreloadedThumb] = useState<PreloadedThumb | null>(null);
-  const [savingToGallery, setSavingToGallery] = useState(false);
+  const [awaitingShareTap, setAwaitingShareTap] = useState(false);
 
   const lastJobId = useRef<string | null>(null);
   // The pre-fetched, gallery-ready video so the Save tap can open the share
@@ -128,6 +127,27 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
   const proPanelRef = useRef<HTMLDivElement>(null);
 
   useStripeReturn(useCallback(() => setPro(true), []));
+
+  /** Fallback: one tap anywhere opens the native share sheet (no "Ready to save" page). */
+  useEffect(() => {
+    if (!awaitingShareTap || !galleryPayload.current) return;
+
+    const open = () => {
+      void openGalleryShareSheet(galleryPayload.current!).then((result) => {
+        if (result !== 'unavailable') {
+          setAwaitingShareTap(false);
+          setPhase('ready');
+        }
+      });
+    };
+
+    document.addEventListener('touchend', open, { once: true, capture: true });
+    document.addEventListener('click', open, { once: true, capture: true });
+    return () => {
+      document.removeEventListener('touchend', open, { capture: true });
+      document.removeEventListener('click', open, { capture: true });
+    };
+  }, [awaitingShareTap]);
 
   const pickDefault = (formats: AvailableFormat[]): QualityId =>
     (formats.find((f) => f.id === '1080' && f.available) ?? formats.find((f) => f.available) ?? formats[0]).id;
@@ -271,24 +291,6 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [url]);
 
-  /**
-   * Mobile: open share sheet from a user tap (iOS requires gesture).
-   * Returns to ready when done or cancelled.
-   */
-  const handleMobileSave = useCallback(async () => {
-    if (!galleryPayload.current) return;
-    setSavingToGallery(true);
-    setError(null);
-    try {
-      const result = await shareVideoToGallery(galleryPayload.current);
-      if (result !== 'unavailable') setPhase('ready');
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Could not save to gallery.');
-    } finally {
-      setSavingToGallery(false);
-    }
-  }, []);
-
   const handleDownload = useCallback(
     async (quality: QualityId, mode: CodecMode) => {
       if (!info) return;
@@ -301,18 +303,14 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
       setActiveQuality(quality);
       setProgress(INITIAL_PROGRESS);
       galleryPayload.current = null;
+      setAwaitingShareTap(false);
       setPhase('downloading');
       setProgress({ ...INITIAL_PROGRESS, percent: 1 });
       try {
         const platform = detectPlatform(fetchedUrl.current || url);
         const mobile = isMobileDevice();
-        // On mobile the file is destined for the Photos gallery, which only
-        // imports H.264/AAC MP4 — never VP9/AV1/HEVC. Force compatible mode for
-        // EVERY platform (not just IG/FB) so "Save Video" actually lands in
-        // Photos. YouTube "best" could otherwise hand back VP9 that iOS rejects.
         const isIgFb = platform?.id === 'instagram' || platform?.id === 'facebook';
         const effectiveMode: CodecMode = mobile || isIgFb ? 'compatible' : mode;
-        // Mobile IG/FB: 720p is enough for gallery and transcodes 3–5× faster on the server.
         let effectiveQuality = quality;
         if (
           mobile &&
@@ -328,47 +326,53 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
           licenseToken(),
         );
         lastJobId.current = jobId;
-
         unsubscribe.current?.();
-        unsubscribe.current = subscribeProgress(jobId, {
-          onProgress: setProgress,
-          onDone: () => {
-            if (isMobileDevice()) {
-              setProgress((p) => ({
-                ...p,
-                percent: 100,
-                speed: null,
-                eta: null,
-                stage: 'done',
-              }));
-              void (async () => {
-                try {
-                  const payload = await fetchVideoFile(jobId);
-                  galleryPayload.current = payload;
-                  const result = await shareVideoToGallery(payload);
-                  // Share sheet = final step (IMG_5567). Skip success / video-player screens.
-                  if (result === 'unavailable') {
-                    setPhase('mobile-save');
-                  } else {
-                    setPhase('ready');
-                  }
-                } catch (e) {
-                  setError(e instanceof Error ? e.message : 'Could not save to gallery.');
-                  setPhase('error');
-                }
-              })();
-            } else {
+
+        const openShareWhenReady = async () => {
+          setProgress((p) => ({
+            ...p,
+            percent: 100,
+            speed: null,
+            eta: null,
+            stage: 'done',
+          }));
+          const payload = await fetchVideoFile(jobId);
+          galleryPayload.current = payload;
+          const result = await openGalleryShareSheet(payload);
+          if (result === 'unavailable') {
+            setAwaitingShareTap(true);
+          } else {
+            setAwaitingShareTap(false);
+            setPhase('ready');
+          }
+        };
+
+        if (mobile) {
+          // Keep the whole flow in this async chain (started by the Download tap)
+          // so iOS is more likely to open the share sheet automatically.
+          await new Promise<void>((resolve, reject) => {
+            unsubscribe.current = subscribeProgress(jobId, {
+              onProgress: setProgress,
+              onDone: () => resolve(),
+              onError: (message) => reject(new Error(message)),
+            });
+          });
+          await openShareWhenReady();
+        } else {
+          unsubscribe.current = subscribeProgress(jobId, {
+            onProgress: setProgress,
+            onDone: () => {
               setPhase('success');
               void triggerFileDownload(jobId);
-            }
-          },
-          onError: (message) => {
-            setError(message);
-            setPhase('error');
-          },
-        });
+            },
+            onError: (message) => {
+              setError(message);
+              setPhase('error');
+            },
+          });
+        }
       } catch (e) {
-        setError(e instanceof ApiError ? e.message : 'Could not start the download.');
+        setError(e instanceof ApiError ? e.message : e instanceof Error ? e.message : 'Could not start the download.');
         setPhase('error');
       }
     },
@@ -376,24 +380,14 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
   );
 
   const handleSaveToGallery = useCallback(async () => {
-    if (galleryPayload.current) {
-      await handleMobileSave();
-      return;
+    if (!galleryPayload.current && lastJobId.current) {
+      galleryPayload.current = await fetchVideoFile(lastJobId.current);
     }
-    if (!lastJobId.current) return;
-    setSavingToGallery(true);
-    try {
-      const payload = await fetchVideoFile(lastJobId.current);
-      galleryPayload.current = payload;
-      const result = await shareVideoToGallery(payload);
-      if (result === 'unavailable') setPhase('mobile-save');
-      else setPhase('ready');
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Could not save to gallery.');
-    } finally {
-      setSavingToGallery(false);
-    }
-  }, [handleMobileSave]);
+    if (!galleryPayload.current) return;
+    const result = await openGalleryShareSheet(galleryPayload.current);
+    if (result !== 'unavailable') setPhase('ready');
+    else setAwaitingShareTap(true);
+  }, []);
 
   const handleRedownload = useCallback(() => {
     if (isMobileDevice()) {
@@ -408,6 +402,7 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
     unsubscribe.current = null;
     lastJobId.current = null;
     galleryPayload.current = null;
+    setAwaitingShareTap(false);
     setPreloadedThumb(null);
     fetchedUrl.current = '';
     setUrl('');
@@ -426,11 +421,9 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
   const previewCardReady =
     !isSocialPreview || Boolean(preloadedThumb) || (phase === 'ready' && !info?.thumbnail);
 
-  const view: 'ready' | 'downloading' | 'mobile-save' | 'success' | null =
+  const view: 'ready' | 'downloading' | 'success' | null =
     phase === 'downloading'
       ? 'downloading'
-      : phase === 'mobile-save'
-        ? 'mobile-save'
       : phase === 'success'
         ? 'success'
       : phase === 'ready' || phase === 'preview' || phase === 'error'
@@ -506,15 +499,7 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
                 transition={{ duration: 0.25 }}
                 className="space-y-5"
               >
-                {view === 'mobile-save' && galleryPayload.current ? (
-                  <MobileSavePrompt
-                    filename={galleryPayload.current.filename}
-                    sizeBytes={galleryPayload.current.blob.size}
-                    saving={savingToGallery}
-                    onSave={handleMobileSave}
-                    onDone={() => setPhase('ready')}
-                  />
-                ) : view === 'success' && !isMobileDevice() ? (
+                {view === 'success' && !isMobileDevice() ? (
                   <SuccessState
                     title={info.title}
                     onReset={handleReset}

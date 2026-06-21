@@ -147,33 +147,46 @@ export async function fetchVideoFile(jobId: string): Promise<VideoFilePayload> {
   throw lastError ?? new Error('Could not fetch the video file.');
 }
 
-/**
- * Open the OS share sheet (Save Video → Photos). Requires a user tap on iOS —
- * call this from a button handler when auto-share is blocked.
- */
-export async function shareVideoToGallery(payload: VideoFilePayload): Promise<ShareResult> {
-  const file = new File([payload.blob], payload.filename, {
+function toShareFile(payload: VideoFilePayload): File {
+  return new File([payload.blob], payload.filename, {
     type: 'video/mp4',
     lastModified: Date.now(),
   });
+}
 
-  if (navigator.share && navigator.canShare?.({ files: [file] })) {
-    try {
-      await navigator.share({ files: [file] });
-      return 'shared';
-    } catch (err) {
-      if (err instanceof Error && err.name === 'AbortError') return 'cancelled';
-    }
+/** Open the iOS/Android share sheet (Save Video → Photos). */
+export async function shareVideoToGallery(payload: VideoFilePayload): Promise<ShareResult> {
+  if (!navigator.share) return 'unavailable';
+
+  const file = toShareFile(payload);
+  const canShareFiles = navigator.canShare?.({ files: [file] }) ?? true;
+
+  if (!canShareFiles) return 'unavailable';
+
+  try {
+    await navigator.share({ files: [file] });
+    return 'shared';
+  } catch (err) {
+    if (err instanceof Error && err.name === 'AbortError') return 'cancelled';
+    return 'unavailable';
   }
+}
 
+/** Retry share a few times — helps when called from the Download button's async chain. */
+export async function openGalleryShareSheet(payload: VideoFilePayload): Promise<ShareResult> {
+  for (let i = 0; i < 3; i += 1) {
+    const result = await shareVideoToGallery(payload);
+    if (result !== 'unavailable') return result;
+    await sleep(i === 0 ? 0 : 80);
+  }
   return 'unavailable';
 }
 
 export async function saveMobileVideoToGallery(jobId: string): Promise<void> {
   const payload = await fetchVideoFile(jobId);
-  const result = await shareVideoToGallery(payload);
+  const result = await openGalleryShareSheet(payload);
   if (result === 'unavailable') {
-    throw new Error('Could not open the save menu. Tap Save Video below.');
+    throw new Error('Could not open the save menu.');
   }
 }
 
