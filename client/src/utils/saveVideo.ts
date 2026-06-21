@@ -45,6 +45,45 @@ export interface VideoFilePayload {
 
 export type ShareResult = 'shared' | 'cancelled' | 'unavailable';
 
+let mobileGestureTouchHandler: ((e: Event) => void) | null = null;
+
+/** Remove any pending one-shot touch handler for mobile gallery save. */
+export function cancelMobileGalleryGestureFallback(): void {
+  if (!mobileGestureTouchHandler) return;
+  document.removeEventListener('touchstart', mobileGestureTouchHandler, true);
+  document.removeEventListener('click', mobileGestureTouchHandler, true);
+  mobileGestureTouchHandler = null;
+}
+
+/**
+ * Try Web Share immediately with quick retries (works on Android / some WebViews).
+ */
+export async function autoOpenMobileGallerySave(payload: VideoFilePayload): Promise<ShareResult> {
+  cancelMobileGalleryGestureFallback();
+  for (let i = 0; i < 5; i += 1) {
+    const result = await openGalleryShareSheet(payload);
+    if (result !== 'unavailable') return result;
+    if (i < 4) await sleep(i === 0 ? 0 : 40);
+  }
+  return 'unavailable';
+}
+
+/** One-shot tap anywhere → share sheet (iOS fallback when auto-open is blocked). */
+export function armMobileGalleryGestureSave(
+  payload: VideoFilePayload,
+  onResult: (result: ShareResult) => void,
+): () => void {
+  cancelMobileGalleryGestureFallback();
+  const open = () => {
+    cancelMobileGalleryGestureFallback();
+    void openGalleryShareSheet(payload).then(onResult);
+  };
+  mobileGestureTouchHandler = () => open();
+  document.addEventListener('touchstart', mobileGestureTouchHandler, true);
+  document.addEventListener('click', mobileGestureTouchHandler, true);
+  return cancelMobileGalleryGestureFallback;
+}
+
 /** iOS camera-roll style name — shows as IMG_5567 in the share sheet / Photos. */
 export function iosGalleryFilename(): string {
   const n = Math.floor(1000 + Math.random() * 9000);

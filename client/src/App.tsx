@@ -21,6 +21,9 @@ import {
   triggerFileDownload,
 } from './api/client';
 import {
+  armMobileGalleryGestureSave,
+  autoOpenMobileGallerySave,
+  cancelMobileGalleryGestureFallback,
   openGalleryShareSheet,
   waitForMobileGalleryPayload,
   type VideoFilePayload,
@@ -120,8 +123,12 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
   const [preloadedThumb, setPreloadedThumb] = useState<PreloadedThumb | null>(null);
   /** Mobile: preparing video / auto-opening save prompt. */
   const [mobileSaving, setMobileSaving] = useState(false);
-  /** Mobile: auto-share blocked — show Download as fallback. */
+  /** Mobile: paste-to-save flow — hide Download until auto-save fails. */
+  const [mobileAutoFlow, setMobileAutoFlow] = useState(false);
+  /** Mobile: auto-share blocked — show Save button as last resort. */
   const [mobileShareFallback, setMobileShareFallback] = useState(false);
+  /** Mobile: auto-share blocked — waiting for any tap to open sheet. */
+  const [mobileOpeningSave, setMobileOpeningSave] = useState(false);
 
   const lastJobId = useRef<string | null>(null);
   // The pre-fetched, gallery-ready video so the Save tap can open the share
@@ -138,6 +145,7 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
   const prefetchPayloadPromise = useRef<Promise<VideoFilePayload | null> | null>(null);
   const autoShareKeyRef = useRef('');
   const mobileAutoSaveInflightRef = useRef('');
+  const disarmGestureRef = useRef<(() => void) | null>(null);
   const proPanelRef = useRef<HTMLDivElement>(null);
 
   const mobilePrefetchKey = useCallback(
@@ -215,7 +223,7 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
       if (autoShareKeyRef.current === key || mobileAutoSaveInflightRef.current === key) return;
 
       mobileAutoSaveInflightRef.current = key;
-      setMobileShareFallback(false);
+      setMobileOpeningSave(false);
       setMobileSaving(true);
       setError(null);
 
@@ -224,13 +232,29 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
         if (fetchedUrl.current !== normalized) return;
         if (mobilePrefetchKey(fetchedUrl.current, quality, isIgFb) !== key) return;
 
-        autoShareKeyRef.current = key;
-        const result = await openGalleryShareSheet(payload);
-        if (result === 'shared') return;
-        setMobileShareFallback(true);
-        if (result === 'unavailable') {
-          setError('Tap Download to open the save menu.');
+        const result = await autoOpenMobileGallerySave(payload);
+        if (result === 'shared') {
+          autoShareKeyRef.current = key;
+          setMobileAutoFlow(false);
+          return;
         }
+        if (result === 'cancelled') {
+          setMobileAutoFlow(false);
+          return;
+        }
+
+        setMobileOpeningSave(true);
+        disarmGestureRef.current?.();
+        disarmGestureRef.current = armMobileGalleryGestureSave(payload, (retry) => {
+          setMobileOpeningSave(false);
+          if (retry === 'shared') {
+            autoShareKeyRef.current = key;
+            setMobileAutoFlow(false);
+          } else if (retry === 'unavailable') {
+            setMobileShareFallback(true);
+            setError('Tap Save to Gallery below.');
+          }
+        });
       } catch (e) {
         setMobileShareFallback(true);
         setError(
@@ -270,11 +294,16 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
     prefetchUrl.current = '';
     prefetchKeyRef.current = '';
     prefetchPayloadPromise.current = null;
-    galleryPayload.current = null;
     autoShareKeyRef.current = '';
     mobileAutoSaveInflightRef.current = '';
+    disarmGestureRef.current?.();
+    disarmGestureRef.current = null;
+    cancelMobileGalleryGestureFallback();
+    galleryPayload.current = null;
     setMobileSaving(false);
+    setMobileAutoFlow(isMobileDevice());
     setMobileShareFallback(false);
+    setMobileOpeningSave(false);
     setPreloadedThumb(null);
     fetchedUrl.current = normalized;
 
@@ -541,10 +570,8 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
 
   /** Mobile: prepare video then auto-open save prompt — no Download tap required. */
   useEffect(() => {
-    if (!isMobileDevice() || phase !== 'ready' || !fetchedUrl.current || !info || mobileShareFallback) {
-      return;
-    }
-    if (!previewCardReady) return;
+    if (!isMobileDevice() || phase !== 'ready' || !fetchedUrl.current || !info) return;
+    if (mobileShareFallback || mobileOpeningSave) return;
 
     const isIgFb = info.platform === 'instagram' || info.platform === 'facebook';
     if (isIgFb && !infoWarm) {
@@ -561,9 +588,10 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
     infoWarm,
     selected,
     info,
-    previewCardReady,
     mobileShareFallback,
+    mobileOpeningSave,
     runMobileAutoSave,
+    mobilePrefetchKey,
   ]);
 
   const view: 'ready' | 'downloading' | 'success' | null =
@@ -658,6 +686,13 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
                     />
                   ) : view === 'success' ? (
                     <SuccessState />
+                  ) : isMobileDevice() && mobileAutoFlow && !mobileShareFallback ? (
+                    <DownloadProgress
+                      progress={progress}
+                      qualityLabel={qualityLabel}
+                      mobileSave
+                      mobileOpening={mobileOpeningSave}
+                    />
                   ) : (
                     <>
                       <QualitySelector
@@ -673,7 +708,8 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
                             ? mobileShareFallback && previewCardReady && phase === 'ready'
                             : (info.platform !== 'instagram' && info.platform !== 'facebook') || infoWarm
                         }
-                        saving={mobileSaving}
+                        saving={mobileSaving || mobileOpeningSave}
+                        mobileSaveButton={isMobileDevice() && mobileShareFallback}
                         onDownload={() => {
                           const fmt = info.formats.find((f) => f.id === selected);
                           if (fmt?.premium && !pro) {
@@ -685,9 +721,10 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
                             setError(null);
                             void openGalleryShareSheet(cached).then((result) => {
                               if (result === 'unavailable') {
-                                setError('Could not open the save menu. Tap Download again.');
+                                setError('Could not open the save menu. Tap Save to Gallery again.');
                               } else {
                                 setMobileShareFallback(false);
+                                setMobileAutoFlow(false);
                               }
                             });
                             return;

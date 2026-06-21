@@ -17,6 +17,8 @@ interface Props {
   downloadReady?: boolean;
   /** Mobile: download in progress — show preparing message. */
   saving?: boolean;
+  /** Mobile fallback: label button "Save to Gallery" instead of Download. */
+  mobileSaveButton?: boolean;
   /** Starts the download of the selected quality (App handles Pro gating). */
   onDownload: () => void;
   /** Scroll/focus the inline Pro upgrade panel. */
@@ -30,7 +32,7 @@ interface Props {
  *
  * TEMP: 2K/4K no longer show as Pro for testing.
  */
-export function QualitySelector({ formats, selected, onSelect, mode, onModeChange, pro, refining = false, downloadReady = true, saving = false, onDownload, onUpgrade }: Props) {
+export function QualitySelector({ formats, selected, onSelect, mode, onModeChange, pro, refining = false, downloadReady = true, saving = false, mobileSaveButton = false, onDownload, onUpgrade }: Props) {
   // In compatible mode, only resolutions up to 1080p are offered (H.264 ceiling).
   const visibleFormats = useMemo(
     () =>
@@ -166,8 +168,10 @@ export function QualitySelector({ formats, selected, onSelect, mode, onModeChang
             <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2.5" aria-hidden="true">
               <path strokeLinecap="round" strokeLinejoin="round" d="M12 3v12m0 0 4-4m-4 4-4-4M5 21h14" />
             </svg>
-            Download {selectedFmt?.label}
-            <span className="text-sm font-normal text-white/75">· {mode === 'compatible' ? 'H.264' : 'best'}</span>
+            {mobileSaveButton ? 'Save to Gallery' : `Download ${selectedFmt?.label}`}
+            <span className="text-sm font-normal text-white/75">
+              · {mobileSaveButton ? selectedFmt?.label : mode === 'compatible' ? 'H.264' : 'best'}
+            </span>
           </>
         )}
       </RippleButton>
