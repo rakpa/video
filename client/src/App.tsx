@@ -237,7 +237,10 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
     if (instant && !isSocial) setPhase('ready');
 
     const previewPromise = fetchVideoPreview(normalized).catch(() => null);
-    const infoPromise = fetchVideoInfo(normalized).then((data) => {
+    const infoPromise = (isSocial
+      ? new Promise<void>((r) => setTimeout(r, 400)).then(() => fetchVideoInfo(normalized))
+      : fetchVideoInfo(normalized)
+    ).then((data) => {
       if (fetchedUrl.current === normalized) {
         infoWarmRef.current = true;
         setInfoWarm(true);
@@ -261,28 +264,54 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
         }));
         setPhase((p) => (p === 'preview' ? 'ready' : p));
       });
+    } else {
+      void previewPromise.then(async (preview) => {
+        if (!preview || fetchedUrl.current !== normalized) return;
+        hasPreview = true;
+        const card: VideoInfo = {
+          platform: platform.id,
+          id: preview.id || instant?.id || '',
+          title: preview.title || instant?.title || 'Untitled video',
+          author: preview.author || instant?.author || 'Unknown',
+          durationSeconds: preview.durationSeconds ?? null,
+          thumbnail: preview.thumbnail ?? null,
+          formats: PLACEHOLDER_FORMATS,
+        };
+        setInfo((prev) => ({ ...prev!, ...card }));
+        if (preview.thumbnail) {
+          const loaded = await preloadThumbnail(card);
+          if (fetchedUrl.current !== normalized) return;
+          setPreloadedThumb(loaded);
+        }
+        setPhase('ready');
+      });
     }
 
     try {
       if (isSocial) {
-        const [preview, data] = await Promise.all([previewPromise, infoPromise]);
+        const data = await infoPromise;
         if (fetchedUrl.current !== normalized) return;
-        hasPreview = Boolean(preview);
-        const merged: VideoInfo = {
-          ...data,
-          title: data.title || preview?.title || 'Untitled video',
-          author: data.author || preview?.author || 'Unknown',
-          thumbnail: data.thumbnail ?? null,
-        };
-        setInfo(merged);
-        setSelected((current) => {
-          const chosen = merged.formats.find((f) => f.id === current);
-          return chosen?.available ? current : pickDefault(merged.formats);
+        setInfo((prev) => {
+          if (!prev) return prev;
+          const thumbnail = prev.thumbnail ?? data.thumbnail ?? null;
+          if (!prev.thumbnail && data.thumbnail) {
+            void preloadThumbnail({ ...data, platform: platform.id, thumbnail: data.thumbnail }).then(
+              (loaded) => {
+                if (fetchedUrl.current !== normalized) return;
+                setPreloadedThumb(loaded);
+              },
+            );
+          }
+          return {
+            ...data,
+            title: data.title || prev.title || 'Untitled video',
+            author: data.author || prev.author || 'Unknown',
+            thumbnail,
+          };
         });
-        setPhase('ready');
-        void preloadThumbnail(merged).then((loaded) => {
-          if (fetchedUrl.current !== normalized) return;
-          setPreloadedThumb(loaded);
+        setSelected((current) => {
+          const chosen = data.formats.find((f) => f.id === current);
+          return chosen?.available ? current : pickDefault(data.formats);
         });
       } else {
         const data = await infoPromise;
@@ -305,12 +334,19 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
         const preview = await previewPromise.catch(() => null);
         if (preview) {
           hasPreview = true;
-          setInfo({
+          const card: VideoInfo = {
             ...preview,
             platform: platform.id,
-            thumbnail: null,
+            thumbnail: preview.thumbnail ?? null,
             formats: PLACEHOLDER_FORMATS,
-          });
+          };
+          setInfo(card);
+          if (preview.thumbnail) {
+            void preloadThumbnail(card).then((loaded) => {
+              if (fetchedUrl.current !== normalized) return;
+              setPreloadedThumb(loaded);
+            });
+          }
           setPhase('ready');
           setInfoWarm(false);
           infoWarmRef.current = false;
