@@ -17,8 +17,6 @@ interface Props {
   downloadReady?: boolean;
   /** Mobile: download in progress — show preparing message. */
   saving?: boolean;
-  /** Mobile: share sheet blocked — needs another tap. */
-  saveFallback?: boolean;
   /** Starts the download of the selected quality (App handles Pro gating). */
   onDownload: () => void;
   /** Scroll/focus the inline Pro upgrade panel. */
@@ -32,7 +30,7 @@ interface Props {
  *
  * TEMP: 2K/4K no longer show as Pro for testing.
  */
-export function QualitySelector({ formats, selected, onSelect, mode, onModeChange, pro, refining = false, downloadReady = true, saving = false, saveFallback = false, onDownload, onUpgrade }: Props) {
+export function QualitySelector({ formats, selected, onSelect, mode, onModeChange, pro, refining = false, downloadReady = true, saving = false, onDownload, onUpgrade }: Props) {
   // In compatible mode, only resolutions up to 1080p are offered (H.264 ceiling).
   const visibleFormats = useMemo(
     () =>
@@ -150,7 +148,7 @@ export function QualitySelector({ formats, selected, onSelect, mode, onModeChang
       <RippleButton
         onClick={needsUpgrade ? (onUpgrade ?? onDownload) : onDownload}
         upgrade={needsUpgrade}
-        disabled={(!downloadReady && !needsUpgrade && !saveFallback) || saving}
+        disabled={(!downloadReady && !needsUpgrade) || saving}
       >
         {needsUpgrade ? (
           <>
@@ -161,8 +159,6 @@ export function QualitySelector({ formats, selected, onSelect, mode, onModeChang
           </>
         ) : saving ? (
           <>Preparing your video, please wait…</>
-        ) : saveFallback ? (
-          <>Tap to open save menu</>
         ) : !downloadReady ? (
           <>Preparing download…</>
         ) : (

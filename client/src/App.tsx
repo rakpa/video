@@ -118,7 +118,6 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
   const [infoWarm, setInfoWarm] = useState(false);
   /** IG/FB: decoded thumbnail — card stays on skeleton until this is set. */
   const [preloadedThumb, setPreloadedThumb] = useState<PreloadedThumb | null>(null);
-  const [awaitingShareTap, setAwaitingShareTap] = useState(false);
   /** Mobile: user tapped Download — preparing video then auto-opens save prompt. */
   const [mobileSaving, setMobileSaving] = useState(false);
 
@@ -133,16 +132,29 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
   const infoWarmRef = useRef(false);
   const prefetchJobId = useRef<string | null>(null);
   const prefetchUrl = useRef('');
+  const prefetchKeyRef = useRef('');
   const prefetchPayloadPromise = useRef<Promise<VideoFilePayload | null> | null>(null);
   const proPanelRef = useRef<HTMLDivElement>(null);
+
+  const mobilePrefetchKey = useCallback(
+    (normalized: string, quality: QualityId, isIgFb: boolean) => {
+      let effectiveQuality = quality;
+      if (isIgFb && (quality === '1080' || quality === '1440' || quality === '2160')) {
+        effectiveQuality = '720';
+      }
+      return `${normalized}:${effectiveQuality}`;
+    },
+    [],
+  );
 
   /** Mobile: download on tap, then auto-open save prompt when ready. */
   const ensureMobilePayload = useCallback(
     async (normalized: string, quality: QualityId, isIgFb: boolean): Promise<VideoFilePayload> => {
-      if (prefetchUrl.current === normalized && galleryPayload.current) {
+      const key = mobilePrefetchKey(normalized, quality, isIgFb);
+      if (prefetchKeyRef.current === key && galleryPayload.current) {
         return galleryPayload.current;
       }
-      if (prefetchUrl.current === normalized && prefetchPayloadPromise.current) {
+      if (prefetchKeyRef.current === key && prefetchPayloadPromise.current) {
         const cached = await prefetchPayloadPromise.current;
         if (cached) return cached;
       }
@@ -159,6 +171,11 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
         effectiveQuality = '720';
       }
 
+      if (prefetchKeyRef.current !== key) {
+        galleryPayload.current = null;
+        prefetchPayloadPromise.current = null;
+      }
+      prefetchKeyRef.current = key;
       prefetchUrl.current = normalized;
       prefetchJobId.current = null;
 
@@ -167,13 +184,13 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
         reuse: false,
       })
         .then((jobId) => {
-          if (prefetchUrl.current !== normalized) return null;
+          if (prefetchKeyRef.current !== key) return null;
           prefetchJobId.current = jobId;
           lastJobId.current = jobId;
           return waitForMobileGalleryPayload(jobId);
         })
         .then((payload) => {
-          if (prefetchUrl.current !== normalized || !payload) return null;
+          if (prefetchKeyRef.current !== key || !payload) return null;
           galleryPayload.current = payload;
           return payload;
         });
@@ -183,7 +200,16 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
       if (!payload) throw new Error('Could not prepare this video. Try again.');
       return payload;
     },
-    [],
+    [mobilePrefetchKey],
+  );
+
+  const startMobilePrefetch = useCallback(
+    (normalized: string, quality: QualityId, isIgFb: boolean) => {
+      if (!isMobileDevice() || !isApiConfigured()) return;
+      if (isIgFb && !infoWarmRef.current) return;
+      void ensureMobilePayload(normalized, quality, isIgFb).catch(() => undefined);
+    },
+    [ensureMobilePayload],
   );
 
   useStripeReturn(useCallback(() => setPro(true), []));
@@ -207,10 +233,10 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
     infoWarmPromise.current = null;
     prefetchJobId.current = null;
     prefetchUrl.current = '';
+    prefetchKeyRef.current = '';
     prefetchPayloadPromise.current = null;
     galleryPayload.current = null;
     setMobileSaving(false);
-    setAwaitingShareTap(false);
     setPreloadedThumb(null);
     fetchedUrl.current = normalized;
 
@@ -390,6 +416,14 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [url]);
 
+  /** Mobile: prefetch gallery-ready file in background so Download opens the share sheet on first tap. */
+  useEffect(() => {
+    if (!isMobileDevice() || phase !== 'ready' || !fetchedUrl.current || !info) return;
+    const isIgFb = info.platform === 'instagram' || info.platform === 'facebook';
+    if (isIgFb && !infoWarm) return;
+    startMobilePrefetch(fetchedUrl.current, selected, isIgFb);
+  }, [phase, infoWarm, selected, info, startMobilePrefetch]);
+
   const handleDownload = useCallback(
     async (quality: QualityId, mode: CodecMode) => {
       if (!info) return;
@@ -409,14 +443,11 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
       /** Mobile: tap Download → preparing message → auto save prompt. */
       if (mobile) {
         setMobileSaving(true);
-        setAwaitingShareTap(false);
         try {
           const payload = await ensureMobilePayload(currentUrl, quality, isIgFb);
           const result = await openGalleryShareSheet(payload);
           if (result === 'unavailable') {
-            setAwaitingShareTap(true);
-          } else {
-            setAwaitingShareTap(false);
+            setError('Could not open the save menu. Tap Download again.');
           }
         } catch (e) {
           setError(e instanceof ApiError ? e.message : e instanceof Error ? e.message : 'Could not prepare this video.');
@@ -429,7 +460,6 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
 
       setProgress(INITIAL_PROGRESS);
       galleryPayload.current = null;
-      setAwaitingShareTap(false);
       setPhase('downloading');
       setProgress({ ...INITIAL_PROGRESS, percent: 1 });
       try {
@@ -587,8 +617,24 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
                             : (info.platform !== 'instagram' && info.platform !== 'facebook') || infoWarm
                         }
                         saving={mobileSaving}
-                        saveFallback={awaitingShareTap}
-                        onDownload={() => handleDownload(selected, codecMode)}
+                        onDownload={() => {
+                          const fmt = info.formats.find((f) => f.id === selected);
+                          if (fmt?.premium && !pro) {
+                            proPanelRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+                            return;
+                          }
+                          const cached = galleryPayload.current;
+                          if (isMobileDevice() && cached) {
+                            setError(null);
+                            void openGalleryShareSheet(cached).then((result) => {
+                              if (result === 'unavailable') {
+                                setError('Could not open the save menu. Tap Download again.');
+                              }
+                            });
+                            return;
+                          }
+                          void handleDownload(selected, codecMode);
+                        }}
                         onUpgrade={() => proPanelRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })}
                       />
                       <AnimatePresence>
