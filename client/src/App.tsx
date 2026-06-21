@@ -21,7 +21,6 @@ import {
   triggerFileDownload,
 } from './api/client';
 import {
-  fetchVideoFile,
   openGalleryShareSheet,
   waitForMobileGalleryPayload,
   type VideoFilePayload,
@@ -433,16 +432,6 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
     },
     [info, url, pro, ensureMobilePayload],
   );
-
-  const handleSaveToGallery = useCallback(async () => {
-    if (!galleryPayload.current && lastJobId.current) {
-      galleryPayload.current = await fetchVideoFile(lastJobId.current);
-    }
-    if (!galleryPayload.current) return;
-    const result = await openGalleryShareSheet(galleryPayload.current);
-    if (result !== 'unavailable') setPhase('ready');
-    else setAwaitingShareTap(true);
-  }, []);
 
   const qualityLabel = info?.formats.find((f) => f.id === activeQuality)?.label ?? '';
   const selectedFmt = info?.formats.find((f) => f.id === selected);
