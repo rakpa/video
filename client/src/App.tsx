@@ -505,7 +505,15 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
                       <VideoPreview info={info} preloadedThumb={preloadedThumb} />
                     )}
                     {view === 'downloading' ? (
-                      <DownloadProgress progress={progress} qualityLabel={qualityLabel} />
+                      <DownloadProgress
+                        progress={progress}
+                        qualityLabel={qualityLabel}
+                        preparingGallery={
+                          isMobileDevice() &&
+                          (info.platform === 'instagram' || info.platform === 'facebook') &&
+                          progress.percent >= 99
+                        }
+                      />
                     ) : (
                       <>
                         <QualitySelector

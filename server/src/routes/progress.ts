@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { getJob } from '../jobManager.js';
+import { getJob, isGalleryReady } from '../jobManager.js';
 
 export const progressRouter = Router();
 
@@ -28,7 +28,7 @@ progressRouter.get('/progress/:jobId', (req, res) => {
 
   // Immediately replay the latest known state so the client isn't blank.
   send('progress', job.progress);
-  if (job.status === 'ready') send('done', { ready: true });
+  if (job.status === 'ready' && isGalleryReady(job)) send('done', { ready: true });
   if (job.status === 'error') send('error', { message: job.errorMessage });
 
   const listener = (payload: unknown) => {

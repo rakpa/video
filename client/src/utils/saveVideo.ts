@@ -27,6 +27,14 @@ function isMp4Bytes(buf: ArrayBuffer): boolean {
   return v.getUint8(4) === 0x66 && v.getUint8(5) === 0x74 && v.getUint8(6) === 0x79 && v.getUint8(7) === 0x70;
 }
 
+/** iOS Photos only imports H.264 (avc1) via "Save Video" — HEVC share sheets look fine but save nothing. */
+function isH264Mp4(buf: ArrayBuffer): boolean {
+  const head = new TextDecoder('latin1').decode(buf.slice(0, Math.min(buf.byteLength, 512 * 1024)));
+  const hasAvc = head.includes('avc1') || head.includes('avc3');
+  const hasHevc = head.includes('hvc1') || head.includes('hev1') || head.includes('hvt1');
+  return hasAvc && !hasHevc;
+}
+
 function looksLikeHtmlOrJson(buf: ArrayBuffer): boolean {
   const head = new TextDecoder().decode(buf.slice(0, Math.min(256, buf.byteLength))).trimStart().toLowerCase();
   return head.startsWith('<!doctype') || head.startsWith('<html') || head.startsWith('{');
@@ -47,30 +55,65 @@ export function gallerySafeFilename(original: string): string {
   return `${stem || 'ClipVault-video'}.mp4`;
 }
 
+interface FileStatus {
+  status?: string;
+  galleryReady?: boolean;
+  galleryFailed?: boolean;
+  message?: string;
+}
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
 /**
- * Fetch the finished MP4 for sharing. Every platform takes the SAME path that
- * YouTube already uses successfully: the server serves a gallery-compatible
- * H.264 MP4 (Instagram/Facebook are downloaded in compatible mode and
- * transcoded server-side when needed), so no client-side codec gate or
- * platform-specific waiting is required — that special-casing is exactly what
- * made IG/FB behave differently from YouTube. A few retries cover the brief
- * window where the server is still finalising the file.
+ * Poll until IG/FB gallery transcode finishes. YouTube resolves immediately.
+ * Avoids holding /api/file open for minutes (mobile browsers kill those requests).
+ */
+export async function waitForGalleryReady(jobId: string, timeoutMs = 12 * 60_000): Promise<void> {
+  if (!isApiConfigured()) return;
+
+  const started = Date.now();
+  while (Date.now() - started < timeoutMs) {
+    const res = await fetch(apiUrl(`/api/file/${jobId}/status`));
+    if (res.status === 404) {
+      throw new Error('That download session has expired.');
+    }
+
+    const data = (await res.json().catch(() => ({}))) as FileStatus;
+
+    if (res.status === 500 || data.galleryFailed) {
+      throw new Error(data.message ?? 'Could not prepare this video for your gallery.');
+    }
+
+    if (res.ok && data.status === 'ready' && data.galleryReady !== false) {
+      return;
+    }
+
+    await sleep(1500);
+  }
+
+  throw new Error('Timed out preparing the video for your gallery. Try again.');
+}
+
+/**
+ * Fetch the finished MP4 for sharing. Polls until gallery-ready for IG/FB, then
+ * downloads in a short request so mobile connections do not time out mid-transcode.
  */
 export async function fetchVideoFile(jobId: string): Promise<VideoFilePayload> {
   if (!isApiConfigured()) {
     throw new Error(API_NOT_CONFIGURED_MSG);
   }
 
-  const maxAttempts = 6;
+  await waitForGalleryReady(jobId);
+
+  const maxAttempts = 8;
   let lastError: Error | null = null;
 
   for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
     const res = await fetch(apiUrl(`/api/file/${jobId}`));
     const buf = await res.arrayBuffer();
 
-    // 503 = server still finalising the file; wait briefly and retry.
     if (res.status === 503 && attempt < maxAttempts) {
-      await new Promise((r) => setTimeout(r, 2000));
+      await sleep(2000);
       continue;
     }
 
@@ -82,7 +125,7 @@ export async function fetchVideoFile(jobId: string): Promise<VideoFilePayload> {
         lastError = new Error('Could not fetch the video file.');
       }
       if (attempt < maxAttempts) {
-        await new Promise((r) => setTimeout(r, 2000));
+        await sleep(2000);
         continue;
       }
       throw lastError;
@@ -95,6 +138,11 @@ export async function fetchVideoFile(jobId: string): Promise<VideoFilePayload> {
     }
     if (buf.byteLength < 10_000) {
       throw new Error('Video file is too small — the download may have failed.');
+    }
+    if (!isH264Mp4(buf)) {
+      throw new Error(
+        'This video is not in a gallery-compatible format (H.264). Try again or pick 720p.',
+      );
     }
 
     const rawName = parseFilename(res.headers.get('Content-Disposition'));
@@ -161,7 +209,7 @@ export async function shareVideoToGallery(payload: VideoFilePayload): Promise<vo
   openVideoSaveViewer(payload.blob, payload.filename);
 }
 
-/** Mobile save: fetch the MP4 → open the OS share sheet (Save Video → Photos). */
+/** Mobile save: wait for gallery-ready → fetch MP4 → open the OS share sheet. */
 export async function saveMobileVideoToGallery(jobId: string): Promise<void> {
   const payload = await fetchVideoFile(jobId);
   await shareVideoToGallery(payload);

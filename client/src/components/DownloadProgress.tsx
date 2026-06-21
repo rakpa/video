@@ -5,10 +5,13 @@ import type { ProgressUpdate } from '../types';
 interface Props {
   progress: ProgressUpdate;
   qualityLabel: string;
+  /** IG/FB on mobile — show gallery-prep copy during the final transcode step. */
+  preparingGallery?: boolean;
 }
 
 /** Minimal phase label — no technical "merging"/stream wording. */
-function stageLabel(p: ProgressUpdate): string {
+function stageLabel(p: ProgressUpdate, preparingGallery?: boolean): string {
+  if (preparingGallery || (p.percent >= 99 && p.stage === 'merging')) return 'Preparing for Photos';
   if (p.percent < 1) return 'Connecting';
   if (p.stage === 'done') return 'Finishing up';
   if (p.stage === 'merging') return 'Merging audio';
@@ -20,10 +23,11 @@ function stageLabel(p: ProgressUpdate): string {
  * Download progress card: shows a processing message at 0%, then the live
  * percentage and bar once progress reaches 1%.
  */
-export function DownloadProgress({ progress, qualityLabel }: Props) {
+export function DownloadProgress({ progress, qualityLabel, preparingGallery }: Props) {
   const pct = Math.max(0, Math.min(100, progress.percent));
-  const showPercent = pct >= 1;
-  const display = useCountUp(showPercent ? pct : 0);
+  const galleryPrep = preparingGallery || (pct >= 99 && progress.stage === 'merging');
+  const showPercent = pct >= 1 && !galleryPrep;
+  const display = useCountUp(showPercent ? pct : 99);
 
   return (
     <motion.div
@@ -39,13 +43,13 @@ export function DownloadProgress({ progress, qualityLabel }: Props) {
             transition={{ duration: 1.2, repeat: Infinity }}
           />
           <span className="font-semibold text-slate-900">
-            {showPercent ? 'Downloading your video' : 'Connecting to server…'}
+            {galleryPrep ? 'Preparing for your gallery' : showPercent ? 'Downloading your video' : 'Connecting to server…'}
           </span>
           {qualityLabel && (
             <span className="rounded-md bg-slate-100 px-1.5 py-0.5 text-xs font-medium text-slate-600">{qualityLabel}</span>
           )}
         </div>
-        <span className="text-sm font-medium text-slate-500">{stageLabel(progress)}</span>
+        <span className="text-sm font-medium text-slate-500">{stageLabel(progress, preparingGallery)}</span>
       </div>
 
       <div className="mt-5 flex items-end justify-between">
@@ -53,6 +57,8 @@ export function DownloadProgress({ progress, qualityLabel }: Props) {
           <span className="text-4xl font-bold tabular-nums text-slate-900">
             {Math.round(display)}<span className="text-2xl font-semibold text-slate-400">%</span>
           </span>
+        ) : galleryPrep ? (
+          <p className="text-base text-slate-500">Converting for Photos… almost done.</p>
         ) : (
           <p className="text-base text-slate-500">Getting your video ready…</p>
         )}

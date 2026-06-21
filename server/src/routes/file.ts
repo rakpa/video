@@ -14,17 +14,10 @@ function safeName(name: string): string {
 }
 
 /**
- * Resolve the file to stream for Instagram/Facebook.
- *
- * These downloads run in `compatible` mode, so the original is ALREADY H.264 in
- * an MP4 container — exactly like a YouTube download that saves to the gallery
- * with no extra work. The background normalize (faststart remux / rare genuine
- * HEVC transcode) is a best-effort enhancement, NOT a gate: if it is still
- * running or has failed, we serve the original rather than 503-ing. Refusing to
- * serve was the single point of failure that left IG/FB stuck on
- * "Retry Save to Gallery" while YouTube saved fine.
+ * Path to stream for gallery save. IG/FB only — returns null while H.264 prep runs.
+ * Never serves raw HEVC: iOS Photos silently rejects "Save Video" for those files.
  */
-async function resolveServePath(job: Job): Promise<string> {
+function resolveServePath(job: Job): string | null {
   const raw = job.filePath!;
   if (!needsGalleryNormalize(job.platformId)) return raw;
   if (job.galleryPath) return job.galleryPath;
@@ -32,19 +25,7 @@ async function resolveServePath(job: Job): Promise<string> {
   if (!job.galleryNormalize && !job.galleryNormalizeFailed) {
     warmGalleryNormalize(job);
   }
-
-  if (job.galleryNormalize) {
-    try {
-      const normalized = await job.galleryNormalize;
-      return job.galleryPath ?? normalized;
-    } catch (err) {
-      logger.warn('Gallery normalize failed — serving the original H.264 download:', (err as Error).message);
-    }
-  }
-
-  // Best-effort fallback: serve the compatible-mode (H.264) download as-is so the
-  // save never dead-ends on an optional transcode.
-  return job.filePath!;
+  return null;
 }
 
 /**
@@ -59,7 +40,6 @@ fileRouter.get('/file/:jobId/status', (req, res) => {
     return res.status(409).json({ status: 'running', progress: job.progress });
   }
 
-  // Kick off a background retry if a previous transcode attempt failed.
   if (needsGalleryNormalize(job.platformId) && !job.galleryPath && !job.galleryNormalize) {
     warmGalleryNormalize(job);
   }
@@ -75,7 +55,8 @@ fileRouter.get('/file/:jobId/status', (req, res) => {
 /**
  * GET /api/file/:jobId
  * Streams the finished MP4 to the browser, then deletes the temp dir.
- * Nothing is stored permanently.
+ * Returns 503 while IG/FB gallery prep runs — client polls /status instead of
+ * holding a long connection (mobile browsers timeout and used to delete the job).
  */
 fileRouter.get('/file/:jobId', async (req, res) => {
   const job = getJob(req.params.jobId);
@@ -85,11 +66,14 @@ fileRouter.get('/file/:jobId', async (req, res) => {
     return res.status(409).json({ error: 'The file is not ready yet.' });
   }
 
-  let servePath: string;
-  try {
-    servePath = await resolveServePath(job);
-  } catch (err) {
-    return res.status(500).json({ error: (err as Error).message || 'Could not prepare the video file.' });
+  const servePath = resolveServePath(job);
+  if (!servePath) {
+    if (job.galleryNormalizeFailed) {
+      return res.status(500).json({
+        error: 'Could not prepare this video for your gallery. Try again or pick 720p.',
+      });
+    }
+    return res.status(503).json({ error: 'Preparing video for your gallery…', preparing: true });
   }
 
   let stat: fs.Stats;
@@ -109,16 +93,22 @@ fileRouter.get('/file/:jobId', async (req, res) => {
   const stream = fs.createReadStream(servePath);
   stream.pipe(res);
 
-  const cleanup = () => void destroyJob(job.id);
+  let cleaned = false;
+  const cleanup = () => {
+    if (cleaned) return;
+    cleaned = true;
+    void destroyJob(job.id);
+  };
+
   stream.on('end', cleanup);
   stream.on('error', () => {
-    res.destroy();
+    logger.warn('File stream error:', job.id);
+    if (!res.writableEnded) res.destroy();
     cleanup();
   });
   req.on('close', () => {
-    if (!res.writableEnded) {
+    if (!res.writableEnded && !res.headersSent) {
       stream.destroy();
-      cleanup();
     }
   });
 });

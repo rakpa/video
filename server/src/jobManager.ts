@@ -63,12 +63,7 @@ function emit(job: Job, payload: ProgressUpdate | { done: true } | { error: stri
 /** True when an Instagram/Facebook file is ready to serve for "Save Video". */
 export function isGalleryReady(job: Job): boolean {
   if (!needsGalleryNormalize(job.platformId)) return true;
-  if (job.galleryPath) return true;
-  // Transcode finished but failed — the file route falls back to the original
-  // compatible-mode (H.264) download, so the save is ready regardless.
-  if (job.galleryNormalizeFailed) return true;
-  // Still transcoding in the background.
-  return false;
+  return Boolean(job.galleryPath);
 }
 
 /** Start H.264 transcode in the background — never block the download progress UI. */
@@ -184,8 +179,33 @@ async function runWithRetry(job: Job, url: string, quality: QualityDef, mode: Co
       job.status = 'ready';
       job.filePath = filePath;
       job.progress = { ...job.progress, percent: 100, speed: null, eta: null, stage: 'done' };
-      // Transcode IG/FB in the background — the file fetch blocks until H.264 is ready.
       warmGalleryNormalize(job);
+
+      // IG/FB must finish H.264 faststart remux/transcode before we signal "done".
+      // YouTube already gets +faststart from yt-dlp merge — gallery save works immediately.
+      if (needsGalleryNormalize(job.platformId) && job.galleryNormalize) {
+        job.progress = {
+          percent: 99,
+          speed: null,
+          eta: null,
+          stage: 'merging',
+          streamIndex: 1,
+          streamTotal: 1,
+        };
+        emit(job, job.progress);
+        try {
+          await job.galleryNormalize;
+        } catch (err) {
+          job.status = 'error';
+          job.errorMessage =
+            'Could not prepare this video for your gallery. Try again or pick 720p.';
+          emit(job, { error: job.errorMessage });
+          void destroyJob(job.id);
+          return;
+        }
+      }
+
+      job.progress = { ...job.progress, percent: 100, stage: 'done' };
       emit(job, { done: true });
       return;
     } catch (err) {

@@ -193,7 +193,7 @@ export function subscribeProgress(jobId: string, handlers: ProgressHandlers): ()
     es.close();
   };
 
-  /** SSE can drop while ffmpeg prepares IG/FB files — poll until the job is ready. */
+  /** SSE can drop while ffmpeg prepares IG/FB files — poll until gallery-ready. */
   const pollUntilReady = () => {
     let attempts = 0;
     const tick = async () => {
@@ -201,17 +201,26 @@ export function subscribeProgress(jobId: string, handlers: ProgressHandlers): ()
       attempts += 1;
       try {
         const res = await fetch(apiUrl(`/api/file/${jobId}/status`));
-        if (res.ok) {
-          const data = (await res.json()) as { status?: string };
-          if (data.status === 'ready') {
-            settle(() => handlers.onDone());
-            return;
-          }
+        const data = (await res.json().catch(() => ({}))) as {
+          status?: string;
+          galleryReady?: boolean;
+          galleryFailed?: boolean;
+          message?: string;
+        };
+        if (res.status === 500 || data.galleryFailed) {
+          settle(() =>
+            handlers.onError(data.message ?? 'Could not prepare this video for your gallery.'),
+          );
+          return;
+        }
+        if (res.ok && data.status === 'ready' && data.galleryReady !== false) {
+          settle(() => handlers.onDone());
+          return;
         }
       } catch {
         /* retry */
       }
-      if (attempts >= 90) {
+      if (attempts >= 120) {
         settle(() => handlers.onError('Lost connection to the server.'));
         return;
       }
