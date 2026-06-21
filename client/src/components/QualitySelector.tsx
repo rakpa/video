@@ -15,11 +15,9 @@ interface Props {
   refining?: boolean;
   /** False until yt-dlp info-json is warm — prevents a duplicate slow extraction on download. */
   downloadReady?: boolean;
-  /** Mobile: show Save to Gallery instead of Download. */
-  mobileSave?: boolean;
-  /** Mobile: share sheet is opening. */
+  /** Mobile: download in progress — show preparing message. */
   saving?: boolean;
-  /** Mobile: first share attempt needs a second tap on the button. */
+  /** Mobile: share sheet blocked — needs another tap. */
   saveFallback?: boolean;
   /** Starts the download of the selected quality (App handles Pro gating). */
   onDownload: () => void;
@@ -34,7 +32,7 @@ interface Props {
  *
  * TEMP: 2K/4K no longer show as Pro for testing.
  */
-export function QualitySelector({ formats, selected, onSelect, mode, onModeChange, pro, refining = false, downloadReady = true, mobileSave = false, saving = false, saveFallback = false, onDownload, onUpgrade }: Props) {
+export function QualitySelector({ formats, selected, onSelect, mode, onModeChange, pro, refining = false, downloadReady = true, saving = false, saveFallback = false, onDownload, onUpgrade }: Props) {
   // In compatible mode, only resolutions up to 1080p are offered (H.264 ceiling).
   const visibleFormats = useMemo(
     () =>
@@ -162,18 +160,11 @@ export function QualitySelector({ formats, selected, onSelect, mode, onModeChang
             Unlock {selectedFmt?.label} — Go Pro
           </>
         ) : saving ? (
-          <>Opening save menu…</>
+          <>Preparing your video, please wait…</>
         ) : saveFallback ? (
-          <>Tap to Save to Gallery</>
+          <>Tap to open save menu</>
         ) : !downloadReady ? (
-          <>{mobileSave ? 'Preparing video…' : 'Preparing download…'}</>
-        ) : mobileSave ? (
-          <>
-            <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2.5" aria-hidden="true">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M12 3v12m0 0 4-4m-4 4-4-4M5 21h14" />
-            </svg>
-            Save to Gallery
-          </>
+          <>Preparing download…</>
         ) : (
           <>
             <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2.5" aria-hidden="true">
