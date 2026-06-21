@@ -130,7 +130,36 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
   const prevUrlLen = useRef(0);
   const infoWarmPromise = useRef<Promise<void> | null>(null);
   const infoWarmRef = useRef(false);
+  const prefetchJobId = useRef<string | null>(null);
+  const prefetchUrl = useRef('');
   const proPanelRef = useRef<HTMLDivElement>(null);
+
+  /** Mobile IG/FB: start downloading while the user reads the preview card. */
+  const queueMobilePrefetch = useCallback((normalized: string) => {
+    if (!isMobileDevice()) return;
+    const pid = detectPlatform(normalized)?.id;
+    if (pid !== 'instagram' && pid !== 'facebook') return;
+    if (prefetchUrl.current === normalized && prefetchJobId.current) return;
+
+    prefetchUrl.current = normalized;
+    prefetchJobId.current = null;
+
+    void startDownloadJob(normalized, '720', 'compatible', licenseToken(), { fast: true, reuse: false })
+      .then((jobId) => {
+        if (prefetchUrl.current !== normalized) return jobId;
+        prefetchJobId.current = jobId;
+        // Fetch the MP4 to this device while the user reads the preview — tap Download = instant share.
+        void waitForMobileGalleryPayload(jobId)
+          .then((payload) => {
+            if (prefetchUrl.current === normalized) galleryPayload.current = payload;
+          })
+          .catch(() => undefined);
+        return jobId;
+      })
+      .catch(() => {
+        if (prefetchUrl.current === normalized) prefetchJobId.current = null;
+      });
+  }, []);
 
   useStripeReturn(useCallback(() => setPro(true), []));
 
@@ -172,6 +201,9 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
     setInfoWarm(false);
     infoWarmRef.current = false;
     infoWarmPromise.current = null;
+    prefetchJobId.current = null;
+    prefetchUrl.current = '';
+    galleryPayload.current = null;
     setPreloadedThumb(null);
     fetchedUrl.current = normalized;
 
@@ -202,6 +234,7 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
       if (fetchedUrl.current === normalized) {
         infoWarmRef.current = true;
         setInfoWarm(true);
+        queueMobilePrefetch(normalized);
       }
       return data;
     });
@@ -288,7 +321,7 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
     } finally {
       if (fetchedUrl.current === normalized) setRefining(false);
     }
-  }, []);
+  }, [queueMobilePrefetch]);
 
   useEffect(() => {
     const trimmed = url.trim();
@@ -349,17 +382,38 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
         ) {
           effectiveQuality = '720';
         }
-        const jobId = await startDownloadJob(
-          fetchedUrl.current || url,
-          effectiveQuality,
-          effectiveMode,
-          licenseToken(),
-          { fast: mobile },
-        );
+        const currentUrl = fetchedUrl.current || url;
+        let jobId: string;
+        const prefetched =
+          mobile && isIgFb && prefetchJobId.current && prefetchUrl.current === currentUrl;
+
+        if (prefetched) {
+          jobId = prefetchJobId.current!;
+          prefetchJobId.current = null;
+        } else {
+          jobId = await startDownloadJob(
+            currentUrl,
+            effectiveQuality,
+            effectiveMode,
+            licenseToken(),
+            { fast: mobile, reuse: mobile && isIgFb },
+          );
+        }
         lastJobId.current = jobId;
         unsubscribe.current?.();
 
         if (mobile) {
+          if (galleryPayload.current && prefetched) {
+            const result = await openGalleryShareSheet(galleryPayload.current);
+            if (result === 'unavailable') {
+              setAwaitingShareTap(true);
+            } else {
+              setAwaitingShareTap(false);
+              setPhase('ready');
+            }
+            return;
+          }
+
           let sseError: string | null = null;
           const sseFailed = new Promise<never>((_, reject) => {
             unsubscribe.current = subscribeProgress(jobId, {

@@ -16,7 +16,7 @@ export const downloadRouter = Router();
  * subscribes to /api/progress/:jobId and finally GETs /api/file/:jobId.
  */
 downloadRouter.post('/download', async (req, res) => {
-  const { url, quality, mode, license, fast } = readJsonBody(req);
+  const { url, quality, mode, license, fast, reuse } = readJsonBody(req);
 
   const v = validateUrl(url);
   if (!v.ok) return res.status(400).json({ error: v.message });
@@ -42,7 +42,10 @@ downloadRouter.post('/download', async (req, res) => {
         : 'best';
 
   try {
-    const job = await createJob(url.trim(), q, codecMode, { fast: Boolean(fast) });
+    const job = await createJob(url.trim(), q, codecMode, {
+      fast: Boolean(fast),
+      reuse: Boolean(reuse),
+    });
     return res.status(202).json({ jobId: job.id });
   } catch (err) {
     if (err instanceof YtDlpError) {

@@ -135,7 +135,7 @@ export async function startDownloadJob(
   quality: QualityId,
   mode: CodecMode,
   license?: string,
-  options?: { fast?: boolean },
+  options?: { fast?: boolean; reuse?: boolean },
 ): Promise<string> {
   const { jobId } = await postJson<{ jobId: string }>('/api/download', {
     url,
@@ -143,6 +143,7 @@ export async function startDownloadJob(
     mode,
     license,
     fast: options?.fast ?? false,
+    reuse: options?.reuse ?? false,
   });
   return jobId;
 }

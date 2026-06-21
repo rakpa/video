@@ -45,12 +45,77 @@ interface RawDump {
 }
 
 interface RawFormat {
+  format_id?: string;
+  ext?: string;
+  url?: string;
+  protocol?: string;
   height?: number;
   vcodec?: string;
   acodec?: string;
   filesize?: number;
   filesize_approx?: number;
   tbr?: number; // total bitrate kbps
+}
+
+function isH264Vcodec(vcodec: string | undefined): boolean {
+  const l = (vcodec ?? '').toLowerCase();
+  return l.includes('avc') || l.includes('h264') || l.startsWith('avc1');
+}
+
+/**
+ * Pick the fastest IG/FB format from a cached info-json dump — avoids yt-dlp
+ * re-scanning and prevents accidentally selecting HEVC (2+ min transcode).
+ */
+export function pickBestSocialFormat(
+  infoJsonPath: string,
+  maxHeight: number,
+  preferSmallest = false,
+): { selector: string; singleFileH264: boolean } | null {
+  let raw: RawDump;
+  try {
+    raw = JSON.parse(fs.readFileSync(infoJsonPath, 'utf8'));
+  } catch {
+    return null;
+  }
+
+  const formats = raw.formats ?? [];
+  const sizeOf = (f: RawFormat) => f.filesize ?? f.filesize_approx ?? (f.tbr ?? 0) * 1000;
+
+  const progressive = formats.filter((f) => {
+    if (!f.format_id || !f.url) return false;
+    const h = f.height ?? 9999;
+    if (h > maxHeight) return false;
+    if (!isH264Vcodec(f.vcodec)) return false;
+    if ((f.acodec ?? 'none') === 'none') return false;
+    return true;
+  });
+
+  if (progressive.length > 0) {
+    progressive.sort((a, b) => {
+      if (preferSmallest) return sizeOf(a) - sizeOf(b);
+      return (b.height ?? 0) - (a.height ?? 0) || sizeOf(a) - sizeOf(b);
+    });
+    return { selector: String(progressive[0].format_id), singleFileH264: true };
+  }
+
+  const videos = formats.filter(
+    (f) => f.format_id && isH264Vcodec(f.vcodec) && (f.height ?? 9999) <= maxHeight,
+  );
+  const audios = formats.filter((f) => f.format_id && (f.acodec ?? 'none') !== 'none');
+  if (videos.length && audios.length) {
+    videos.sort((a, b) =>
+      preferSmallest
+        ? sizeOf(a) - sizeOf(b)
+        : (b.height ?? 0) - (a.height ?? 0) || sizeOf(a) - sizeOf(b),
+    );
+    audios.sort((a, b) => sizeOf(a) - sizeOf(b));
+    return {
+      selector: `${videos[0].format_id!}+${audios[0].format_id!}`,
+      singleFileH264: false,
+    };
+  }
+
+  return null;
 }
 
 class YtDlpError extends Error {
@@ -517,10 +582,24 @@ export function startDownload(
           : Math.min(quality.height, 1080)
       : undefined;
 
+  let formatArg = buildSelector(quality, mode, platformId, { maxHeight: igFbMaxHeight });
+  let singleFileH264 = false;
+
+  if (cachedInfoJson && (platformId === 'instagram' || platformId === 'facebook')) {
+    const picked = pickBestSocialFormat(cachedInfoJson, igFbMaxHeight ?? 480, fast);
+    if (picked) {
+      formatArg = picked.selector;
+      singleFileH264 = picked.singleFileH264;
+      logger.info(`IG/FB cached format ${formatArg} (single H.264=${singleFileH264})`);
+    }
+  }
+
+  const skipMergePost = fast && singleFileH264;
+
   const args = [
     '-f',
-    buildSelector(quality, mode, platformId, { maxHeight: igFbMaxHeight }),
-    '--merge-output-format', 'mp4',
+    formatArg,
+    ...(skipMergePost ? [] : ['--merge-output-format', 'mp4']),
     // Only pass --ffmpeg-location for a real path. A bare name like "ffmpeg"
     // is rejected by yt-dlp ("ffmpeg-location ffmpeg does not exist") and makes
     // it SKIP the merge — producing a video-only file with no audio. Omitting
@@ -532,11 +611,11 @@ export function startDownload(
     '--no-part',
     '--progress',
     '--restrict-filenames',
-    '--postprocessor-args', 'ffmpeg:-movflags +faststart',
+    ...(skipMergePost ? [] : ['--postprocessor-args', 'ffmpeg:-movflags +faststart']),
     '--http-chunk-size', tuning.httpChunkSize,
     '--concurrent-fragments', tuning.concurrentFragments,
-    '--retries', '10',
-    '--fragment-retries', '20',
+    '--retries', fast ? '3' : '10',
+    '--fragment-retries', fast ? '5' : '20',
     '--retry-sleep', 'linear=1::5',
     '--socket-timeout', '30',
     ...youtubeHardeningArgs(youtubeClient ?? config.youtubePlayerClient),
@@ -546,7 +625,7 @@ export function startDownload(
   ];
 
   // Prefer H.264 when the format selector falls back to a looser tier.
-  if (platformId === 'instagram' || platformId === 'facebook') {
+  if ((platformId === 'instagram' || platformId === 'facebook') && !singleFileH264) {
     args.push('-S', 'vcodec:h264,res,quality');
   }
 

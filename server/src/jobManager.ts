@@ -31,11 +31,35 @@ export interface Job {
   galleryNormalizeFailed?: boolean;
   /** Mobile fast path — smaller IG/FB file, skip normalize retry. */
   fast?: boolean;
+  /** Dedupe key for prefetch / reuse. */
+  cacheKey?: string;
   /** SSE listeners subscribed to this job's progress. */
   listeners: Set<(p: ProgressUpdate | { done: true } | { error: string }) => void>;
 }
 
 const jobs = new Map<string, Job>();
+const jobsByKey = new Map<string, string>();
+
+function jobCacheKey(url: string, quality: QualityDef, mode: CodecMode, fast?: boolean): string {
+  return `${url.trim()}|${quality.id}|${mode}|${fast ? 'fast' : 'normal'}`;
+}
+
+/** Return an in-flight or finished prefetch job for the same url/settings. */
+export function findReusableJob(
+  url: string,
+  quality: QualityDef,
+  mode: CodecMode,
+  fast?: boolean,
+): Job | undefined {
+  const id = jobsByKey.get(jobCacheKey(url, quality, mode, fast));
+  if (!id) return undefined;
+  const job = jobs.get(id);
+  if (!job || job.status === 'error') {
+    jobsByKey.delete(jobCacheKey(url, quality, mode, fast));
+    return undefined;
+  }
+  return job;
+}
 
 function countRunningJobs(): number {
   let n = 0;
@@ -102,16 +126,28 @@ export async function createJob(
   url: string,
   quality: QualityDef,
   mode: CodecMode,
-  options?: { fast?: boolean },
+  options?: { fast?: boolean; reuse?: boolean },
 ): Promise<Job> {
+  const q = effectiveQuality(url, quality);
+  const cacheKey = jobCacheKey(url, q, mode, options?.fast);
+
+  if (options?.reuse) {
+    const existing = findReusableJob(url, q, mode, options.fast);
+    if (existing) {
+      logger.info(`Reusing download job ${existing.id} (${existing.status})`);
+      return existing;
+    }
+  }
+
   if (countRunningJobs() >= config.maxConcurrentJobs) {
+    const existing = findReusableJob(url, q, mode, options?.fast);
+    if (existing) return existing;
     throw new YtDlpError(
       'The server is busy with another download. Wait a moment and try again.',
       'FAILED',
     );
   }
 
-  const q = effectiveQuality(url, quality);
   if (q.id !== quality.id) {
     logger.info(`Low-memory cap: ${quality.label} → ${q.label} for ${detectPlatform(url)?.id ?? 'video'}`);
   }
@@ -129,10 +165,12 @@ export async function createJob(
     createdAt: Date.now(),
     platformId: detectPlatform(url)?.id,
     fast: options?.fast ?? false,
+    cacheKey,
     cancel: () => undefined, // replaced per attempt
     listeners: new Set(),
   };
   jobs.set(id, job);
+  jobsByKey.set(cacheKey, id);
 
   void runWithRetry(job, url, q, mode);
   return job;
@@ -160,9 +198,10 @@ async function runWithRetry(job: Job, url: string, quality: QualityDef, mode: Co
   const maxAttempts = config.proxies.length > 1 ? 3 : 1;
 
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-    // Join the same in-flight extraction as /api/info (never run two yt-dlp -J passes).
     const proxy = currentProxy() ?? '';
-    if (!getFreshInfoJson(url, proxy)) {
+    const hasCachedInfo = Boolean(getFreshInfoJson(url, proxy));
+
+    if (!hasCachedInfo) {
       job.progress = { percent: 1, speed: null, eta: null, stage: 'downloading', streamIndex: 1, streamTotal: 1 };
       emit(job, job.progress);
       try {
@@ -170,6 +209,8 @@ async function runWithRetry(job: Job, url: string, quality: QualityDef, mode: Co
       } catch (err) {
         logger.warn('Info-json warm failed — download will extract inline:', (err as Error).message);
       }
+    } else {
+      logger.info('Download skipping info-json warm — cache hit');
     }
 
     const handle = startDownload(url, quality, mode, job.dir, (p) => {
@@ -260,6 +301,7 @@ export function getJob(id: string): Job | undefined {
 export async function destroyJob(id: string): Promise<void> {
   const job = jobs.get(id);
   if (!job) return;
+  if (job.cacheKey) jobsByKey.delete(job.cacheKey);
   jobs.delete(id);
   try {
     job.cancel();
