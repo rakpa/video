@@ -5,16 +5,13 @@ import type { ProgressUpdate } from '../types';
 interface Props {
   progress: ProgressUpdate;
   qualityLabel: string;
-  /** IG/FB on mobile — show gallery-prep copy during the final transcode step. */
-  preparingGallery?: boolean;
 }
 
 /** Minimal phase label — no technical "merging"/stream wording. */
-function stageLabel(p: ProgressUpdate, preparingGallery?: boolean): string {
-  if (preparingGallery || (p.percent >= 99 && p.stage === 'merging')) return 'Preparing for Photos';
+function stageLabel(p: ProgressUpdate): string {
   if (p.percent < 1) return 'Connecting';
-  if (p.stage === 'done') return 'Finishing up';
-  if (p.stage === 'merging') return 'Merging audio';
+  if (p.stage === 'done' || p.percent >= 99) return 'Finishing up';
+  if (p.stage === 'merging') return 'Finishing up';
   if (p.percent < 3) return 'Starting';
   return 'Downloading';
 }
@@ -23,11 +20,10 @@ function stageLabel(p: ProgressUpdate, preparingGallery?: boolean): string {
  * Download progress card: shows a processing message at 0%, then the live
  * percentage and bar once progress reaches 1%.
  */
-export function DownloadProgress({ progress, qualityLabel, preparingGallery }: Props) {
+export function DownloadProgress({ progress, qualityLabel }: Props) {
   const pct = Math.max(0, Math.min(100, progress.percent));
-  const galleryPrep = preparingGallery || (pct >= 99 && progress.stage === 'merging');
-  const showPercent = pct >= 1 && !galleryPrep;
-  const display = useCountUp(showPercent ? pct : 99);
+  const showPercent = pct >= 1;
+  const display = useCountUp(showPercent ? pct : 0);
 
   return (
     <motion.div
@@ -43,13 +39,13 @@ export function DownloadProgress({ progress, qualityLabel, preparingGallery }: P
             transition={{ duration: 1.2, repeat: Infinity }}
           />
           <span className="font-semibold text-slate-900">
-            {galleryPrep ? 'Preparing for your gallery' : showPercent ? 'Downloading your video' : 'Connecting to server…'}
+            {showPercent ? 'Downloading your video' : 'Connecting to server…'}
           </span>
           {qualityLabel && (
             <span className="rounded-md bg-slate-100 px-1.5 py-0.5 text-xs font-medium text-slate-600">{qualityLabel}</span>
           )}
         </div>
-        <span className="text-sm font-medium text-slate-500">{stageLabel(progress, preparingGallery)}</span>
+        <span className="text-sm font-medium text-slate-500">{stageLabel(progress)}</span>
       </div>
 
       <div className="mt-5 flex items-end justify-between">
@@ -57,12 +53,10 @@ export function DownloadProgress({ progress, qualityLabel, preparingGallery }: P
           <span className="text-4xl font-bold tabular-nums text-slate-900">
             {Math.round(display)}<span className="text-2xl font-semibold text-slate-400">%</span>
           </span>
-        ) : galleryPrep ? (
-          <p className="text-base text-slate-500">Converting for Photos… almost done.</p>
         ) : (
           <p className="text-base text-slate-500">Getting your video ready…</p>
         )}
-        {showPercent && (progress.speed || progress.eta) && (
+        {showPercent && (progress.speed || progress.eta) && progress.stage !== 'done' && (
           <div className="flex items-center gap-4 text-sm text-slate-500">
             {progress.speed && (
               <span className="inline-flex items-center gap-1.5 tabular-nums">
@@ -77,7 +71,6 @@ export function DownloadProgress({ progress, qualityLabel, preparingGallery }: P
         )}
       </div>
 
-      {/* Linear progress bar */}
       <div className="relative mt-4 h-2.5 w-full overflow-hidden rounded-full bg-slate-100">
         {showPercent ? (
           <motion.div
@@ -96,7 +89,6 @@ export function DownloadProgress({ progress, qualityLabel, preparingGallery }: P
         )}
       </div>
 
-      {/* Stream pips when there are multiple streams */}
       {progress.streamTotal > 1 && progress.stage !== 'done' && (
         <div className="relative mt-4 flex items-center gap-1.5">
           {Array.from({ length: progress.streamTotal }).map((_, i) => (
@@ -118,7 +110,6 @@ export function DownloadProgress({ progress, qualityLabel, preparingGallery }: P
   );
 }
 
-/** Smoothly animates a number toward `target` for a satisfying counting effect. */
 function useCountUp(target: number): number {
   const [value, setValue] = useState(target);
   const raf = useRef<number>();
@@ -130,7 +121,7 @@ function useCountUp(target: number): number {
 
     const tick = (now: number) => {
       const t = Math.min(1, (now - startTime) / duration);
-      const eased = 1 - Math.pow(1 - t, 3); // easeOutCubic
+      const eased = 1 - Math.pow(1 - t, 3);
       setValue(start + (target - start) * eased);
       if (t < 1) raf.current = requestAnimationFrame(tick);
     };

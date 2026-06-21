@@ -277,10 +277,9 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
    * Fetch the gallery-ready MP4 and open the OS share sheet (Save Video → Photos).
    * Called automatically on mobile when a download finishes.
    */
-  const saveToGallery = useCallback(async (jobId: string) => {
+  const saveToGallery = useCallback(async (jobId: string, { silent = false } = {}) => {
     setError(null);
-    setSavingToGallery(true);
-    setGalleryPrep('preparing');
+    if (!silent) setSavingToGallery(true);
     try {
       const payload = await fetchVideoFile(jobId);
       galleryPayload.current = payload;
@@ -289,8 +288,9 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
     } catch (e) {
       setGalleryPrep('error');
       setError(e instanceof Error ? e.message : 'Could not save to gallery.');
+      throw e;
     } finally {
-      setSavingToGallery(false);
+      if (!silent) setSavingToGallery(false);
     }
   }, []);
 
@@ -339,10 +339,26 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
         unsubscribe.current = subscribeProgress(jobId, {
           onProgress: setProgress,
           onDone: () => {
-            setPhase('success');
             if (isMobileDevice()) {
-              void saveToGallery(jobId);
+              // Stay on the download card at 100% while we fetch + open share —
+              // skip the intermediate "Preparing for Photos" success screen.
+              setProgress((p) => ({
+                ...p,
+                percent: 100,
+                speed: null,
+                eta: null,
+                stage: 'done',
+              }));
+              void (async () => {
+                try {
+                  await saveToGallery(jobId, { silent: true });
+                } catch {
+                  /* error state set inside saveToGallery */
+                }
+                setPhase('success');
+              })();
             } else {
+              setPhase('success');
               void triggerFileDownload(jobId);
             }
           },
@@ -491,7 +507,6 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
                     title={info.title}
                     mobile={isMobileDevice()}
                     saving={savingToGallery}
-                    preparing={galleryPrep === 'preparing'}
                     prepFailed={galleryPrep === 'error'}
                     onSaveToGallery={handleSaveToGallery}
                     onReset={handleReset}
@@ -505,15 +520,7 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
                       <VideoPreview info={info} preloadedThumb={preloadedThumb} />
                     )}
                     {view === 'downloading' ? (
-                      <DownloadProgress
-                        progress={progress}
-                        qualityLabel={qualityLabel}
-                        preparingGallery={
-                          isMobileDevice() &&
-                          (info.platform === 'instagram' || info.platform === 'facebook') &&
-                          progress.percent >= 99
-                        }
-                      />
+                      <DownloadProgress progress={progress} qualityLabel={qualityLabel} />
                     ) : (
                       <>
                         <QualitySelector

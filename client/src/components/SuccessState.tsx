@@ -9,14 +9,11 @@ interface Props {
   mobile?: boolean;
   onSaveToGallery?: () => void;
   saving?: boolean;
-  preparing?: boolean;
   prepFailed?: boolean;
 }
 
-export function SuccessState({ title, onReset, onRedownload, mobile, onSaveToGallery, saving, preparing, prepFailed }: Props) {
-  const busy = saving || preparing;
+export function SuccessState({ title, onReset, onRedownload, mobile, onSaveToGallery, saving, prepFailed }: Props) {
   const saveLabel = saving ? 'Opening share…' : prepFailed ? 'Retry Save to Gallery' : 'Save to Gallery';
-  const heading = busy ? 'Saving to your gallery…' : 'Your download is ready! 🎉';
 
   return (
     <motion.div
@@ -51,17 +48,11 @@ export function SuccessState({ title, onReset, onRedownload, mobile, onSaveToGal
         </motion.svg>
       </motion.div>
 
-      <h3 className="mt-5 text-2xl font-bold text-slate-900">{heading}</h3>
+      <h3 className="mt-5 text-2xl font-bold text-slate-900">Your download is ready! 🎉</h3>
       <p className="mx-auto mt-2 max-w-md text-sm text-slate-500">
         <span className="line-clamp-1 font-medium text-slate-700">{title}</span>
         {mobile ? (
-          busy ? (
-            <>
-              {' '}
-              — converting for Photos and opening the share menu. Pick{' '}
-              <strong className="font-medium text-slate-700">Save Video</strong> to add it to your gallery.
-            </>
-          ) : prepFailed ? (
+          prepFailed ? (
             <>
               {' '}
               needs one more step. Tap{' '}
@@ -70,8 +61,8 @@ export function SuccessState({ title, onReset, onRedownload, mobile, onSaveToGal
           ) : (
             <>
               {' '}
-              was saved. Tap <strong className="font-medium text-slate-700">Save to Gallery</strong> if the share menu
-              did not open, then pick <strong className="font-medium text-slate-700">Save Video</strong>.
+              is ready. Tap <strong className="font-medium text-slate-700">Save to Gallery</strong> and pick{' '}
+              <strong className="font-medium text-slate-700">Save Video</strong> to add it to Photos.
             </>
           )
         ) : (
@@ -82,29 +73,17 @@ export function SuccessState({ title, onReset, onRedownload, mobile, onSaveToGal
       <div className="mt-6 flex flex-col justify-center gap-3 sm:flex-row">
         {mobile && onSaveToGallery ? (
           <>
-            {!busy && (
-              <Button onClick={onSaveToGallery} disabled={saving}>
-                {saveLabel}
-              </Button>
-            )}
-            {busy && (
-              <div className="flex items-center justify-center gap-2 text-sm font-medium text-indigo-600">
-                <motion.span
-                  className="h-2.5 w-2.5 rounded-full bg-indigo-500"
-                  animate={{ opacity: [1, 0.3, 1] }}
-                  transition={{ duration: 1.2, repeat: Infinity }}
-                />
-                Preparing for Photos…
-              </div>
-            )}
-            <Button variant="ghost" onClick={onRedownload} disabled={busy}>
+            <Button onClick={onSaveToGallery} disabled={saving}>
+              {saveLabel}
+            </Button>
+            <Button variant="ghost" onClick={onRedownload} disabled={saving}>
               Save again
             </Button>
           </>
         ) : (
           <Button variant="ghost" onClick={onRedownload}>Download again</Button>
         )}
-        <Button variant={mobile ? 'ghost' : undefined} onClick={onReset} disabled={busy}>
+        <Button variant={mobile ? 'ghost' : undefined} onClick={onReset} disabled={saving}>
           Download another
         </Button>
       </div>
