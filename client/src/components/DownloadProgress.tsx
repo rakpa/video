@@ -37,7 +37,11 @@ export function DownloadProgress({ progress, qualityLabel, processingOnly }: Pro
           />
           <span className="font-semibold text-slate-900">We are processing your download</span>
         </div>
-        <p className="mt-3 text-sm text-slate-500">This usually takes a moment. Your save menu will open when ready.</p>
+        <p className="mt-3 text-sm text-slate-500">
+          {processingOnly
+            ? 'Your save menu opens as soon as the video is ready — usually a few seconds if you waited on the preview.'
+            : 'This usually takes a moment. Your save menu will open when ready.'}
+        </p>
         <div className="relative mt-5 h-2 w-full overflow-hidden rounded-full bg-slate-100">
           <motion.div
             className="btn-gradient absolute inset-y-0 rounded-full"

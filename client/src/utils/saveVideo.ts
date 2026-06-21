@@ -71,24 +71,24 @@ const STATUS_404_GRACE_MS = 3_000;
 const STATUS_404_RETRIES = 15;
 
 async function readVideoPayloadFromResponse(res: Response): Promise<VideoFilePayload> {
-  const buf = await res.arrayBuffer();
+  const blob = await res.blob();
+  const head = await blob.slice(0, Math.min(blob.size, 512 * 1024)).arrayBuffer();
 
-  if (looksLikeHtmlOrJson(buf) || !isMp4Bytes(buf)) {
+  if (looksLikeHtmlOrJson(head) || !isMp4Bytes(head)) {
     throw new Error(
       'Received an invalid file (not MP4). The download API may be misconfigured — check VITE_API_URL on Vercel.',
     );
   }
-  if (buf.byteLength < 10_000) {
+  if (blob.size < 10_000) {
     throw new Error('Video file is too small — the download may have failed.');
   }
-  if (!isH264Mp4(buf)) {
+  if (!isH264Mp4(head)) {
     throw new Error(
       'This video is not in a gallery-compatible format (H.264). Try again or pick 720p.',
     );
   }
 
   parseFilename(res.headers.get('Content-Disposition'));
-  const blob = new Blob([buf], { type: 'video/mp4' });
   const filename = isMobileDevice() ? iosGalleryFilename() : 'ClipVault-video.mp4';
   return { blob, filename };
 }
