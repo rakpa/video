@@ -14,32 +14,37 @@ function safeName(name: string): string {
 }
 
 /**
- * Instagram/Facebook files are transcoded to H.264 before serving (not during SSE)
- * so the progress stream can close promptly at 100% without proxy timeouts.
- * Never serve the raw HEVC download — iOS only offers "Save Video" for H.264.
+ * Resolve the file to stream for Instagram/Facebook.
+ *
+ * These downloads run in `compatible` mode, so the original is ALREADY H.264 in
+ * an MP4 container — exactly like a YouTube download that saves to the gallery
+ * with no extra work. The background normalize (faststart remux / rare genuine
+ * HEVC transcode) is a best-effort enhancement, NOT a gate: if it is still
+ * running or has failed, we serve the original rather than 503-ing. Refusing to
+ * serve was the single point of failure that left IG/FB stuck on
+ * "Retry Save to Gallery" while YouTube saved fine.
  */
 async function resolveServePath(job: Job): Promise<string> {
   const raw = job.filePath!;
   if (!needsGalleryNormalize(job.platformId)) return raw;
   if (job.galleryPath) return job.galleryPath;
 
-  if (!job.galleryNormalize) {
+  if (!job.galleryNormalize && !job.galleryNormalizeFailed) {
     warmGalleryNormalize(job);
   }
-  if (!job.galleryNormalize) {
-    throw new Error('Gallery transcode could not start.');
+
+  if (job.galleryNormalize) {
+    try {
+      const normalized = await job.galleryNormalize;
+      return job.galleryPath ?? normalized;
+    } catch (err) {
+      logger.warn('Gallery normalize failed — serving the original H.264 download:', (err as Error).message);
+    }
   }
 
-  try {
-    const normalized = await job.galleryNormalize;
-    if (job.galleryPath) return job.galleryPath;
-    return normalized;
-  } catch (err) {
-    job.galleryNormalize = undefined;
-    job.galleryNormalizeFailed = true;
-    logger.warn('Gallery normalize failed — refusing to serve HEVC original:', (err as Error).message);
-    throw err;
-  }
+  // Best-effort fallback: serve the compatible-mode (H.264) download as-is so the
+  // save never dead-ends on an optional transcode.
+  return job.filePath!;
 }
 
 /**
@@ -84,14 +89,7 @@ fileRouter.get('/file/:jobId', async (req, res) => {
   try {
     servePath = await resolveServePath(job);
   } catch (err) {
-    const msg = (err as Error).message;
-    if (needsGalleryNormalize(job.platformId) && !job.galleryPath) {
-      return res.status(503).json({
-        error:
-          'Still preparing your video for Photos — the file is being converted to a gallery-compatible format. Try Save to Gallery again in a moment.',
-      });
-    }
-    return res.status(500).json({ error: msg || 'Could not prepare the video file.' });
+    return res.status(500).json({ error: (err as Error).message || 'Could not prepare the video file.' });
   }
 
   let stat: fs.Stats;

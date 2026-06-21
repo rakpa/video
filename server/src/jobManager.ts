@@ -60,11 +60,14 @@ function emit(job: Job, payload: ProgressUpdate | { done: true } | { error: stri
   for (const fn of job.listeners) fn(payload);
 }
 
-/** True when an Instagram/Facebook file is transcoded and safe for iOS "Save Video". */
+/** True when an Instagram/Facebook file is ready to serve for "Save Video". */
 export function isGalleryReady(job: Job): boolean {
   if (!needsGalleryNormalize(job.platformId)) return true;
   if (job.galleryPath) return true;
-  if (job.galleryNormalize) return false;
+  // Transcode finished but failed — the file route falls back to the original
+  // compatible-mode (H.264) download, so the save is ready regardless.
+  if (job.galleryNormalizeFailed) return true;
+  // Still transcoding in the background.
   return false;
 }
 

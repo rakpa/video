@@ -100,7 +100,9 @@ async function waitForGalleryReady(jobId: string, maxWaitMs = 120_000): Promise<
     }
     await new Promise((r) => setTimeout(r, 1200));
   }
-  throw new Error('Still preparing your video for Photos — tap Save to Gallery to try again.');
+  // Timed out waiting for the optional transcode — proceed anyway. The file route
+  // blocks until ready (and falls back to the original H.264 download), so a
+  // best-effort fetch still succeeds instead of dead-ending on an error screen.
 }
 
 /** Fetch the finished MP4 and verify it is real H.264 video — not HEVC or an error page. */
@@ -149,14 +151,13 @@ export async function fetchVideoFile(jobId: string, platform?: string): Promise<
       throw new Error('Video file is too small — the download may have failed.');
     }
 
+    // Give the background transcode a few more tries to deliver H.264; if it is
+    // still HEVC on the final attempt, share it anyway — landing in Files beats a
+    // dead-end error, and IG/FB run in compatible (H.264) mode so this is rare.
     const codec = mp4VideoCodec(buf);
-    if (requireH264 && codec === 'hevc') {
-      lastError = new Error('Video is still being converted for Photos — try Save to Gallery again.');
-      if (attempt < maxAttempts) {
-        await new Promise((r) => setTimeout(r, 2500));
-        continue;
-      }
-      throw lastError;
+    if (requireH264 && codec === 'hevc' && attempt < maxAttempts) {
+      await new Promise((r) => setTimeout(r, 2500));
+      continue;
     }
 
     const rawName = parseFilename(res.headers.get('Content-Disposition'));
