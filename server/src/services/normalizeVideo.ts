@@ -330,7 +330,10 @@ const TRANSCODE_STRATEGIES: TranscodeStrategy[] = config.lowMemoryMode
 
 async function transcodeForGallery(inputPath: string, jobDir: string, fast = false): Promise<string> {
   const errors: string[] = [];
-  const strategies = fast ? TRANSCODE_STRATEGIES.slice(0, 1) : TRANSCODE_STRATEGIES;
+  // Mobile fast path: smallest/fastest only. Quality downloads skip 360p tier.
+  const strategies = fast
+    ? TRANSCODE_STRATEGIES.slice(0, 1)
+    : TRANSCODE_STRATEGIES.filter((s) => !s.outputName.includes('tiny'));
 
   for (const strategy of strategies) {
     const outputPath = path.join(jobDir, strategy.outputName);

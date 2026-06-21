@@ -69,13 +69,11 @@ function countRunningJobs(): number {
   return n;
 }
 
-/** Cap IG/FB quality on low-memory hosts — HEVC transcode exceeds 512 MB. */
-function effectiveQuality(url: string, quality: QualityDef): QualityDef {
+/** Cap IG/FB only on mobile fast path — desktop/quality downloads use selected resolution. */
+function effectiveQuality(url: string, quality: QualityDef, fast?: boolean): QualityDef {
   const platform = detectPlatform(url)?.id;
-  if (platform === 'instagram' || platform === 'facebook') {
-    if (quality.height > 720) {
-      return getQuality('720') ?? quality;
-    }
+  if (fast && (platform === 'instagram' || platform === 'facebook') && quality.height > 720) {
+    return getQuality('720') ?? quality;
   }
   return quality;
 }
@@ -128,7 +126,7 @@ export async function createJob(
   mode: CodecMode,
   options?: { fast?: boolean; reuse?: boolean },
 ): Promise<Job> {
-  const q = effectiveQuality(url, quality);
+  const q = effectiveQuality(url, quality, options?.fast);
   const cacheKey = jobCacheKey(url, q, mode, options?.fast);
 
   if (options?.reuse) {

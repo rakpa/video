@@ -105,7 +105,7 @@ export function buildSelector(
   options?: { maxHeight?: number },
 ): string {
   if (platformId === 'youtube' && mode === 'best') {
-    return fastYoutubeSelector(quality.height);
+    return youtubeBestSelector(quality.height);
   }
   if (platformId === 'instagram' || platformId === 'facebook') {
     return socialGallerySelector(quality, mode, options?.maxHeight);
@@ -134,12 +134,12 @@ export function buildSelector(
 function socialGallerySelector(
   quality: QualityDef,
   mode: CodecMode,
-  maxHeight = 720,
+  maxHeight?: number,
 ): string {
-  const cap =
-    mode === 'compatible'
-      ? Math.min(quality.height, maxHeight)
-      : Math.min(quality.height, maxHeight, 1080);
+  const cap = Math.min(
+    quality.height,
+    maxHeight ?? (mode === 'compatible' ? 1080 : quality.height),
+  );
   return [
     `b[ext=mp4][vcodec^=avc1][height<=${cap}]`,
     `b[ext=mp4][vcodec*=avc][height<=${cap}]`,
@@ -150,13 +150,19 @@ function socialGallerySelector(
   ].join('/');
 }
 
-/** YouTube: prefer progressive MP4 (one file) → faster start, no merge wait. */
-function fastYoutubeSelector(h: number): string {
-  const tiers = [
-    `b[height<=${h}][ext=mp4]`,
-    `b[height<=${h}]`,
-  ];
+/**
+ * YouTube: DASH video+audio at the requested height first.
+ * Progressive MP4 must NOT lead — YouTube's single-file MP4 is usually 360p/480p
+ * even when 4K DASH streams exist, which made HD/2K/4K downloads look terrible.
+ */
+function youtubeBestSelector(h: number): string {
+  const tiers: string[] = [];
   if (h <= 1080) tiers.push(`bv*[height<=${h}][vcodec^=avc1]+ba[ext=m4a]`);
-  tiers.push(`bv*[height<=${h}]+ba[ext=m4a]`, `bv*[height<=${h}]+ba`, `bv*+ba/b`);
+  tiers.push(
+    `bv*[height<=${h}]+ba[ext=m4a]`,
+    `bv*[height<=${h}]+ba`,
+    `b[height<=${h}]`,
+    `bv*+ba/b`,
+  );
   return tiers.join('/');
 }

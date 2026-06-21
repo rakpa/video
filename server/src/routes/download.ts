@@ -36,7 +36,11 @@ downloadRouter.post('/download', async (req, res) => {
   const platform = detectPlatform(url.trim());
   const codecMode =
     platform?.id === 'instagram' || platform?.id === 'facebook'
-      ? 'compatible'
+      ? Boolean(fast)
+        ? 'compatible'
+        : isCodecMode(mode)
+          ? mode
+          : 'best'
       : isCodecMode(mode)
         ? mode
         : 'best';

@@ -577,16 +577,14 @@ export function startDownload(
     platformId === 'instagram' || platformId === 'facebook'
       ? fast
         ? 480
-        : mode === 'compatible'
-          ? 720
-          : Math.min(quality.height, 1080)
+        : quality.height
       : undefined;
 
   let formatArg = buildSelector(quality, mode, platformId, { maxHeight: igFbMaxHeight });
   let singleFileH264 = false;
 
   if (cachedInfoJson && (platformId === 'instagram' || platformId === 'facebook')) {
-    const picked = pickBestSocialFormat(cachedInfoJson, igFbMaxHeight ?? 480, fast);
+    const picked = pickBestSocialFormat(cachedInfoJson, igFbMaxHeight ?? quality.height, fast);
     if (picked) {
       formatArg = picked.selector;
       singleFileH264 = picked.singleFileH264;
@@ -624,8 +622,10 @@ export function startDownload(
     ...(cachedInfoJson ? ['--load-info-json', cachedInfoJson] : [url]),
   ];
 
-  // Prefer H.264 when the format selector falls back to a looser tier.
-  if ((platformId === 'instagram' || platformId === 'facebook') && !singleFileH264) {
+  // Prefer highest resolution when multiple formats match (esp. YouTube DASH).
+  if (platformId === 'youtube') {
+    args.push('-S', 'res,quality,vcodec:vp9,vcodec:av1');
+  } else if ((platformId === 'instagram' || platformId === 'facebook') && !singleFileH264) {
     args.push('-S', 'vcodec:h264,res,quality');
   }
 
