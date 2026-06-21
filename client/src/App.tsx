@@ -120,6 +120,9 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
   /** IG/FB: decoded thumbnail — card stays on skeleton until this is set. */
   const [preloadedThumb, setPreloadedThumb] = useState<PreloadedThumb | null>(null);
   const [awaitingShareTap, setAwaitingShareTap] = useState(false);
+  /** Mobile: background prefetch finished — Download opens share sheet in one tap. */
+  const [mobileSaveReady, setMobileSaveReady] = useState(false);
+  const [mobileSaving, setMobileSaving] = useState(false);
 
   const lastJobId = useRef<string | null>(null);
   // The pre-fetched, gallery-ready video so the Save tap can open the share
@@ -158,6 +161,7 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
       .then((payload) => {
         if (prefetchUrl.current !== normalized || !payload) return null;
         galleryPayload.current = payload;
+        setMobileSaveReady(true);
         return payload;
       })
       .catch(() => null);
@@ -166,27 +170,6 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
   }, []);
 
   useStripeReturn(useCallback(() => setPro(true), []));
-
-  /** Fallback: one tap anywhere opens the native share sheet (no "Ready to save" page). */
-  useEffect(() => {
-    if (!awaitingShareTap || !galleryPayload.current) return;
-
-    const open = () => {
-      void openGalleryShareSheet(galleryPayload.current!).then((result) => {
-        if (result !== 'unavailable') {
-          setAwaitingShareTap(false);
-          setPhase('ready');
-        }
-      });
-    };
-
-    document.addEventListener('touchend', open, { once: true, capture: true });
-    document.addEventListener('click', open, { once: true, capture: true });
-    return () => {
-      document.removeEventListener('touchend', open, { capture: true });
-      document.removeEventListener('click', open, { capture: true });
-    };
-  }, [awaitingShareTap]);
 
   const pickDefault = (formats: AvailableFormat[]): QualityId =>
     (formats.find((f) => f.id === '1080' && f.available) ?? formats.find((f) => f.available) ?? formats[0]).id;
@@ -209,6 +192,9 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
     prefetchUrl.current = '';
     prefetchPayloadPromise.current = null;
     galleryPayload.current = null;
+    setMobileSaveReady(false);
+    setMobileSaving(false);
+    setAwaitingShareTap(false);
     setPreloadedThumb(null);
     fetchedUrl.current = normalized;
 
@@ -374,45 +360,44 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
       }
       setError(null);
       setActiveQuality(quality);
-      setProgress(INITIAL_PROGRESS);
-      setAwaitingShareTap(false);
 
       const platform = detectPlatform(fetchedUrl.current || url);
       const mobile = isMobileDevice();
       const isIgFb = platform?.id === 'instagram' || platform?.id === 'facebook';
       const currentUrl = fetchedUrl.current || url;
       const samePrefetch = prefetchUrl.current === currentUrl;
-      const cachedPayload = samePrefetch ? galleryPayload.current : null;
 
-      if (!samePrefetch) {
-        galleryPayload.current = null;
-        prefetchJobId.current = null;
-        prefetchPayloadPromise.current = null;
-      }
-
-      /** Payload already on device from background prefetch — open share sheet immediately. */
-      const openMobileShare = async (payload: VideoFilePayload) => {
-        galleryPayload.current = payload;
-        const result = await openGalleryShareSheet(payload);
-        if (result === 'unavailable') {
-          setAwaitingShareTap(true);
-          setPhase('ready');
-        } else {
-          setAwaitingShareTap(false);
-          setPhase('ready');
-        }
-      };
-
-      if (mobile && cachedPayload) {
+      /** Mobile: one tap → iOS share sheet. Never swap to the processing screen. */
+      if (mobile) {
+        setMobileSaving(true);
+        setAwaitingShareTap(false);
         try {
-          await openMobileShare(cachedPayload);
+          let payload = samePrefetch ? galleryPayload.current : null;
+          if (!payload && samePrefetch && prefetchPayloadPromise.current) {
+            payload = await prefetchPayloadPromise.current;
+          }
+          if (!payload) {
+            throw new Error('Video is still preparing. Wait a few seconds on this page, then tap again.');
+          }
+          galleryPayload.current = payload;
+          const result = await openGalleryShareSheet(payload);
+          if (result === 'unavailable') {
+            setAwaitingShareTap(true);
+          } else {
+            setAwaitingShareTap(false);
+          }
         } catch (e) {
-          setError(e instanceof Error ? e.message : 'Could not open the save menu.');
+          setError(e instanceof ApiError ? e.message : e instanceof Error ? e.message : 'Could not open the save menu.');
           setPhase('error');
+        } finally {
+          setMobileSaving(false);
         }
         return;
       }
 
+      setProgress(INITIAL_PROGRESS);
+      galleryPayload.current = null;
+      setAwaitingShareTap(false);
       setPhase('downloading');
       setProgress({ ...INITIAL_PROGRESS, percent: 1 });
       try {
@@ -422,78 +407,28 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
             throw new Error('Still preparing this video. Wait a moment and try again.');
           }
         }
-        const effectiveMode: CodecMode = mobile || isIgFb ? 'compatible' : mode;
-        let effectiveQuality = quality;
-        if (
-          mobile &&
-          isIgFb &&
-          (quality === '1080' || quality === '1440' || quality === '2160')
-        ) {
-          effectiveQuality = '720';
-        }
-
-        if (mobile && samePrefetch && prefetchPayloadPromise.current && !cachedPayload) {
-          const prefetchedPayload = await prefetchPayloadPromise.current;
-          if (prefetchedPayload) {
-            await openMobileShare(prefetchedPayload);
-            return;
-          }
-        }
-
-        let jobId: string;
-        const hasPrefetchJob = mobile && samePrefetch && prefetchJobId.current;
-
-        if (hasPrefetchJob) {
-          jobId = prefetchJobId.current!;
-          prefetchJobId.current = null;
-        } else {
-          jobId = await startDownloadJob(
-            currentUrl,
-            effectiveQuality,
-            effectiveMode,
-            licenseToken(),
-            { fast: mobile, reuse: mobile },
-          );
-        }
+        const effectiveMode: CodecMode = isIgFb ? 'compatible' : mode;
+        const jobId = await startDownloadJob(
+          currentUrl,
+          quality,
+          effectiveMode,
+          licenseToken(),
+          { fast: false, reuse: false },
+        );
         lastJobId.current = jobId;
         unsubscribe.current?.();
 
-        if (mobile) {
-          let sseError: string | null = null;
-          const sseFailed = new Promise<never>((_, reject) => {
-            unsubscribe.current = subscribeProgress(jobId, {
-              onProgress: () => {},
-              onDone: () => {},
-              onError: (message) => {
-                sseError = message;
-                reject(new Error(message));
-              },
-            });
-          });
-
-          try {
-            const payload = await Promise.race([
-              waitForMobileGalleryPayload(jobId),
-              sseFailed,
-            ]);
-            await openMobileShare(payload);
-          } catch (e) {
-            if (sseError) throw new Error(sseError);
-            throw e;
-          }
-        } else {
-          unsubscribe.current = subscribeProgress(jobId, {
-            onProgress: setProgress,
-            onDone: () => {
-              setPhase('success');
-              void triggerFileDownload(jobId);
-            },
-            onError: (message) => {
-              setError(message);
-              setPhase('error');
-            },
-          });
-        }
+        unsubscribe.current = subscribeProgress(jobId, {
+          onProgress: setProgress,
+          onDone: () => {
+            setPhase('success');
+            void triggerFileDownload(jobId);
+          },
+          onError: (message) => {
+            setError(message);
+            setPhase('error');
+          },
+        });
       } catch (e) {
         setError(e instanceof ApiError ? e.message : e instanceof Error ? e.message : 'Could not start the download.');
         setPhase('error');
@@ -547,7 +482,7 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
     (phase === 'ready' && (!info?.thumbnail || infoWarm));
 
   const view: 'ready' | 'downloading' | 'success' | null =
-    phase === 'downloading'
+    phase === 'downloading' && !isMobileDevice()
       ? 'downloading'
       : phase === 'success'
         ? 'success'
@@ -641,7 +576,7 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
                       <DownloadProgress
                         progress={progress}
                         qualityLabel={qualityLabel}
-                        processingOnly={isMobileDevice()}
+                        processingOnly={false}
                       />
                     ) : (
                       <>
@@ -654,8 +589,13 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
                           pro={pro}
                           refining={refining}
                           downloadReady={
-                            (info.platform !== 'instagram' && info.platform !== 'facebook') || infoWarm
+                            isMobileDevice()
+                              ? mobileSaveReady
+                              : (info.platform !== 'instagram' && info.platform !== 'facebook') || infoWarm
                           }
+                          mobileSave={isMobileDevice()}
+                          saving={mobileSaving}
+                          saveFallback={awaitingShareTap}
                           onDownload={() => handleDownload(selected, codecMode)}
                           onUpgrade={() => proPanelRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })}
                         />
