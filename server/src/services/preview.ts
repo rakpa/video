@@ -1,81 +1,125 @@
 import type { PlatformId } from './platform.js';
 import type { VideoInfo } from './ytdlp.js';
+import { fetchQuickPreview } from './ytdlp.js';
+import { fetchYoutubePreview } from './previewYoutube.js';
 
-interface OEmbedResponse {
-  title?: string;
-  author_name?: string;
-  thumbnail_url?: string;
+export { extractYoutubeId, fetchYoutubePreview } from './previewYoutube.js';
+
+function decodeHtml(s: string): string {
+  return s
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'");
 }
 
-/** Pull a YouTube video id from common URL shapes. */
-export function extractYoutubeId(url: string): string | null {
-  try {
-    const u = new URL(url);
-    if (u.hostname.replace(/^www\./, '') === 'youtu.be') {
-      return u.pathname.slice(1).split('/')[0] || null;
-    }
-    const v = u.searchParams.get('v');
-    if (v) return v;
-    const embed = u.pathname.match(/\/embed\/([^/?]+)/);
-    if (embed) return embed[1];
-    const shorts = u.pathname.match(/\/shorts\/([^/?]+)/);
-    if (shorts) return shorts[1];
-  } catch {
-    /* invalid URL */
-  }
-  return null;
+function metaContent(html: string, prop: string): string | undefined {
+  const re1 = new RegExp(`property=["']${prop}["'][^>]*content=["']([^"']+)`, 'i');
+  const re2 = new RegExp(`content=["']([^"']+)["'][^>]*property=["']${prop}["']`, 'i');
+  const raw = html.match(re1)?.[1] ?? html.match(re2)?.[1];
+  return raw ? decodeHtml(raw) : undefined;
 }
 
-/**
- * Near-instant YouTube preview via the public oEmbed endpoint (~200ms).
- * Full format data still comes from yt-dlp on /api/info.
- */
-export async function fetchYoutubePreview(url: string): Promise<VideoInfo | null> {
-  const id = extractYoutubeId(url);
-  if (!id) return null;
-
-  // oEmbed is picky — use a canonical watch URL (tracking params like ?si= break it).
-  const cleanUrl = `https://www.youtube.com/watch?v=${id}`;
-  const thumbnail = `https://i.ytimg.com/vi/${id}/hqdefault.jpg`;
-
+/** Scrape og:title / og:image — fast (~1–3s) when the CDN page is reachable. */
+async function scrapeOpenGraph(url: string): Promise<{ title?: string; image?: string } | null> {
   try {
-    const res = await fetch(
-      `https://www.youtube.com/oembed?url=${encodeURIComponent(cleanUrl)}&format=json`,
-      { signal: AbortSignal.timeout(4000) },
-    );
-    if (!res.ok) {
-      return {
-        id,
-        title: 'Untitled video',
-        author: 'Unknown',
-        durationSeconds: null,
-        thumbnail,
-        formats: [],
-      };
-    }
-
-    const data = (await res.json()) as OEmbedResponse;
-    return {
-      id,
-      title: data.title ?? 'Untitled video',
-      author: data.author_name ?? 'Unknown',
-      durationSeconds: null,
-      thumbnail: data.thumbnail_url ?? thumbnail,
-      formats: [],
-    };
+    const res = await fetch(url, {
+      headers: {
+        'User-Agent':
+          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36',
+        Accept: 'text/html,application/xhtml+xml',
+        'Accept-Language': 'en-US,en;q=0.9',
+      },
+      redirect: 'follow',
+      signal: AbortSignal.timeout(12_000),
+    });
+    if (!res.ok) return null;
+    const html = await res.text();
+    const title = metaContent(html, 'og:title') ?? metaContent(html, 'twitter:title');
+    const image = metaContent(html, 'og:image') ?? metaContent(html, 'twitter:image');
+    if (!title && !image) return null;
+    return { title, image };
   } catch {
+    return null;
+  }
+}
+
+function extractInstagramShortcode(url: string): string {
+  try {
+    const m = new URL(url).pathname.match(/\/(?:reel|reels|p|tv)\/([A-Za-z0-9_-]+)/i);
+    return m?.[1] ?? '';
+  } catch {
+    return '';
+  }
+}
+
+function cleanInstagramUrl(url: string): string {
+  const id = extractInstagramShortcode(url);
+  if (!id) return url;
+  try {
+    const path = new URL(url).pathname;
+    if (/\/reel/i.test(path)) return `https://www.instagram.com/reel/${id}/`;
+    if (/\/reels/i.test(path)) return `https://www.instagram.com/reels/${id}/`;
+    if (/\/tv/i.test(path)) return `https://www.instagram.com/tv/${id}/`;
+    return `https://www.instagram.com/p/${id}/`;
+  } catch {
+    return url;
+  }
+}
+
+function parseInstagramTitle(raw?: string): { title: string; author: string } {
+  if (!raw) return { title: 'Instagram Reel', author: 'Instagram' };
+  // "User on Instagram: \"caption...\"" or "Video by user on Instagram"
+  const byMatch = raw.match(/^Video by (.+?) on Instagram/i);
+  if (byMatch) return { title: raw, author: byMatch[1].trim() };
+  const onMatch = raw.match(/^(.+?) on Instagram(?::\s*(.*))?$/i);
+  if (onMatch) {
+    const author = onMatch[1].trim();
+    const caption = onMatch[2]?.replace(/^["']|["']$/g, '').trim();
+    return { title: caption || raw, author };
+  }
+  return { title: raw.replace(/\s*on Instagram.*$/i, '').trim() || 'Instagram Reel', author: 'Instagram' };
+}
+
+async function fetchInstagramPreview(url: string): Promise<VideoInfo | null> {
+  const clean = cleanInstagramUrl(url.trim());
+  const id = extractInstagramShortcode(clean);
+
+  const og = await scrapeOpenGraph(clean);
+  if (og?.image) {
+    const { title, author } = parseInstagramTitle(og.title);
     return {
       id,
-      title: 'Untitled video',
-      author: 'Unknown',
+      title,
+      author,
       durationSeconds: null,
-      thumbnail,
+      thumbnail: og.image,
       formats: [],
     };
   }
+
+  return fetchQuickPreview(clean);
+}
+
+async function fetchFacebookPreview(url: string): Promise<VideoInfo | null> {
+  const og = await scrapeOpenGraph(url.trim());
+  if (og?.image) {
+    return {
+      id: '',
+      title: og.title?.replace(/\s*\|\s*Facebook.*$/i, '').trim() || 'Facebook video',
+      author: 'Facebook',
+      durationSeconds: null,
+      thumbnail: og.image,
+      formats: [],
+    };
+  }
+  return fetchQuickPreview(url.trim());
 }
 
 export async function fetchPreview(url: string, platform: PlatformId): Promise<VideoInfo | null> {
   if (platform === 'youtube') return fetchYoutubePreview(url);
+  if (platform === 'instagram') return fetchInstagramPreview(url);
+  if (platform === 'facebook') return fetchFacebookPreview(url);
   return null;
 }

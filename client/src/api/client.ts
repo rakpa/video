@@ -3,6 +3,8 @@ import { API_NOT_CONFIGURED_MSG, API_UNREACHABLE_MSG, apiUrl, isApiConfigured } 
 import { classicFileDownload, isMobileDevice, saveMobileVideoToGallery } from '../utils/saveVideo';
 import { detectPlatform } from '../utils/platform';
 import { fetchClientYoutubePreview } from '../utils/youtube';
+import { fetchClientInstagramPreview } from '../utils/instagram';
+import { fetchClientFacebookPreview } from '../utils/facebook';
 import { retryFetch } from '../utils/retryFetch';
 
 /** Thrown for any non-2xx API response, carrying the friendly server message. */
@@ -10,6 +12,9 @@ export class ApiError extends Error {}
 
 /** Enough attempts to survive Render free-tier cold starts (~50s wake). */
 const COLD_START_RETRY = { retries: 8, delayMs: 5000, backoffFactor: 1.4 } as const;
+
+/** Preview is lightweight — shorter backoff so thumbnails appear quickly. */
+const PREVIEW_RETRY = { retries: 4, delayMs: 1500, backoffFactor: 1.4 } as const;
 
 function apiFailureMessage(res: Response, isJson: boolean): string {
   if (res.status === 502 || res.status === 503 || res.status === 504) {
@@ -65,14 +70,23 @@ export function fetchVideoInfo(url: string): Promise<VideoInfo> {
   return postJson<VideoInfo>('/api/info', { url });
 }
 
-/** Fast preview (title + thumbnail). YouTube uses browser oEmbed first; API is a fallback. */
+/** Fast preview (title + thumbnail). YouTube uses browser oEmbed; IG/FB use instant placeholders + API OG scrape. */
 export async function fetchVideoPreview(url: string): Promise<VideoInfo | null> {
-  if (detectPlatform(url)?.id === 'youtube') {
+  const platformId = detectPlatform(url)?.id;
+
+  if (platformId === 'youtube') {
     const local = await fetchClientYoutubePreview(url);
     if (local) return local;
   }
 
-  if (!isApiConfigured()) return null;
+  const instant =
+    platformId === 'instagram'
+      ? fetchClientInstagramPreview(url)
+      : platformId === 'facebook'
+        ? fetchClientFacebookPreview(url)
+        : null;
+
+  if (!isApiConfigured()) return instant;
 
   let res: Response;
   try {
@@ -83,18 +97,27 @@ export async function fetchVideoPreview(url: string): Promise<VideoInfo | null> 
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ url }),
       },
-      COLD_START_RETRY,
+      PREVIEW_RETRY,
     );
   } catch {
-    return detectPlatform(url)?.id === 'youtube' ? fetchClientYoutubePreview(url) : null;
+    return instant ?? (platformId === 'youtube' ? fetchClientYoutubePreview(url) : null);
   }
   if (res.status === 204) {
-    return detectPlatform(url)?.id === 'youtube' ? fetchClientYoutubePreview(url) : null;
+    return instant ?? (platformId === 'youtube' ? fetchClientYoutubePreview(url) : null);
   }
-  if (!res.ok) return null;
+  if (!res.ok) return instant;
   const isJson = res.headers.get('content-type')?.includes('application/json');
-  if (!isJson) return null;
-  return res.json() as Promise<VideoInfo>;
+  if (!isJson) return instant;
+  const api = (await res.json()) as VideoInfo;
+  if (!instant) return api;
+  return {
+    ...instant,
+    ...api,
+    platform: api.platform ?? instant.platform,
+    title: api.title || instant.title,
+    author: api.author || instant.author,
+    thumbnail: api.thumbnail ?? instant.thumbnail,
+  };
 }
 
 /** Kick off a download job; returns the job id. `license` unlocks premium qualities. */

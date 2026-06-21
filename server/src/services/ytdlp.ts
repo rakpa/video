@@ -199,16 +199,25 @@ function downloadFailureMessage(stderr: string): string {
 }
 
 /** Run yt-dlp and collect stdout. Rejects with a typed error on failure. */
-function runJson(args: readonly string[]): Promise<string> {
+function runJson(args: readonly string[], timeoutMs = 120_000): Promise<string> {
   return new Promise((resolve, reject) => {
     const child = spawn(config.ytdlpPath, args, { windowsHide: true });
     let stdout = '';
     let stderr = '';
+    const timer = setTimeout(() => {
+      try {
+        child.kill('SIGKILL');
+      } catch {
+        /* already exited */
+      }
+      reject(new YtDlpError('Timed out reading video metadata.', 'FAILED'));
+    }, timeoutMs);
 
     child.stdout.on('data', (d) => (stdout += d.toString()));
     child.stderr.on('data', (d) => (stderr += d.toString()));
 
     child.on('error', (err) => {
+      clearTimeout(timer);
       if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
         reject(new YtDlpError('yt-dlp binary not found. Is it installed and on PATH?', 'NO_BINARY'));
       } else {
@@ -217,6 +226,7 @@ function runJson(args: readonly string[]): Promise<string> {
     });
 
     child.on('close', (code) => {
+      clearTimeout(timer);
       if (code === 0) return resolve(stdout);
       logger.warn('yt-dlp info failed:', stderr.slice(0, 500));
       reject(new YtDlpError(ytDlpFailureMessage(stderr), isBlockedStderr(stderr) ? 'BLOCKED' : 'UNAVAILABLE'));
@@ -302,6 +312,17 @@ export async function fetchInfo(url: string): Promise<VideoInfo> {
   const isYoutube = platform?.id === 'youtube';
   const cookies = getCookiesStatus();
   const clients = isYoutube ? youtubeClientsToTry(cookies.exists) : [config.youtubePlayerClient];
+  const proxy = currentProxy() ?? '';
+
+  const cachedJson = getFreshInfoJson(url, proxy);
+  if (cachedJson) {
+    try {
+      const stdout = fs.readFileSync(cachedJson, 'utf8');
+      return parseInfoDump(stdout);
+    } catch {
+      invalidateInfoJson(url);
+    }
+  }
 
   // Try the sticky proxy first; if YouTube blocks the IP, rotate through the
   // pool (fast-fail) so a single blocked IP self-heals without a manual retry.
@@ -336,6 +357,36 @@ export async function fetchInfo(url: string): Promise<VideoInfo> {
   }
 
   throw lastError ?? new YtDlpError('Could not read that video.', 'UNAVAILABLE');
+}
+
+/**
+ * Lightweight metadata for /api/info/preview (Instagram/Facebook).
+ * One yt-dlp pass, caches info-json for the subsequent download.
+ */
+export async function fetchQuickPreview(url: string): Promise<VideoInfo | null> {
+  const platform = detectPlatform(url);
+  const isYoutube = platform?.id === 'youtube';
+  const cookies = getCookiesStatus();
+  const clients = isYoutube ? youtubeClientsToTry(cookies.exists) : [config.youtubePlayerClient];
+
+  try {
+    const stdout = await runJson(
+      [...INFO_ARGS, ...youtubeHardeningArgs(clients[0] ?? config.youtubePlayerClient), url],
+      25_000,
+    );
+    saveInfoJson(url, stdout, currentProxy() ?? '');
+    const info = parseInfoDump(stdout);
+    return {
+      id: info.id,
+      title: info.title,
+      author: info.author,
+      durationSeconds: info.durationSeconds,
+      thumbnail: info.thumbnail,
+      formats: [],
+    };
+  } catch {
+    return null;
+  }
 }
 
 export interface DownloadHandle {

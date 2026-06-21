@@ -5,6 +5,8 @@ import { useTheme, type Theme } from './hooks/useTheme';
 import { detectPlatform, normalizeUrl } from './utils/platform';
 import { API_NOT_CONFIGURED_MSG, isApiConfigured } from './config/api';
 import { PLACEHOLDER_FORMATS } from './utils/formats';
+import { fetchClientInstagramPreview } from './utils/instagram';
+import { fetchClientFacebookPreview } from './utils/facebook';
 import { isPro, licenseToken } from './lib/license';
 import { useStripeReturn } from './hooks/useStripeReturn';
 import {
@@ -143,32 +145,47 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
     fetchedUrl.current = normalized;
 
     const platform = detectPlatform(normalized)!;
+    const instant =
+      platform.id === 'instagram'
+        ? fetchClientInstagramPreview(normalized)
+        : platform.id === 'facebook'
+          ? fetchClientFacebookPreview(normalized)
+          : null;
+
     setInfo({
       platform: platform.id,
-      id: '',
-      title: 'Loading…',
-      author: '…',
+      id: instant?.id ?? '',
+      title: instant?.title ?? 'Loading…',
+      author: instant?.author ?? '…',
       durationSeconds: null,
-      thumbnail: null,
+      thumbnail: instant?.thumbnail ?? null,
       formats: PLACEHOLDER_FORMATS,
     });
+    if (instant) setPhase('ready');
 
-    // Fast preview (thumbnail/title) first so the card + Download button are
-    // usable in ~1s, instead of waiting on the slow full-info extraction.
-    const preview = await fetchVideoPreview(normalized).catch(() => null);
-    if (fetchedUrl.current !== normalized) return;
-    let hasPreview = false;
-    if (preview) {
+    // Preview (thumbnail/title) and full info run in parallel — IG/FB no longer
+    // block the card on a slow yt-dlp extraction.
+    const previewPromise = fetchVideoPreview(normalized).catch(() => null);
+    const infoPromise = fetchVideoInfo(normalized);
+    let hasPreview = Boolean(instant);
+
+    void previewPromise.then((preview) => {
+      if (!preview || fetchedUrl.current !== normalized) return;
       hasPreview = true;
-      setInfo((prev) => ({ ...preview, formats: prev?.formats ?? PLACEHOLDER_FORMATS }));
-      // The button is usable now — the download runs its own extraction, so don't
-      // make the user wait on the full-info call just to click Download.
+      setInfo((prev) => ({
+        ...prev!,
+        ...preview,
+        formats: prev?.formats ?? PLACEHOLDER_FORMATS,
+        title: preview.title || prev?.title || 'Untitled video',
+        author: preview.author || prev?.author || 'Unknown',
+        thumbnail: preview.thumbnail ?? prev?.thumbnail ?? null,
+      }));
       setPhase((p) => (p === 'preview' ? 'ready' : p));
-    }
+    });
 
     // Full info (accurate sizes/availability) refines the cards in the background.
     try {
-      const data = await fetchVideoInfo(normalized);
+      const data = await infoPromise;
       if (fetchedUrl.current !== normalized) return;
       setInfo((prev) => ({
         ...data,
@@ -183,7 +200,7 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
       setPhase((p) => (p === 'preview' || p === 'fetching' ? 'ready' : p));
     } catch (e) {
       if (fetchedUrl.current !== normalized) return;
-      if (hasPreview) {
+      if (hasPreview || instant) {
         // Full info failed but the preview gave us a usable card — keep it and
         // let the user try the download (it extracts independently).
         setPhase((p) => (p === 'downloading' || p === 'success' ? p : 'ready'));
@@ -440,10 +457,10 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
                   />
                 ) : (
                   <>
-                    {info.thumbnail ? (
-                      <VideoPreview info={info} />
-                    ) : (
+                    {info.title === 'Loading…' && !info.thumbnail ? (
                       <VideoPreviewSkeleton />
+                    ) : (
+                      <VideoPreview info={info} />
                     )}
                     {view === 'downloading' ? (
                       <DownloadProgress progress={progress} qualityLabel={qualityLabel} />

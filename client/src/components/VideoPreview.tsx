@@ -59,7 +59,7 @@ export function VideoPreview({ info }: Props) {
               className="h-full w-full object-cover"
             />
           ) : (
-            <div className="grid h-full w-full place-items-center text-slate-400">No preview</div>
+            <div className="shimmer relative h-full w-full overflow-hidden bg-slate-100" aria-label="Loading thumbnail" />
           )}
           {info.durationSeconds != null && (
             <span className="absolute bottom-2 right-2 rounded-md bg-black/70 px-1.5 py-0.5 text-xs font-medium text-white">
