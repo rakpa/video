@@ -35,12 +35,10 @@ export function DownloadProgress({ progress, qualityLabel, processingOnly }: Pro
             animate={{ opacity: [1, 0.3, 1] }}
             transition={{ duration: 1.2, repeat: Infinity }}
           />
-          <span className="font-semibold text-slate-900">We are processing your download</span>
+          <span className="font-semibold text-slate-900">Download is in progress</span>
         </div>
         <p className="mt-3 text-sm text-slate-500">
-          {processingOnly
-            ? 'Your save menu opens as soon as the video is ready — usually a few seconds if you waited on the preview.'
-            : 'This usually takes a moment. Your save menu will open when ready.'}
+          Your file will appear in your browser&apos;s downloads when ready.
         </p>
         <div className="relative mt-5 h-2 w-full overflow-hidden rounded-full bg-slate-100">
           <motion.div

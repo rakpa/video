@@ -416,10 +416,10 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
         unsubscribe.current?.();
 
         unsubscribe.current = subscribeProgress(jobId, {
-          onProgress: setProgress,
+          onProgress: () => {},
           onDone: () => {
-            setPhase('success');
             void triggerFileDownload(jobId);
+            setPhase('ready');
           },
           onError: (message) => {
             setError(message);
@@ -573,7 +573,7 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
                       <DownloadProgress
                         progress={progress}
                         qualityLabel={qualityLabel}
-                        processingOnly={false}
+                        processingOnly
                       />
                     ) : (
                       <>
