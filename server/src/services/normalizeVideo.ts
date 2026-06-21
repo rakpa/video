@@ -107,20 +107,22 @@ async function runFfmpeg(args: string[], timeoutMs: number): Promise<void> {
 }
 
 /** Remux H.264 in a new container — near-zero RAM vs full transcode. */
-async function remuxForGallery(inputPath: string, jobDir: string): Promise<string> {
+async function remuxForGallery(inputPath: string, jobDir: string, fast = false): Promise<string> {
   const outputPath = path.join(jobDir, 'gallery-ready.mp4');
-  const strategies: { label: string; args: string[] }[] = [
-    { label: 'copy all streams', args: ['-i', inputPath, '-c', 'copy'] },
-    {
-      label: 'copy video + aac audio',
-      args: ['-i', inputPath, '-c:v', 'copy', '-c:a', 'aac', '-b:a', '128k', '-ac', '2'],
-    },
-    { label: 'copy video only', args: ['-i', inputPath, '-c:v', 'copy', '-an'] },
-    {
-      label: 'copy with genpts',
-      args: ['-fflags', '+genpts', '-i', inputPath, '-c', 'copy'],
-    },
-  ];
+  const strategies: { label: string; args: string[] }[] = fast
+    ? [{ label: 'copy all streams', args: ['-i', inputPath, '-c', 'copy'] }]
+    : [
+        { label: 'copy all streams', args: ['-i', inputPath, '-c', 'copy'] },
+        {
+          label: 'copy video + aac audio',
+          args: ['-i', inputPath, '-c:v', 'copy', '-c:a', 'aac', '-b:a', '128k', '-ac', '2'],
+        },
+        { label: 'copy video only', args: ['-i', inputPath, '-c:v', 'copy', '-an'] },
+        {
+          label: 'copy with genpts',
+          args: ['-fflags', '+genpts', '-i', inputPath, '-c', 'copy'],
+        },
+      ];
 
   const errors: string[] = [];
   for (const strategy of strategies) {
@@ -326,10 +328,11 @@ const TRANSCODE_STRATEGIES: TranscodeStrategy[] = config.lowMemoryMode
       },
     ];
 
-async function transcodeForGallery(inputPath: string, jobDir: string): Promise<string> {
+async function transcodeForGallery(inputPath: string, jobDir: string, fast = false): Promise<string> {
   const errors: string[] = [];
+  const strategies = fast ? TRANSCODE_STRATEGIES.slice(0, 1) : TRANSCODE_STRATEGIES;
 
-  for (const strategy of TRANSCODE_STRATEGIES) {
+  for (const strategy of strategies) {
     const outputPath = path.join(jobDir, strategy.outputName);
     await fsp.unlink(outputPath).catch(() => undefined);
 
@@ -364,7 +367,7 @@ async function transcodeForGallery(inputPath: string, jobDir: string): Promise<s
       }
 
       await fsp.unlink(inputPath).catch(() => undefined);
-      for (const other of TRANSCODE_STRATEGIES) {
+      for (const other of strategies) {
         if (other.outputName !== 'gallery-ready.mp4') {
           await fsp.unlink(path.join(jobDir, other.outputName)).catch(() => undefined);
         }
@@ -386,13 +389,13 @@ async function transcodeForGallery(inputPath: string, jobDir: string): Promise<s
  * Make an Instagram/Facebook video iOS-Photos-compatible. (Only ever called for
  * IG/FB — gated by needsGalleryNormalize.)
  */
-export function normalizeForGallery(inputPath: string, jobDir: string): Promise<string> {
+export function normalizeForGallery(inputPath: string, jobDir: string, fast = false): Promise<string> {
   return enqueueNormalize(async () => {
     const codec = await probeVideoCodec(inputPath);
-    logger.info(`Gallery normalize probe=${codec} file=${path.basename(inputPath)}`);
+    logger.info(`Gallery normalize probe=${codec} file=${path.basename(inputPath)} fast=${fast}`);
     if (codec === 'h264') {
-      return remuxForGallery(inputPath, jobDir);
+      return remuxForGallery(inputPath, jobDir, fast);
     }
-    return transcodeForGallery(inputPath, jobDir);
+    return transcodeForGallery(inputPath, jobDir, fast);
   });
 }

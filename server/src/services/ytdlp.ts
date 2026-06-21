@@ -306,14 +306,67 @@ function parseInfoDump(stdout: string): VideoInfo {
   };
 }
 
-/** Fetches metadata + computes the four quality cards for a URL. */
-export async function fetchInfo(url: string): Promise<VideoInfo> {
+/** In-flight extractions — /api/info and /api/download share one yt-dlp -J pass. */
+const infoJsonInflight = new Map<string, Promise<void>>();
+
+async function extractAndCacheInfoJson(url: string): Promise<void> {
   const platform = detectPlatform(url);
   const isYoutube = platform?.id === 'youtube';
   const cookies = getCookiesStatus();
   const clients = isYoutube ? youtubeClientsToTry(cookies.exists) : [config.youtubePlayerClient];
-  const proxy = currentProxy() ?? '';
 
+  const maxProxyTries = Math.min(Math.max(config.proxies.length, 1), 5);
+  let lastError: YtDlpError | undefined;
+
+  for (let proxyTry = 0; proxyTry < maxProxyTries; proxyTry++) {
+    let blocked = false;
+    for (const client of clients) {
+      try {
+        const stdout = await runJson([...INFO_ARGS, ...youtubeHardeningArgs(client), url]);
+        saveInfoJson(url, stdout, currentProxy() ?? '');
+        return;
+      } catch (err) {
+        if (!(err instanceof YtDlpError)) throw err;
+        lastError = err;
+        if (err.code === 'BLOCKED') {
+          blocked = true;
+          break;
+        }
+      }
+    }
+
+    if (blocked && config.proxies.length > 1 && proxyTry < maxProxyTries - 1) {
+      const next = rotateProxy();
+      logger.info(
+        `Info blocked on proxy; rotating to ${next ? new URL(next).host : 'none'} (try ${proxyTry + 2}/${maxProxyTries})`,
+      );
+      continue;
+    }
+    break;
+  }
+
+  throw lastError ?? new YtDlpError('Could not read that video.', 'UNAVAILABLE');
+}
+
+/**
+ * Ensure a fresh info-json dump exists for this URL. Dedupes concurrent callers
+ * (/api/info on paste + /api/download) so Instagram never pays for two extractions.
+ */
+export function ensureInfoJsonCache(url: string): Promise<void> {
+  const proxy = currentProxy() ?? '';
+  if (getFreshInfoJson(url, proxy)) return Promise.resolve();
+
+  let inflight = infoJsonInflight.get(url);
+  if (!inflight) {
+    inflight = extractAndCacheInfoJson(url).finally(() => infoJsonInflight.delete(url));
+    infoJsonInflight.set(url, inflight);
+  }
+  return inflight;
+}
+
+/** Fetches metadata + computes the four quality cards for a URL. */
+export async function fetchInfo(url: string): Promise<VideoInfo> {
+  const proxy = currentProxy() ?? '';
   const cachedJson = getFreshInfoJson(url, proxy);
   if (cachedJson) {
     try {
@@ -324,39 +377,10 @@ export async function fetchInfo(url: string): Promise<VideoInfo> {
     }
   }
 
-  // Try the sticky proxy first; if YouTube blocks the IP, rotate through the
-  // pool (fast-fail) so a single blocked IP self-heals without a manual retry.
-  const maxProxyTries = Math.min(Math.max(config.proxies.length, 1), 5);
-  let lastError: YtDlpError | undefined;
-
-  for (let proxyTry = 0; proxyTry < maxProxyTries; proxyTry++) {
-    let blocked = false;
-    for (const client of clients) {
-      try {
-        const stdout = await runJson([...INFO_ARGS, ...youtubeHardeningArgs(client), url]);
-        // Cache the raw dump so the download can skip re-extraction (--load-info-json).
-        saveInfoJson(url, stdout, currentProxy() ?? '');
-        return parseInfoDump(stdout);
-      } catch (err) {
-        if (!(err instanceof YtDlpError)) throw err;
-        lastError = err;
-        // A block won't be fixed by another client — rotating the IP is the fix.
-        if (err.code === 'BLOCKED') {
-          blocked = true;
-          break;
-        }
-      }
-    }
-
-    if (blocked && config.proxies.length > 1 && proxyTry < maxProxyTries - 1) {
-      const next = rotateProxy();
-      logger.info(`Info blocked on proxy; rotating to ${next ? new URL(next).host : 'none'} (try ${proxyTry + 2}/${maxProxyTries})`);
-      continue;
-    }
-    break; // succeeded, non-block error, or no more proxies to try
-  }
-
-  throw lastError ?? new YtDlpError('Could not read that video.', 'UNAVAILABLE');
+  await ensureInfoJsonCache(url);
+  const fresh = getFreshInfoJson(url, currentProxy() ?? '');
+  if (!fresh) throw new YtDlpError('Could not read that video.', 'UNAVAILABLE');
+  return parseInfoDump(fs.readFileSync(fresh, 'utf8'));
 }
 
 /**
@@ -364,18 +388,11 @@ export async function fetchInfo(url: string): Promise<VideoInfo> {
  * One yt-dlp pass, caches info-json for the subsequent download.
  */
 export async function fetchQuickPreview(url: string): Promise<VideoInfo | null> {
-  const platform = detectPlatform(url);
-  const isYoutube = platform?.id === 'youtube';
-  const cookies = getCookiesStatus();
-  const clients = isYoutube ? youtubeClientsToTry(cookies.exists) : [config.youtubePlayerClient];
-
   try {
-    const stdout = await runJson(
-      [...INFO_ARGS, ...youtubeHardeningArgs(clients[0] ?? config.youtubePlayerClient), url],
-      25_000,
-    );
-    saveInfoJson(url, stdout, currentProxy() ?? '');
-    const info = parseInfoDump(stdout);
+    await ensureInfoJsonCache(url);
+    const fresh = getFreshInfoJson(url, currentProxy() ?? '');
+    if (!fresh) return null;
+    const info = parseInfoDump(fs.readFileSync(fresh, 'utf8'));
     return {
       id: info.id,
       title: info.title,
@@ -452,7 +469,7 @@ function downloadTuning(
   const platform = detectPlatform(url)?.id;
   if (platform === 'instagram' || platform === 'facebook') {
     return fast
-      ? { httpChunkSize: '2M', concurrentFragments: '2' }
+      ? { httpChunkSize: '4M', concurrentFragments: '3' }
       : { httpChunkSize: '1M', concurrentFragments: '1' };
   }
   return { httpChunkSize: '5M', concurrentFragments: '6' };
@@ -494,7 +511,7 @@ export function startDownload(
   const igFbMaxHeight =
     platformId === 'instagram' || platformId === 'facebook'
       ? fast
-        ? 480
+        ? 360
         : mode === 'compatible'
           ? 720
           : Math.min(quality.height, 1080)
@@ -502,7 +519,10 @@ export function startDownload(
 
   const args = [
     '-f',
-    buildSelector(quality, mode, platformId, { maxHeight: igFbMaxHeight }),
+    buildSelector(quality, mode, platformId, {
+      maxHeight: igFbMaxHeight,
+      h264Only: fast && (platformId === 'instagram' || platformId === 'facebook'),
+    }),
     '--merge-output-format', 'mp4',
     // Only pass --ffmpeg-location for a real path. A bare name like "ffmpeg"
     // is rejected by yt-dlp ("ffmpeg-location ffmpeg does not exist") and makes

@@ -43,15 +43,33 @@ export function saveInfoJson(url: string, rawJson: string, proxy: string): void 
   }
 }
 
-/** Path to a fresh, same-proxy dump for this url, or null to extract normally. */
+/** Path to a fresh dump for this url, or null to extract normally. */
 export function getFreshInfoJson(url: string, proxy: string): string | null {
-  const e = cache.get(url);
+  const p = fileFor(url);
+  let e = cache.get(url);
+
+  if (!e && fs.existsSync(p)) {
+    const stat = fs.statSync(p);
+    e = { path: p, createdAt: stat.mtimeMs, proxy: '' };
+    cache.set(url, e);
+  }
+
   if (!e) return null;
-  if (e.proxy !== proxy || Date.now() - e.createdAt > TTL_MS) return null;
+  if (Date.now() - e.createdAt > TTL_MS) {
+    cache.delete(url);
+    fs.rm(p, { force: true }, () => undefined);
+    return null;
+  }
   if (!fs.existsSync(e.path)) {
     cache.delete(url);
     return null;
   }
+
+  // Only enforce proxy match when multiple proxies rotate — a single sticky proxy
+  // (or no proxy) should reuse the dump from /api/info on the subsequent download.
+  const { proxies } = config;
+  if (proxies.length > 1 && e.proxy && e.proxy !== proxy) return null;
+
   return e.path;
 }
 

@@ -1,5 +1,6 @@
 import type { PlatformId } from './platform.js';
 import type { VideoInfo } from './ytdlp.js';
+import { ensureInfoJsonCache } from './ytdlp.js';
 import { fetchYoutubePreview } from './previewYoutube.js';
 
 export { extractYoutubeId, fetchYoutubePreview } from './previewYoutube.js';
@@ -85,6 +86,9 @@ async function fetchInstagramPreview(url: string): Promise<VideoInfo | null> {
   const clean = cleanInstagramUrl(url.trim());
   const id = extractInstagramShortcode(clean);
 
+  // Warm info-json in parallel with OG scrape — download skips the ~20s re-extraction.
+  void ensureInfoJsonCache(clean).catch(() => undefined);
+
   const og = await scrapeOpenGraph(clean);
   if (og?.title || og?.image) {
     const { title, author } = parseInstagramTitle(og.title);
@@ -103,7 +107,10 @@ async function fetchInstagramPreview(url: string): Promise<VideoInfo | null> {
 }
 
 async function fetchFacebookPreview(url: string): Promise<VideoInfo | null> {
-  const og = await scrapeOpenGraph(url.trim());
+  const trimmed = url.trim();
+  void ensureInfoJsonCache(trimmed).catch(() => undefined);
+
+  const og = await scrapeOpenGraph(trimmed);
   if (og?.title || og?.image) {
     return {
       id: '',

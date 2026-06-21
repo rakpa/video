@@ -65,8 +65,8 @@ interface FileStatus {
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-const GALLERY_POLL_MS = 200;
-const FILE_RETRY_MS = 300;
+const GALLERY_POLL_MS = 100;
+const FILE_RETRY_MS = 150;
 
 async function readVideoPayloadFromResponse(res: Response): Promise<VideoFilePayload> {
   const buf = await res.arrayBuffer();

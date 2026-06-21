@@ -65,6 +65,12 @@ async function postJson<T>(path: string, body: unknown): Promise<T> {
   return data as T;
 }
 
+/** Wake the API (Render free tier cold start) before heavier yt-dlp work. */
+export function pingApiWarmup(): void {
+  if (!isApiConfigured()) return;
+  void fetch(apiUrl('/api/health')).catch(() => undefined);
+}
+
 /** Fetch metadata + quality options for a URL. */
 export function fetchVideoInfo(url: string): Promise<VideoInfo> {
   return postJson<VideoInfo>('/api/info', { url });

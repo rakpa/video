@@ -3,7 +3,7 @@ import fsp from 'node:fs/promises';
 import path from 'node:path';
 import { nanoid } from 'nanoid';
 import { config, currentProxy } from './config.js';
-import { startDownload, fetchInfo, YtDlpError, type ProgressUpdate } from './services/ytdlp.js';
+import { startDownload, ensureInfoJsonCache, YtDlpError, type ProgressUpdate } from './services/ytdlp.js';
 import { getQuality, type CodecMode, type QualityDef } from './services/formats.js';
 import { detectPlatform, type PlatformId } from './services/platform.js';
 import { needsGalleryNormalize, normalizeForGallery, canServeDirectToGallery } from './services/normalizeVideo.js';
@@ -73,7 +73,7 @@ export function warmGalleryNormalize(job: Job): void {
 
   const input = job.filePath;
   job.galleryNormalizeFailed = false;
-  job.galleryNormalize = normalizeForGallery(input, job.dir)
+  job.galleryNormalize = normalizeForGallery(input, job.dir, job.fast)
     .then((normalized) => {
       job.galleryPath = normalized;
       job.filePath = normalized;
@@ -160,15 +160,15 @@ async function runWithRetry(job: Job, url: string, quality: QualityDef, mode: Co
   const maxAttempts = config.proxies.length > 1 ? 3 : 1;
 
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-    // Warm the info-json cache so yt-dlp skips a slow re-extraction at 0%.
+    // Join the same in-flight extraction as /api/info (never run two yt-dlp -J passes).
     const proxy = currentProxy() ?? '';
     if (!getFreshInfoJson(url, proxy)) {
       job.progress = { percent: 1, speed: null, eta: null, stage: 'downloading', streamIndex: 1, streamTotal: 1 };
       emit(job, job.progress);
       try {
-        await fetchInfo(url);
+        await ensureInfoJsonCache(url);
       } catch (err) {
-        logger.warn('Pre-fetch info failed — download will extract inline:', (err as Error).message);
+        logger.warn('Info-json warm failed — download will extract inline:', (err as Error).message);
       }
     }
 

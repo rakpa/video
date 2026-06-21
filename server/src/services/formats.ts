@@ -102,13 +102,13 @@ export function buildSelector(
   quality: QualityDef,
   mode: CodecMode,
   platformId?: string,
-  options?: { maxHeight?: number },
+  options?: { maxHeight?: number; h264Only?: boolean },
 ): string {
   if (platformId === 'youtube' && mode === 'best') {
     return fastYoutubeSelector(quality.height);
   }
   if (platformId === 'instagram' || platformId === 'facebook') {
-    return socialGallerySelector(quality, mode, options?.maxHeight);
+    return socialGallerySelector(quality, mode, options?.maxHeight, options?.h264Only);
   }
   if (mode === 'compatible') {
     // Cap at 1080p and strongly prefer avc1 (H.264) + mp4a (AAC), with
@@ -131,15 +131,24 @@ export function buildSelector(
  * IG/FB: prefer a single progressive H.264 MP4 so gallery prep is a cheap
  * faststart remux — not a RAM-heavy HEVC transcode on Render's 512 MB tier.
  */
-function socialGallerySelector(quality: QualityDef, mode: CodecMode, maxHeight = 720): string {
+function socialGallerySelector(
+  quality: QualityDef,
+  mode: CodecMode,
+  maxHeight = 720,
+  h264Only = false,
+): string {
   const cap =
     mode === 'compatible'
       ? Math.min(quality.height, maxHeight)
       : Math.min(quality.height, maxHeight, 1080);
-  return [
+  const h264Tiers = [
     `b[ext=mp4][vcodec^=avc1][height<=${cap}]`,
     `b[ext=mp4][vcodec*=avc][height<=${cap}]`,
     `b[vcodec^=avc1][height<=${cap}]`,
+  ];
+  if (h264Only) return h264Tiers.join('/');
+  return [
+    ...h264Tiers,
     `b[ext=mp4][height<=${cap}]`,
     `b[height<=${cap}]`,
     'b',

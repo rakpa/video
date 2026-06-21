@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { validateUrl } from '../utils/validate.js';
 import { readJsonBody } from '../utils/body.js';
-import { fetchInfo, YtDlpError } from '../services/ytdlp.js';
+import { fetchInfo, ensureInfoJsonCache, YtDlpError } from '../services/ytdlp.js';
 import { detectPlatform } from '../services/platform.js';
 import { fetchPreview } from '../services/preview.js';
 import { getCachedInfo, setCachedInfo } from '../services/infoCache.js';
@@ -18,6 +18,10 @@ infoRouter.post('/info/preview', async (req, res) => {
   }
 
   const platform = detectPlatform(url)!;
+  const trimmed = url.trim();
+  if (platform.id === 'instagram' || platform.id === 'facebook') {
+    void ensureInfoJsonCache(trimmed).catch(() => undefined);
+  }
   try {
     const preview = await fetchPreview(url.trim(), platform.id);
     if (!preview) {

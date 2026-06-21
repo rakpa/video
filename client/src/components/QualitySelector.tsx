@@ -13,6 +13,8 @@ interface Props {
   pro: boolean;
   /** True while real file sizes / availability are still loading. */
   refining?: boolean;
+  /** False until yt-dlp info-json is warm — prevents a duplicate slow extraction on download. */
+  downloadReady?: boolean;
   /** Starts the download of the selected quality (App handles Pro gating). */
   onDownload: () => void;
   /** Scroll/focus the inline Pro upgrade panel. */
@@ -26,7 +28,7 @@ interface Props {
  *
  * TEMP: 2K/4K no longer show as Pro for testing.
  */
-export function QualitySelector({ formats, selected, onSelect, mode, onModeChange, pro, refining = false, onDownload, onUpgrade }: Props) {
+export function QualitySelector({ formats, selected, onSelect, mode, onModeChange, pro, refining = false, downloadReady = true, onDownload, onUpgrade }: Props) {
   // In compatible mode, only resolutions up to 1080p are offered (H.264 ceiling).
   const visibleFormats = useMemo(
     () =>
@@ -141,7 +143,11 @@ export function QualitySelector({ formats, selected, onSelect, mode, onModeChang
         })}
       </div>
 
-      <RippleButton onClick={needsUpgrade ? (onUpgrade ?? onDownload) : onDownload} upgrade={needsUpgrade}>
+      <RippleButton
+        onClick={needsUpgrade ? (onUpgrade ?? onDownload) : onDownload}
+        upgrade={needsUpgrade}
+        disabled={!downloadReady && !needsUpgrade}
+      >
         {needsUpgrade ? (
           <>
             <svg viewBox="0 0 24 24" className="h-5 w-5" fill="currentColor" aria-hidden="true">
@@ -149,6 +155,8 @@ export function QualitySelector({ formats, selected, onSelect, mode, onModeChang
             </svg>
             Unlock {selectedFmt?.label} — Go Pro
           </>
+        ) : !downloadReady ? (
+          <>Preparing download…</>
         ) : (
           <>
             <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2.5" aria-hidden="true">
@@ -206,14 +214,17 @@ function RippleButton({
   children,
   onClick,
   upgrade,
+  disabled = false,
 }: {
   children: React.ReactNode;
   onClick: () => void;
   upgrade?: boolean;
+  disabled?: boolean;
 }) {
   const [ripples, setRipples] = useState<{ id: number; x: number; y: number }[]>([]);
 
   const handleClick = (e: React.MouseEvent<HTMLButtonElement>) => {
+    if (disabled) return;
     const rect = e.currentTarget.getBoundingClientRect();
     const id = Date.now();
     setRipples((r) => [...r, { id, x: e.clientX - rect.left, y: e.clientY - rect.top }]);
@@ -225,11 +236,13 @@ function RippleButton({
     <motion.button
       type="button"
       onClick={handleClick}
-      whileHover={{ scale: 1.02 }}
-      whileTap={{ scale: 0.98 }}
+      disabled={disabled}
+      whileHover={disabled ? undefined : { scale: 1.02 }}
+      whileTap={disabled ? undefined : { scale: 0.98 }}
       transition={{ duration: 0.2 }}
       className={[
-        'relative flex w-full items-center justify-center gap-2.5 overflow-hidden rounded-2xl px-8 py-4 text-lg font-semibold text-white shadow-glow-soft transition-shadow hover:shadow-glow',
+        'relative flex w-full items-center justify-center gap-2.5 overflow-hidden rounded-2xl px-8 py-4 text-lg font-semibold text-white shadow-glow-soft transition-shadow',
+        disabled ? 'cursor-not-allowed opacity-60' : 'hover:shadow-glow',
         upgrade ? 'bg-gradient-to-r from-amber-500 to-orange-500' : 'btn-gradient',
       ].join(' ')}
     >

@@ -15,6 +15,7 @@ import {
   fetchVideoInfo,
   fetchVideoPreview,
   isMobileDevice,
+  pingApiWarmup,
   startDownloadJob,
   subscribeProgress,
   triggerFileDownload,
@@ -114,6 +115,8 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
   // True while the slow full /api/info (real sizes/availability) is still loading
   // in the background, after the fast preview has already shown the cards.
   const [refining, setRefining] = useState(false);
+  /** IG/FB: true once /api/info finished — info-json is warm for instant download start. */
+  const [infoWarm, setInfoWarm] = useState(false);
   /** IG/FB: decoded thumbnail — card stays on skeleton until this is set. */
   const [preloadedThumb, setPreloadedThumb] = useState<PreloadedThumb | null>(null);
   const [awaitingShareTap, setAwaitingShareTap] = useState(false);
@@ -125,6 +128,8 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
   const unsubscribe = useRef<(() => void) | null>(null);
   const fetchedUrl = useRef<string>('');
   const prevUrlLen = useRef(0);
+  const infoWarmPromise = useRef<Promise<void> | null>(null);
+  const infoWarmRef = useRef(false);
   const proPanelRef = useRef<HTMLDivElement>(null);
 
   useStripeReturn(useCallback(() => setPro(true), []));
@@ -164,8 +169,13 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
     setError(null);
     setPhase('preview');
     setRefining(true);
+    setInfoWarm(false);
+    infoWarmRef.current = false;
+    infoWarmPromise.current = null;
     setPreloadedThumb(null);
     fetchedUrl.current = normalized;
+
+    pingApiWarmup();
 
     const platform = detectPlatform(normalized)!;
     const isSocial = platform.id === 'instagram' || platform.id === 'facebook';
@@ -188,7 +198,14 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
     if (instant && !isSocial) setPhase('ready');
 
     const previewPromise = fetchVideoPreview(normalized).catch(() => null);
-    const infoPromise = fetchVideoInfo(normalized);
+    const infoPromise = fetchVideoInfo(normalized).then((data) => {
+      if (fetchedUrl.current === normalized) {
+        infoWarmRef.current = true;
+        setInfoWarm(true);
+      }
+      return data;
+    });
+    infoWarmPromise.current = infoPromise.then(() => undefined).catch(() => undefined);
     let hasPreview = Boolean(instant && !isSocial);
 
     if (!isSocial) {
@@ -218,15 +235,16 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
           author: data.author || preview?.author || 'Unknown',
           thumbnail: data.thumbnail ?? null,
         };
-        const loaded = merged.thumbnail ? await preloadThumbnail(merged) : null;
-        if (fetchedUrl.current !== normalized) return;
-        setPreloadedThumb(loaded);
         setInfo(merged);
         setSelected((current) => {
           const chosen = merged.formats.find((f) => f.id === current);
           return chosen?.available ? current : pickDefault(merged.formats);
         });
         setPhase('ready');
+        void preloadThumbnail(merged).then((loaded) => {
+          if (fetchedUrl.current !== normalized) return;
+          setPreloadedThumb(loaded);
+        });
       } else {
         const data = await infoPromise;
         if (fetchedUrl.current !== normalized) return;
@@ -255,6 +273,8 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
             formats: PLACEHOLDER_FORMATS,
           });
           setPhase('ready');
+          setInfoWarm(false);
+          infoWarmRef.current = false;
         } else {
           setError(e instanceof ApiError ? e.message : 'Could not fetch that video.');
           setPhase((p) => (p === 'downloading' || p === 'success' ? p : 'error'));
@@ -286,7 +306,10 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
       return;
     }
     if (normalized === fetchedUrl.current || phase === 'downloading') return;
-    const delay = likelyPaste ? 0 : 200;
+    const isSocial =
+      detectPlatform(trimmed)?.id === 'instagram' || detectPlatform(trimmed)?.id === 'facebook';
+    if (isSocial) pingApiWarmup();
+    const delay = likelyPaste || isSocial ? 0 : 200;
     const t = setTimeout(() => handleFetch(trimmed), delay);
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -311,6 +334,12 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
         const platform = detectPlatform(fetchedUrl.current || url);
         const mobile = isMobileDevice();
         const isIgFb = platform?.id === 'instagram' || platform?.id === 'facebook';
+        if (isIgFb && !infoWarmRef.current) {
+          await infoWarmPromise.current?.catch(() => undefined);
+          if (!infoWarmRef.current) {
+            throw new Error('Still preparing this video. Wait a moment and try again.');
+          }
+        }
         const effectiveMode: CodecMode = mobile || isIgFb ? 'compatible' : mode;
         let effectiveQuality = quality;
         if (
@@ -417,7 +446,9 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
   const isBusy = phase === 'fetching' || phase === 'preview' || phase === 'downloading';
   const isSocialPreview = info?.platform === 'instagram' || info?.platform === 'facebook';
   const previewCardReady =
-    !isSocialPreview || Boolean(preloadedThumb) || (phase === 'ready' && !info?.thumbnail);
+    !isSocialPreview ||
+    Boolean(preloadedThumb) ||
+    (phase === 'ready' && (!info?.thumbnail || infoWarm));
 
   const view: 'ready' | 'downloading' | 'success' | null =
     phase === 'downloading'
@@ -526,6 +557,9 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
                           onModeChange={setCodecMode}
                           pro={pro}
                           refining={refining}
+                          downloadReady={
+                            (info.platform !== 'instagram' && info.platform !== 'facebook') || infoWarm
+                          }
                           onDownload={() => handleDownload(selected, codecMode)}
                           onUpgrade={() => proPanelRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })}
                         />
