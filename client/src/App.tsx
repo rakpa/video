@@ -256,13 +256,18 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
       setProgress({ ...INITIAL_PROGRESS, percent: 1 });
       try {
         const platform = detectPlatform(fetchedUrl.current || url);
-        const effectiveMode: CodecMode =
-          platform?.id === 'instagram' || platform?.id === 'facebook' ? 'compatible' : mode;
+        const mobile = isMobileDevice();
+        // On mobile the file is destined for the Photos gallery, which only
+        // imports H.264/AAC MP4 — never VP9/AV1/HEVC. Force compatible mode for
+        // EVERY platform (not just IG/FB) so "Save Video" actually lands in
+        // Photos. YouTube "best" could otherwise hand back VP9 that iOS rejects.
+        const isIgFb = platform?.id === 'instagram' || platform?.id === 'facebook';
+        const effectiveMode: CodecMode = mobile || isIgFb ? 'compatible' : mode;
         // Mobile IG/FB: 720p is enough for gallery and transcodes 3–5× faster on the server.
         let effectiveQuality = quality;
         if (
-          isMobileDevice() &&
-          (platform?.id === 'instagram' || platform?.id === 'facebook') &&
+          mobile &&
+          isIgFb &&
           (quality === '1080' || quality === '1440' || quality === '2160')
         ) {
           effectiveQuality = '720';
