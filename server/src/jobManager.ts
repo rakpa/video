@@ -43,15 +43,13 @@ function countRunningJobs(): number {
   return n;
 }
 
-/** Cap IG/FB quality on low-memory hosts — 1080p HEVC transcode exceeds 512 MB. */
+/** Cap IG/FB quality on low-memory hosts — HEVC transcode exceeds 512 MB. */
 function effectiveQuality(url: string, quality: QualityDef): QualityDef {
   const platform = detectPlatform(url)?.id;
-  if (
-    config.lowMemoryMode &&
-    (platform === 'instagram' || platform === 'facebook') &&
-    quality.height > 720
-  ) {
-    return getQuality('720') ?? quality;
+  if (platform === 'instagram' || platform === 'facebook') {
+    if (quality.height > 720) {
+      return getQuality('720') ?? quality;
+    }
   }
   return quality;
 }
@@ -196,12 +194,20 @@ async function runWithRetry(job: Job, url: string, quality: QualityDef, mode: Co
         try {
           await job.galleryNormalize;
         } catch (err) {
-          job.status = 'error';
-          job.errorMessage =
-            'Could not prepare this video for your gallery. Try again or pick 720p.';
-          emit(job, { error: job.errorMessage });
-          void destroyJob(job.id);
-          return;
+          logger.warn('Gallery normalize failed, retrying once:', (err as Error).message);
+          job.galleryNormalize = undefined;
+          job.galleryNormalizeFailed = false;
+          warmGalleryNormalize(job);
+          try {
+            if (job.galleryNormalize) await job.galleryNormalize;
+          } catch (retryErr) {
+            job.status = 'error';
+            job.errorMessage =
+              'Could not prepare this video for your gallery. Try again or pick 720p.';
+            emit(job, { error: job.errorMessage });
+            void destroyJob(job.id);
+            return;
+          }
         }
       }
 

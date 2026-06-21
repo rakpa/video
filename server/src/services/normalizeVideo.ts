@@ -23,7 +23,36 @@ function enqueueNormalize<T>(fn: () => Promise<T>): Promise<T> {
   return next;
 }
 
+async function readHeadBytes(filePath: string, max = 512 * 1024): Promise<Buffer> {
+  const fh = await fsp.open(filePath, 'r');
+  try {
+    const stat = await fh.stat();
+    const len = Math.min(stat.size, max);
+    const buf = Buffer.alloc(len);
+    await fh.read(buf, 0, len, 0);
+    return buf;
+  } finally {
+    await fh.close();
+  }
+}
+
+function bytesLookH264(buf: Buffer): boolean {
+  const hasAvc = buf.includes(Buffer.from('avc1')) || buf.includes(Buffer.from('avc3'));
+  const hasHevc = buf.includes(Buffer.from('hvc1')) || buf.includes(Buffer.from('hev1'));
+  return hasAvc && !hasHevc;
+}
+
+function bytesLookHevc(buf: Buffer): boolean {
+  return buf.includes(Buffer.from('hvc1')) || buf.includes(Buffer.from('hev1'));
+}
+
 async function probeVideoCodec(filePath: string): Promise<'h264' | 'hevc' | 'other'> {
+  const head = await readHeadBytes(filePath).catch(() => null);
+  if (head) {
+    if (bytesLookH264(head)) return 'h264';
+    if (bytesLookHevc(head)) return 'hevc';
+  }
+
   const ffprobe = config.ffmpegPath.replace(/ffmpeg$/i, 'ffprobe');
   try {
     const { stdout } = await exec(
@@ -44,67 +73,122 @@ async function probeVideoCodec(filePath: string): Promise<'h264' | 'hevc' | 'oth
     const name = stdout.trim().toLowerCase();
     if (name.includes('h264') || name.includes('avc')) return 'h264';
     if (name.includes('hevc') || name.includes('h265')) return 'hevc';
-    return 'other';
   } catch {
-    try {
-      const head = await fsp.readFile(filePath);
-      const slice = head.subarray(0, Math.min(head.length, 512 * 1024));
-      const hasAvc1 = slice.includes(Buffer.from('avc1'));
-      const hasHevc = slice.includes(Buffer.from('hvc1')) || slice.includes(Buffer.from('hev1'));
-      if (hasAvc1 && !hasHevc) return 'h264';
-      if (hasHevc) return 'hevc';
-    } catch {
-      /* fall through */
-    }
-    return 'other';
+    /* fall through */
   }
+  return 'other';
 }
 
 /** Confirm the output is H.264 (avc1) — iOS only offers "Save Video" for this codec. */
 async function verifyH264Mp4(filePath: string): Promise<boolean> {
+  const head = await readHeadBytes(filePath).catch(() => null);
+  if (head && bytesLookH264(head)) return true;
   return (await probeVideoCodec(filePath)) === 'h264';
+}
+
+async function runFfmpeg(args: string[], timeoutMs: number): Promise<void> {
+  await exec(config.ffmpegPath, ['-nostdin', '-hide_banner', '-loglevel', 'error', ...args], {
+    windowsHide: true,
+    timeout: timeoutMs,
+  });
 }
 
 /** Remux H.264 in a new container — near-zero RAM vs full transcode. */
 async function remuxForGallery(inputPath: string, jobDir: string): Promise<string> {
   const outputPath = path.join(jobDir, 'gallery-ready.mp4');
-  const args = [
-    '-hide_banner',
-    '-loglevel',
-    'error',
-    '-i',
-    inputPath,
-    '-map',
-    '0:v:0',
-    '-map',
-    '0:a:0?',
-    '-c',
-    'copy',
-    '-movflags',
-    '+faststart',
-    '-y',
-    outputPath,
+  const strategies: { label: string; args: string[] }[] = [
+    { label: 'copy all streams', args: ['-i', inputPath, '-c', 'copy'] },
+    {
+      label: 'copy video + aac audio',
+      args: ['-i', inputPath, '-c:v', 'copy', '-c:a', 'aac', '-b:a', '128k', '-ac', '2'],
+    },
+    { label: 'copy video only', args: ['-i', inputPath, '-c:v', 'copy', '-an'] },
+    {
+      label: 'copy with genpts',
+      args: ['-fflags', '+genpts', '-i', inputPath, '-c', 'copy'],
+    },
   ];
-  await exec(config.ffmpegPath, args, { windowsHide: true, timeout: 3 * 60_000 });
-  if (!(await verifyH264Mp4(outputPath))) throw new Error('Remux did not produce H.264');
-  await fsp.unlink(inputPath).catch(() => undefined);
-  return outputPath;
+
+  const errors: string[] = [];
+  for (const strategy of strategies) {
+    await fsp.unlink(outputPath).catch(() => undefined);
+    try {
+      logger.info(`Gallery remux (${strategy.label}): ${path.basename(inputPath)}`);
+      await runFfmpeg(
+        [...strategy.args, '-movflags', '+faststart', '-y', outputPath],
+        3 * 60_000,
+      );
+      if (!(await verifyH264Mp4(outputPath))) {
+        throw new Error('Output is not H.264');
+      }
+      await fsp.unlink(inputPath).catch(() => undefined);
+      return outputPath;
+    } catch (err) {
+      const msg = (err as Error).message;
+      errors.push(`${strategy.label}: ${msg}`);
+      logger.warn(`Gallery remux failed (${strategy.label}):`, msg);
+      await fsp.unlink(outputPath).catch(() => undefined);
+    }
+  }
+
+  throw new Error(`Gallery remux failed — ${errors.join('; ')}`);
 }
 
 interface TranscodeStrategy {
   label: string;
   outputName: string;
   extraArgs: string[];
+  timeoutMs: number;
 }
 
 /** Memory-safe ffmpeg flags for Render's 512 MB free tier. */
-const FFMPEG_LOW_MEM = ['-threads', '1', '-max_muxing_queue_size', '512'];
+const FFMPEG_LOW_MEM = ['-threads', '1', '-max_muxing_queue_size', '256'];
 
 const TRANSCODE_STRATEGIES: TranscodeStrategy[] = config.lowMemoryMode
   ? [
       {
+        label: 'H.264 360p minimal',
+        outputName: 'gallery-ready-tiny.mp4',
+        timeoutMs: 12 * 60_000,
+        extraArgs: [
+          '-map',
+          '0:v:0',
+          '-map',
+          '0:a:0?',
+          '-vf',
+          "scale='min(360,iw)':-2:flags=fast_bilinear,format=yuv420p,setsar=1",
+          '-c:v',
+          'libx264',
+          '-preset',
+          'ultrafast',
+          '-tune',
+          'fastdecode',
+          '-crf',
+          '32',
+          '-profile:v',
+          'baseline',
+          '-level',
+          '3.0',
+          '-pix_fmt',
+          'yuv420p',
+          '-tag:v',
+          'avc1',
+          '-x264-params',
+          'ref=1:bframes=0:threads=1:weightp=0',
+          '-c:a',
+          'aac',
+          '-b:a',
+          '48k',
+          '-ar',
+          '44100',
+          '-ac',
+          '1',
+        ],
+      },
+      {
         label: 'H.264 480p ultrafast',
         outputName: 'gallery-ready-lite.mp4',
+        timeoutMs: 10 * 60_000,
         extraArgs: [
           '-map',
           '0:v:0',
@@ -139,20 +223,21 @@ const TRANSCODE_STRATEGIES: TranscodeStrategy[] = config.lowMemoryMode
         ],
       },
       {
-        label: 'H.264 480p video-only',
+        label: 'H.264 360p video-only',
         outputName: 'gallery-ready-vo.mp4',
+        timeoutMs: 8 * 60_000,
         extraArgs: [
           '-map',
           '0:v:0',
           '-an',
           '-vf',
-          "scale='min(480,iw)':-2:force_original_aspect_ratio=decrease,format=yuv420p,setsar=1",
+          "scale='min(360,iw)':-2:flags=fast_bilinear,format=yuv420p,setsar=1",
           '-c:v',
           'libx264',
           '-preset',
           'ultrafast',
           '-crf',
-          '28',
+          '32',
           '-profile:v',
           'baseline',
           '-level',
@@ -168,6 +253,7 @@ const TRANSCODE_STRATEGIES: TranscodeStrategy[] = config.lowMemoryMode
       {
         label: 'H.264 fast 720p',
         outputName: 'gallery-ready-lite.mp4',
+        timeoutMs: 10 * 60_000,
         extraArgs: [
           '-map',
           '0:v:0',
@@ -202,6 +288,7 @@ const TRANSCODE_STRATEGIES: TranscodeStrategy[] = config.lowMemoryMode
       {
         label: 'H.264 video-only',
         outputName: 'gallery-ready-vo.mp4',
+        timeoutMs: 8 * 60_000,
         extraArgs: [
           '-map',
           '0:v:0',
@@ -233,25 +320,23 @@ async function transcodeForGallery(inputPath: string, jobDir: string): Promise<s
     const outputPath = path.join(jobDir, strategy.outputName);
     await fsp.unlink(outputPath).catch(() => undefined);
 
-    const args = [
-      '-hide_banner',
-      '-loglevel',
-      'error',
-      '-i',
-      inputPath,
-      ...strategy.extraArgs,
-      ...FFMPEG_LOW_MEM,
-      '-movflags',
-      '+faststart',
-      '-avoid_negative_ts',
-      'make_zero',
-      '-y',
-      outputPath,
-    ];
-
     try {
       logger.info(`Gallery transcode (${strategy.label}): ${path.basename(inputPath)}`);
-      await exec(config.ffmpegPath, args, { windowsHide: true, timeout: 10 * 60_000 });
+      await runFfmpeg(
+        [
+          '-i',
+          inputPath,
+          ...strategy.extraArgs,
+          ...FFMPEG_LOW_MEM,
+          '-movflags',
+          '+faststart',
+          '-avoid_negative_ts',
+          'make_zero',
+          '-y',
+          outputPath,
+        ],
+        strategy.timeoutMs,
+      );
 
       if (!(await verifyH264Mp4(outputPath))) {
         throw new Error('Output is not H.264');
@@ -287,25 +372,12 @@ async function transcodeForGallery(inputPath: string, jobDir: string): Promise<s
 /**
  * Make an Instagram/Facebook video iOS-Photos-compatible. (Only ever called for
  * IG/FB — gated by needsGalleryNormalize.)
- *
- * IG/FB downloads run in `compatible` mode so the video is already H.264, BUT —
- * unlike YouTube — they arrive as a single progressive file that yt-dlp never
- * re-muxes. That keeps Instagram's original container, which commonly stores the
- * `moov` atom at the END of the file. iOS Photos silently REFUSES to import such
- * MP4s via "Save Video" (the prompt appears but nothing is saved). YouTube works
- * because its compatible-mode download merges separate streams, so ffmpeg always
- * rewrites a clean faststart MP4 (moov at the front).
- *
- * So for the common H.264 case we do a stream-COPY remux with `+faststart` — it
- * rewrites the container with moov at the front but re-encodes nothing, so it is
- * near-zero CPU/RAM (safe on Render's 512 MB free tier). Only a genuine
- * HEVC/other codec needs the heavier transcode.
  */
 export function normalizeForGallery(inputPath: string, jobDir: string): Promise<string> {
   return enqueueNormalize(async () => {
     const codec = await probeVideoCodec(inputPath);
+    logger.info(`Gallery normalize probe=${codec} file=${path.basename(inputPath)}`);
     if (codec === 'h264') {
-      logger.info(`Gallery remux (H.264 + faststart for Photos): ${path.basename(inputPath)}`);
       return remuxForGallery(inputPath, jobDir);
     }
     return transcodeForGallery(inputPath, jobDir);

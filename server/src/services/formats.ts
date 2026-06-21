@@ -102,6 +102,9 @@ export function buildSelector(quality: QualityDef, mode: CodecMode, platformId?:
   if (platformId === 'youtube' && mode === 'best') {
     return fastYoutubeSelector(quality.height);
   }
+  if (platformId === 'instagram' || platformId === 'facebook') {
+    return socialGallerySelector(quality, mode);
+  }
   if (mode === 'compatible') {
     // Cap at 1080p and strongly prefer avc1 (H.264) + mp4a (AAC), with
     // progressively looser fallbacks so a download still succeeds.
@@ -117,6 +120,22 @@ export function buildSelector(quality: QualityDef, mode: CodecMode, platformId?:
     ].join('/');
   }
   return quality.selector;
+}
+
+/**
+ * IG/FB: prefer a single progressive H.264 MP4 so gallery prep is a cheap
+ * faststart remux — not a RAM-heavy HEVC transcode on Render's 512 MB tier.
+ */
+function socialGallerySelector(quality: QualityDef, mode: CodecMode): string {
+  const cap = mode === 'compatible' ? 720 : Math.min(quality.height, 1080);
+  return [
+    `b[ext=mp4][vcodec^=avc1][height<=${cap}]`,
+    `b[ext=mp4][vcodec*=avc][height<=${cap}]`,
+    `b[vcodec^=avc1][height<=${cap}]`,
+    `b[ext=mp4][height<=${cap}]`,
+    `b[height<=${cap}]`,
+    'b',
+  ].join('/');
 }
 
 /** YouTube: prefer progressive MP4 (one file) → faster start, no merge wait. */

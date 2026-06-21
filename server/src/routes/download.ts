@@ -4,6 +4,7 @@ import { readJsonBody } from '../utils/body.js';
 import { getQuality, isCodecMode } from '../services/formats.js';
 import { createJob } from '../jobManager.js';
 import { YtDlpError } from '../services/ytdlp.js';
+import { detectPlatform } from '../services/platform.js';
 import { isPro } from '../services/license.js';
 import { config } from '../config.js';
 
@@ -32,7 +33,13 @@ downloadRouter.post('/download', async (req, res) => {
   // }
 
   // Default to 'best' when the client omits a codec mode.
-  const codecMode = isCodecMode(mode) ? mode : 'best';
+  const platform = detectPlatform(url.trim());
+  const codecMode =
+    platform?.id === 'instagram' || platform?.id === 'facebook'
+      ? 'compatible'
+      : isCodecMode(mode)
+        ? mode
+        : 'best';
 
   try {
     const job = await createJob(url.trim(), q, codecMode);

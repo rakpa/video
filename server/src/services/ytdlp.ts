@@ -485,9 +485,6 @@ export function startDownload(
   const platformId = detectPlatform(url)?.id;
   const tuning = downloadTuning(url);
 
-  // NOTE: we intentionally do NOT use `--print after_move:filepath` — it makes
-  // yt-dlp suppress the live progress lines on stdout. Instead we parse progress
-  // directly and discover the produced file by scanning the (per-job) directory.
   const args = [
     '-f', buildSelector(quality, mode, platformId),
     '--merge-output-format', 'mp4',
@@ -514,6 +511,15 @@ export function startDownload(
     // Load the cached extraction when available; otherwise extract from the URL.
     ...(cachedInfoJson ? ['--load-info-json', cachedInfoJson] : [url]),
   ];
+
+  // Prefer H.264 when the format selector falls back to a looser tier.
+  if (platformId === 'instagram' || platformId === 'facebook') {
+    args.push('-S', 'vcodec:h264,res,quality');
+  }
+
+  // NOTE: we intentionally do NOT use `--print after_move:filepath` — it makes
+  // yt-dlp suppress the live progress lines on stdout. Instead we parse progress
+  // directly and discover the produced file by scanning the (per-job) directory.
 
   const child = spawn(config.ytdlpPath, args, { windowsHide: true });
   let stderr = '';
