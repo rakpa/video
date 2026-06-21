@@ -8,6 +8,36 @@ export function isMobileDevice(): boolean {
   return mobileUa || (coarse && navigator.maxTouchPoints > 0);
 }
 
+/** iPhone/iPad (incl. iPadOS Safari reporting as Mac with touch). */
+export function isIosDevice(): boolean {
+  if (typeof navigator === 'undefined') return false;
+  return (
+    /iPhone|iPad|iPod/i.test(navigator.userAgent) ||
+    (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)
+  );
+}
+
+/**
+ * iOS in a NON-Safari browser (Chrome/Firefox/Edge/Opera…). Apple only exposes
+ * the share sheet's "Save Video → Photos" action in Safari; third-party iOS
+ * browsers can only "Save to Files". We detect them so we can route the user to
+ * Safari, where the gallery save actually works.
+ */
+export function isIosThirdPartyBrowser(): boolean {
+  if (!isIosDevice()) return false;
+  return /CriOS|FxiOS|EdgiOS|OPiOS|OPT\/|mercury|GSA\//i.test(navigator.userAgent);
+}
+
+/**
+ * Reopen the current page in Safari from a third-party iOS browser. Chrome for
+ * iOS honours the `x-safari-` URL-scheme prefix; other browsers fall back to a
+ * normal navigation (the user can then use the Share → "Open in Safari" action).
+ */
+export function openInSafari(): void {
+  if (typeof window === 'undefined') return;
+  window.location.href = `x-safari-${window.location.href}`;
+}
+
 function parseFilename(header: string | null): string {
   if (!header) return 'ClipVault-video.mp4';
   const match = /filename\*=UTF-8''([^;]+)|filename="([^"]+)"|filename=([^\s;]+)/i.exec(header);

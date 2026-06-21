@@ -19,6 +19,8 @@ import {
 import {
   fetchVideoFile,
   shareVideoToGallery,
+  isIosThirdPartyBrowser,
+  openInSafari,
   type VideoFilePayload,
 } from './utils/saveVideo';
 
@@ -281,11 +283,15 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
         unsubscribe.current = subscribeProgress(jobId, {
           onProgress: setProgress,
           onDone: () => {
+            setPhase('success');
+            if (isIosThirdPartyBrowser()) {
+              // Chrome/Firefox/etc. on iOS can't save to Photos — the success
+              // screen prompts the user to reopen in Safari. Don't auto-share.
+              return;
+            }
             if (isMobileDevice()) {
-              setPhase('success');
               void saveToGallery(jobId, lastPlatform.current ?? undefined);
             } else {
-              setPhase('success');
               void triggerFileDownload(jobId);
             }
           },
@@ -430,10 +436,12 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
                   <SuccessState
                     title={info.title}
                     mobile={isMobileDevice()}
+                    iosThirdParty={isIosThirdPartyBrowser()}
                     saving={savingToGallery}
                     preparing={galleryPrep === 'preparing'}
                     prepFailed={galleryPrep === 'error'}
                     onSaveToGallery={handleSaveToGallery}
+                    onOpenInSafari={openInSafari}
                     onReset={handleReset}
                     onRedownload={handleRedownload}
                   />
