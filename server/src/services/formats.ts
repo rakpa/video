@@ -98,12 +98,17 @@ export const COMPATIBLE_MAX_HEIGHT = 1080;
  * YouTube uses a fast selector that prefers single-file progressive MP4 when
  * available — avoids a separate audio download + ffmpeg merge (major speed win).
  */
-export function buildSelector(quality: QualityDef, mode: CodecMode, platformId?: string): string {
+export function buildSelector(
+  quality: QualityDef,
+  mode: CodecMode,
+  platformId?: string,
+  options?: { maxHeight?: number },
+): string {
   if (platformId === 'youtube' && mode === 'best') {
     return fastYoutubeSelector(quality.height);
   }
   if (platformId === 'instagram' || platformId === 'facebook') {
-    return socialGallerySelector(quality, mode);
+    return socialGallerySelector(quality, mode, options?.maxHeight);
   }
   if (mode === 'compatible') {
     // Cap at 1080p and strongly prefer avc1 (H.264) + mp4a (AAC), with
@@ -126,8 +131,11 @@ export function buildSelector(quality: QualityDef, mode: CodecMode, platformId?:
  * IG/FB: prefer a single progressive H.264 MP4 so gallery prep is a cheap
  * faststart remux — not a RAM-heavy HEVC transcode on Render's 512 MB tier.
  */
-function socialGallerySelector(quality: QualityDef, mode: CodecMode): string {
-  const cap = mode === 'compatible' ? 720 : Math.min(quality.height, 1080);
+function socialGallerySelector(quality: QualityDef, mode: CodecMode, maxHeight = 720): string {
+  const cap =
+    mode === 'compatible'
+      ? Math.min(quality.height, maxHeight)
+      : Math.min(quality.height, maxHeight, 1080);
   return [
     `b[ext=mp4][vcodec^=avc1][height<=${cap}]`,
     `b[ext=mp4][vcodec*=avc][height<=${cap}]`,

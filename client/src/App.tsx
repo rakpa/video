@@ -22,6 +22,7 @@ import {
 import {
   fetchVideoFile,
   openGalleryShareSheet,
+  waitForMobileGalleryPayload,
   type VideoFilePayload,
 } from './utils/saveVideo';
 
@@ -324,33 +325,37 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
           effectiveQuality,
           effectiveMode,
           licenseToken(),
+          { fast: mobile },
         );
         lastJobId.current = jobId;
         unsubscribe.current?.();
 
-        const openShareWhenReady = async () => {
-          const payload = await fetchVideoFile(jobId);
-          galleryPayload.current = payload;
-          const result = await openGalleryShareSheet(payload);
-          if (result === 'unavailable') {
-            setAwaitingShareTap(true);
-          } else {
-            setAwaitingShareTap(false);
-            setPhase('ready');
-          }
-        };
-
         if (mobile) {
-          await new Promise<void>((resolve, reject) => {
-            unsubscribe.current = subscribeProgress(jobId, {
-              onProgress: () => {
-                /* Mobile shows processing-only UI — no 0–100% bar. */
-              },
-              onDone: () => resolve(),
-              onError: (message) => reject(new Error(message)),
-            });
+          let sseError: string | null = null;
+          unsubscribe.current = subscribeProgress(jobId, {
+            onProgress: () => {
+              /* Mobile shows processing-only UI — no 0–100% bar. */
+            },
+            onDone: () => {},
+            onError: (message) => {
+              sseError = message;
+            },
           });
-          await openShareWhenReady();
+
+          try {
+            const payload = await waitForMobileGalleryPayload(jobId);
+            if (sseError) throw new Error(sseError);
+            galleryPayload.current = payload;
+            const result = await openGalleryShareSheet(payload);
+            if (result === 'unavailable') {
+              setAwaitingShareTap(true);
+            } else {
+              setAwaitingShareTap(false);
+              setPhase('ready');
+            }
+          } catch (e) {
+            throw e;
+          }
         } else {
           unsubscribe.current = subscribeProgress(jobId, {
             onProgress: setProgress,

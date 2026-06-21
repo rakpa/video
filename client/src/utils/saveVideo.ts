@@ -65,6 +65,65 @@ interface FileStatus {
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
+const GALLERY_POLL_MS = 200;
+const FILE_RETRY_MS = 300;
+
+async function readVideoPayloadFromResponse(res: Response): Promise<VideoFilePayload> {
+  const buf = await res.arrayBuffer();
+
+  if (looksLikeHtmlOrJson(buf) || !isMp4Bytes(buf)) {
+    throw new Error(
+      'Received an invalid file (not MP4). The download API may be misconfigured — check VITE_API_URL on Vercel.',
+    );
+  }
+  if (buf.byteLength < 10_000) {
+    throw new Error('Video file is too small — the download may have failed.');
+  }
+  if (!isH264Mp4(buf)) {
+    throw new Error(
+      'This video is not in a gallery-compatible format (H.264). Try again or pick 720p.',
+    );
+  }
+
+  parseFilename(res.headers.get('Content-Disposition'));
+  const blob = new Blob([buf], { type: 'video/mp4' });
+  const filename = isMobileDevice() ? iosGalleryFilename() : 'ClipVault-video.mp4';
+  return { blob, filename };
+}
+
+async function fetchVideoBytes(jobId: string): Promise<VideoFilePayload> {
+  const maxAttempts = 8;
+  let lastError: Error | null = null;
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    const res = await fetch(apiUrl(`/api/file/${jobId}`));
+
+    if (res.status === 503 && attempt < maxAttempts) {
+      await sleep(FILE_RETRY_MS);
+      continue;
+    }
+
+    if (!res.ok) {
+      try {
+        const buf = await res.arrayBuffer();
+        const data = JSON.parse(new TextDecoder().decode(buf)) as { error?: string };
+        lastError = new Error(data.error ?? 'Could not fetch the video file.');
+      } catch {
+        lastError = new Error('Could not fetch the video file.');
+      }
+      if (attempt < maxAttempts) {
+        await sleep(FILE_RETRY_MS);
+        continue;
+      }
+      throw lastError;
+    }
+
+    return readVideoPayloadFromResponse(res);
+  }
+
+  throw lastError ?? new Error('Could not fetch the video file.');
+}
+
 export async function waitForGalleryReady(jobId: string, timeoutMs = 12 * 60_000): Promise<void> {
   if (!isApiConfigured()) return;
 
@@ -85,7 +144,43 @@ export async function waitForGalleryReady(jobId: string, timeoutMs = 12 * 60_000
       return;
     }
 
-    await sleep(1500);
+    await sleep(GALLERY_POLL_MS);
+  }
+
+  throw new Error('Timed out preparing the video for your gallery. Try again.');
+}
+
+/** Poll status aggressively and fetch the file as soon as gallery prep finishes. */
+export async function waitForMobileGalleryPayload(
+  jobId: string,
+  timeoutMs = 12 * 60_000,
+): Promise<VideoFilePayload> {
+  if (!isApiConfigured()) {
+    throw new Error(API_NOT_CONFIGURED_MSG);
+  }
+
+  const started = Date.now();
+  while (Date.now() - started < timeoutMs) {
+    const res = await fetch(apiUrl(`/api/file/${jobId}/status`));
+    if (res.status === 404) {
+      throw new Error('That download session has expired.');
+    }
+
+    const data = (await res.json().catch(() => ({}))) as FileStatus;
+
+    if (res.status === 500 || data.galleryFailed) {
+      throw new Error(data.message ?? 'Could not prepare this video for your gallery.');
+    }
+
+    if (data.status === 'error') {
+      throw new Error(data.message ?? 'Download failed.');
+    }
+
+    if (res.ok && data.status === 'ready' && data.galleryReady !== false) {
+      return fetchVideoBytes(jobId);
+    }
+
+    await sleep(GALLERY_POLL_MS);
   }
 
   throw new Error('Timed out preparing the video for your gallery. Try again.');
@@ -97,54 +192,7 @@ export async function fetchVideoFile(jobId: string): Promise<VideoFilePayload> {
   }
 
   await waitForGalleryReady(jobId);
-
-  const maxAttempts = 8;
-  let lastError: Error | null = null;
-
-  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
-    const res = await fetch(apiUrl(`/api/file/${jobId}`));
-    const buf = await res.arrayBuffer();
-
-    if (res.status === 503 && attempt < maxAttempts) {
-      await sleep(2000);
-      continue;
-    }
-
-    if (!res.ok) {
-      try {
-        const data = JSON.parse(new TextDecoder().decode(buf)) as { error?: string };
-        lastError = new Error(data.error ?? 'Could not fetch the video file.');
-      } catch {
-        lastError = new Error('Could not fetch the video file.');
-      }
-      if (attempt < maxAttempts) {
-        await sleep(2000);
-        continue;
-      }
-      throw lastError;
-    }
-
-    if (looksLikeHtmlOrJson(buf) || !isMp4Bytes(buf)) {
-      throw new Error(
-        'Received an invalid file (not MP4). The download API may be misconfigured — check VITE_API_URL on Vercel.',
-      );
-    }
-    if (buf.byteLength < 10_000) {
-      throw new Error('Video file is too small — the download may have failed.');
-    }
-    if (!isH264Mp4(buf)) {
-      throw new Error(
-        'This video is not in a gallery-compatible format (H.264). Try again or pick 720p.',
-      );
-    }
-
-    parseFilename(res.headers.get('Content-Disposition'));
-    const blob = new Blob([buf], { type: 'video/mp4' });
-    const filename = isMobileDevice() ? iosGalleryFilename() : 'ClipVault-video.mp4';
-    return { blob, filename };
-  }
-
-  throw lastError ?? new Error('Could not fetch the video file.');
+  return fetchVideoBytes(jobId);
 }
 
 function toShareFile(payload: VideoFilePayload): File {

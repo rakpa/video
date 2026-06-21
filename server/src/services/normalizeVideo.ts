@@ -42,6 +42,19 @@ function bytesLookH264(buf: Buffer): boolean {
   return hasAvc && !hasHevc;
 }
 
+function hasFaststartMoov(buf: Buffer): boolean {
+  const moov = buf.indexOf(Buffer.from('moov'));
+  const mdat = buf.indexOf(Buffer.from('mdat'));
+  return moov >= 0 && (mdat < 0 || moov < mdat);
+}
+
+/** Skip ffmpeg remux when yt-dlp already produced H.264 + faststart MP4. */
+export async function canServeDirectToGallery(filePath: string): Promise<boolean> {
+  const head = await readHeadBytes(filePath).catch(() => null);
+  if (!head || !bytesLookH264(head)) return false;
+  return hasFaststartMoov(head);
+}
+
 function bytesLookHevc(buf: Buffer): boolean {
   return buf.includes(Buffer.from('hvc1')) || buf.includes(Buffer.from('hev1'));
 }

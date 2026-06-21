@@ -445,10 +445,15 @@ function findOutputFile(dir: string): string | null {
 }
 
 /** IG/FB need low RAM; YouTube benefits from parallel fragment downloads. */
-function downloadTuning(url: string): { httpChunkSize: string; concurrentFragments: string } {
+function downloadTuning(
+  url: string,
+  fast?: boolean,
+): { httpChunkSize: string; concurrentFragments: string } {
   const platform = detectPlatform(url)?.id;
   if (platform === 'instagram' || platform === 'facebook') {
-    return { httpChunkSize: '1M', concurrentFragments: '1' };
+    return fast
+      ? { httpChunkSize: '2M', concurrentFragments: '2' }
+      : { httpChunkSize: '1M', concurrentFragments: '1' };
   }
   return { httpChunkSize: '5M', concurrentFragments: '6' };
 }
@@ -471,6 +476,7 @@ export function startDownload(
   mode: CodecMode,
   outputDir: string,
   onProgress: (p: ProgressUpdate) => void,
+  options?: { fast?: boolean },
 ): DownloadHandle {
   const outTemplate = path.join(outputDir, '%(title).80s.%(ext)s');
   const cookies = getCookiesStatus();
@@ -483,10 +489,20 @@ export function startDownload(
   if (usedCache) logger.info('Download reusing cached info (skipping re-extraction)');
 
   const platformId = detectPlatform(url)?.id;
-  const tuning = downloadTuning(url);
+  const fast = options?.fast ?? false;
+  const tuning = downloadTuning(url, fast);
+  const igFbMaxHeight =
+    platformId === 'instagram' || platformId === 'facebook'
+      ? fast
+        ? 480
+        : mode === 'compatible'
+          ? 720
+          : Math.min(quality.height, 1080)
+      : undefined;
 
   const args = [
-    '-f', buildSelector(quality, mode, platformId),
+    '-f',
+    buildSelector(quality, mode, platformId, { maxHeight: igFbMaxHeight }),
     '--merge-output-format', 'mp4',
     // Only pass --ffmpeg-location for a real path. A bare name like "ffmpeg"
     // is rejected by yt-dlp ("ffmpeg-location ffmpeg does not exist") and makes

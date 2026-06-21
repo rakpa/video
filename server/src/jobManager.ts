@@ -6,7 +6,7 @@ import { config, currentProxy } from './config.js';
 import { startDownload, fetchInfo, YtDlpError, type ProgressUpdate } from './services/ytdlp.js';
 import { getQuality, type CodecMode, type QualityDef } from './services/formats.js';
 import { detectPlatform, type PlatformId } from './services/platform.js';
-import { needsGalleryNormalize, normalizeForGallery } from './services/normalizeVideo.js';
+import { needsGalleryNormalize, normalizeForGallery, canServeDirectToGallery } from './services/normalizeVideo.js';
 import { getFreshInfoJson } from './services/infoJsonCache.js';
 import { logger } from './utils/logger.js';
 
@@ -29,6 +29,8 @@ export interface Job {
   galleryNormalize?: Promise<string>;
   /** Set when gallery transcode fails — client may fall back to the raw file. */
   galleryNormalizeFailed?: boolean;
+  /** Mobile fast path — smaller IG/FB file, skip normalize retry. */
+  fast?: boolean;
   /** SSE listeners subscribed to this job's progress. */
   listeners: Set<(p: ProgressUpdate | { done: true } | { error: string }) => void>;
 }
@@ -96,7 +98,12 @@ const FRESH_PROGRESS: ProgressUpdate = {
 };
 
 /** Creates a temp dir, spawns the download (with auto-retry), and tracks it as a job. */
-export async function createJob(url: string, quality: QualityDef, mode: CodecMode): Promise<Job> {
+export async function createJob(
+  url: string,
+  quality: QualityDef,
+  mode: CodecMode,
+  options?: { fast?: boolean },
+): Promise<Job> {
   if (countRunningJobs() >= config.maxConcurrentJobs) {
     throw new YtDlpError(
       'The server is busy with another download. Wait a moment and try again.',
@@ -121,6 +128,7 @@ export async function createJob(url: string, quality: QualityDef, mode: CodecMod
     progress: { ...FRESH_PROGRESS },
     createdAt: Date.now(),
     platformId: detectPlatform(url)?.id,
+    fast: options?.fast ?? false,
     cancel: () => undefined, // replaced per attempt
     listeners: new Set(),
   };
@@ -169,7 +177,7 @@ async function runWithRetry(job: Job, url: string, quality: QualityDef, mode: Co
       if (!j) return;
       j.progress = p;
       emit(j, p);
-    });
+    }, { fast: job.fast });
     job.cancel = handle.cancel;
 
     try {
@@ -177,36 +185,47 @@ async function runWithRetry(job: Job, url: string, quality: QualityDef, mode: Co
       job.status = 'ready';
       job.filePath = filePath;
       job.progress = { ...job.progress, percent: 100, speed: null, eta: null, stage: 'done' };
-      warmGalleryNormalize(job);
 
-      // IG/FB must finish H.264 faststart remux/transcode before we signal "done".
-      // YouTube already gets +faststart from yt-dlp merge — gallery save works immediately.
-      if (needsGalleryNormalize(job.platformId) && job.galleryNormalize) {
-        job.progress = {
-          percent: 99,
-          speed: null,
-          eta: null,
-          stage: 'merging',
-          streamIndex: 1,
-          streamTotal: 1,
-        };
-        emit(job, job.progress);
-        try {
-          await job.galleryNormalize;
-        } catch (err) {
-          logger.warn('Gallery normalize failed, retrying once:', (err as Error).message);
-          job.galleryNormalize = undefined;
-          job.galleryNormalizeFailed = false;
+      if (needsGalleryNormalize(job.platformId)) {
+        if (await canServeDirectToGallery(filePath)) {
+          job.galleryPath = filePath;
+          logger.info('Gallery skip remux — H.264 + faststart already present');
+        } else {
           warmGalleryNormalize(job);
+          job.progress = {
+            percent: 99,
+            speed: null,
+            eta: null,
+            stage: 'merging',
+            streamIndex: 1,
+            streamTotal: 1,
+          };
+          emit(job, job.progress);
           try {
             if (job.galleryNormalize) await job.galleryNormalize;
-          } catch (retryErr) {
-            job.status = 'error';
-            job.errorMessage =
-              'Could not prepare this video for your gallery. Try again or pick 720p.';
-            emit(job, { error: job.errorMessage });
-            void destroyJob(job.id);
-            return;
+          } catch (err) {
+            if (job.fast) {
+              job.status = 'error';
+              job.errorMessage =
+                'Could not prepare this video for your gallery. Try again or pick 720p.';
+              emit(job, { error: job.errorMessage });
+              void destroyJob(job.id);
+              return;
+            }
+            logger.warn('Gallery normalize failed, retrying once:', (err as Error).message);
+            job.galleryNormalize = undefined;
+            job.galleryNormalizeFailed = false;
+            warmGalleryNormalize(job);
+            try {
+              if (job.galleryNormalize) await job.galleryNormalize;
+            } catch (retryErr) {
+              job.status = 'error';
+              job.errorMessage =
+                'Could not prepare this video for your gallery. Try again or pick 720p.';
+              emit(job, { error: job.errorMessage });
+              void destroyJob(job.id);
+              return;
+            }
           }
         }
       }
