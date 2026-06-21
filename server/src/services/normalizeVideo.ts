@@ -65,11 +65,6 @@ async function verifyH264Mp4(filePath: string): Promise<boolean> {
   return (await probeVideoCodec(filePath)) === 'h264';
 }
 
-/** iOS Photos accepts H.264 in these containers directly — no remux needed. */
-function isGalleryContainer(filePath: string): boolean {
-  return /\.(mp4|mov|m4v)$/i.test(filePath);
-}
-
 /** Remux H.264 in a new container — near-zero RAM vs full transcode. */
 async function remuxForGallery(inputPath: string, jobDir: string): Promise<string> {
   const outputPath = path.join(jobDir, 'gallery-ready.mp4');
@@ -290,25 +285,27 @@ async function transcodeForGallery(inputPath: string, jobDir: string): Promise<s
 }
 
 /**
- * Make an Instagram/Facebook video iOS-Photos-compatible (H.264).
+ * Make an Instagram/Facebook video iOS-Photos-compatible. (Only ever called for
+ * IG/FB — gated by needsGalleryNormalize.)
  *
- * Because IG/FB downloads run in `compatible` mode (yt-dlp forces avc1), the file
- * is normally ALREADY H.264 in an MP4 container — exactly like a YouTube download,
- * which saves to the gallery with no extra processing. In that common case we
- * serve the file as-is and skip ffmpeg entirely: the previous unconditional remux
- * was the single point of failure that made IG/FB saves hang/fail on Render's
- * 512 MB free tier. Only a non-MP4 container needs a (zero-RAM) container remux,
- * and only a genuine HEVC/other codec needs the heavier transcode.
+ * IG/FB downloads run in `compatible` mode so the video is already H.264, BUT —
+ * unlike YouTube — they arrive as a single progressive file that yt-dlp never
+ * re-muxes. That keeps Instagram's original container, which commonly stores the
+ * `moov` atom at the END of the file. iOS Photos silently REFUSES to import such
+ * MP4s via "Save Video" (the prompt appears but nothing is saved). YouTube works
+ * because its compatible-mode download merges separate streams, so ffmpeg always
+ * rewrites a clean faststart MP4 (moov at the front).
+ *
+ * So for the common H.264 case we do a stream-COPY remux with `+faststart` — it
+ * rewrites the container with moov at the front but re-encodes nothing, so it is
+ * near-zero CPU/RAM (safe on Render's 512 MB free tier). Only a genuine
+ * HEVC/other codec needs the heavier transcode.
  */
 export function normalizeForGallery(inputPath: string, jobDir: string): Promise<string> {
   return enqueueNormalize(async () => {
     const codec = await probeVideoCodec(inputPath);
     if (codec === 'h264') {
-      if (isGalleryContainer(inputPath)) {
-        logger.info(`Gallery ready (H.264 MP4, no transcode): ${path.basename(inputPath)}`);
-        return inputPath;
-      }
-      logger.info(`Gallery remux (H.264, container → MP4): ${path.basename(inputPath)}`);
+      logger.info(`Gallery remux (H.264 + faststart for Photos): ${path.basename(inputPath)}`);
       return remuxForGallery(inputPath, jobDir);
     }
     return transcodeForGallery(inputPath, jobDir);
