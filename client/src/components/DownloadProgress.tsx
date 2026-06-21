@@ -5,9 +5,10 @@ import type { ProgressUpdate } from '../types';
 interface Props {
   progress: ProgressUpdate;
   qualityLabel: string;
+  /** Mobile: hide 0–100% bar — show a simple processing message until share opens. */
+  processingOnly?: boolean;
 }
 
-/** Minimal phase label — no technical "merging"/stream wording. */
 function stageLabel(p: ProgressUpdate): string {
   if (p.percent < 1) return 'Connecting';
   if (p.stage === 'done' || p.percent >= 99) return 'Finishing up';
@@ -16,14 +17,39 @@ function stageLabel(p: ProgressUpdate): string {
   return 'Downloading';
 }
 
-/**
- * Download progress card: shows a processing message at 0%, then the live
- * percentage and bar once progress reaches 1%.
- */
-export function DownloadProgress({ progress, qualityLabel }: Props) {
+export function DownloadProgress({ progress, qualityLabel, processingOnly }: Props) {
   const pct = Math.max(0, Math.min(100, progress.percent));
-  const showPercent = pct >= 1;
+  const showPercent = !processingOnly && pct >= 1;
   const display = useCountUp(showPercent ? pct : 0);
+
+  if (processingOnly) {
+    return (
+      <motion.div
+        initial={{ opacity: 0, y: 14 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="glass relative overflow-hidden rounded-3xl p-6 shadow-card"
+      >
+        <div className="flex items-center gap-2.5">
+          <motion.span
+            className="h-2.5 w-2.5 rounded-full bg-accent"
+            animate={{ opacity: [1, 0.3, 1] }}
+            transition={{ duration: 1.2, repeat: Infinity }}
+          />
+          <span className="font-semibold text-slate-900">We are processing your download</span>
+        </div>
+        <p className="mt-3 text-sm text-slate-500">This usually takes a moment. Your save menu will open when ready.</p>
+        <div className="relative mt-5 h-2 w-full overflow-hidden rounded-full bg-slate-100">
+          <motion.div
+            className="btn-gradient absolute inset-y-0 rounded-full"
+            initial={{ width: '30%', x: '-100%' }}
+            animate={{ x: ['-100%', '350%'] }}
+            transition={{ duration: 1.4, repeat: Infinity, ease: 'easeInOut' }}
+            style={{ width: '30%' }}
+          />
+        </div>
+      </motion.div>
+    );
+  }
 
   return (
     <motion.div

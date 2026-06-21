@@ -329,13 +329,6 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
         unsubscribe.current?.();
 
         const openShareWhenReady = async () => {
-          setProgress((p) => ({
-            ...p,
-            percent: 100,
-            speed: null,
-            eta: null,
-            stage: 'done',
-          }));
           const payload = await fetchVideoFile(jobId);
           galleryPayload.current = payload;
           const result = await openGalleryShareSheet(payload);
@@ -348,11 +341,11 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
         };
 
         if (mobile) {
-          // Keep the whole flow in this async chain (started by the Download tap)
-          // so iOS is more likely to open the share sheet automatically.
           await new Promise<void>((resolve, reject) => {
             unsubscribe.current = subscribeProgress(jobId, {
-              onProgress: setProgress,
+              onProgress: () => {
+                /* Mobile shows processing-only UI — no 0–100% bar. */
+              },
               onDone: () => resolve(),
               onError: (message) => reject(new Error(message)),
             });
@@ -513,7 +506,11 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
                       <VideoPreview info={info} preloadedThumb={preloadedThumb} />
                     )}
                     {view === 'downloading' ? (
-                      <DownloadProgress progress={progress} qualityLabel={qualityLabel} />
+                      <DownloadProgress
+                        progress={progress}
+                        qualityLabel={qualityLabel}
+                        processingOnly={isMobileDevice()}
+                      />
                     ) : (
                       <>
                         <QualitySelector
