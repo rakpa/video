@@ -43,4 +43,4 @@ export interface ProgressUpdate {
 }
 
 /** Top-level UI phases driving what the app renders. */
-export type Phase = 'idle' | 'fetching' | 'preview' | 'ready' | 'downloading' | 'success' | 'error';
+export type Phase = 'idle' | 'fetching' | 'preview' | 'ready' | 'downloading' | 'mobile-save' | 'success' | 'error';

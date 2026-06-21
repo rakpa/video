@@ -6,15 +6,9 @@ interface Props {
   title: string;
   onReset: () => void;
   onRedownload: () => void;
-  mobile?: boolean;
-  onSaveToGallery?: () => void;
-  saving?: boolean;
-  prepFailed?: boolean;
 }
 
-export function SuccessState({ title, onReset, onRedownload, mobile, onSaveToGallery, saving, prepFailed }: Props) {
-  const saveLabel = saving ? 'Opening share…' : prepFailed ? 'Retry Save to Gallery' : 'Save to Gallery';
-
+export function SuccessState({ title, onReset, onRedownload }: Props) {
   return (
     <motion.div
       initial={{ opacity: 0, scale: 0.96 }}
@@ -51,41 +45,12 @@ export function SuccessState({ title, onReset, onRedownload, mobile, onSaveToGal
       <h3 className="mt-5 text-2xl font-bold text-slate-900">Your download is ready! 🎉</h3>
       <p className="mx-auto mt-2 max-w-md text-sm text-slate-500">
         <span className="line-clamp-1 font-medium text-slate-700">{title}</span>
-        {mobile ? (
-          prepFailed ? (
-            <>
-              {' '}
-              needs one more step. Tap{' '}
-              <strong className="font-medium text-slate-700">Retry Save to Gallery</strong> below.
-            </>
-          ) : (
-            <>
-              {' '}
-              is ready. Tap <strong className="font-medium text-slate-700">Save to Gallery</strong> and pick{' '}
-              <strong className="font-medium text-slate-700">Save Video</strong> to add it to Photos.
-            </>
-          )
-        ) : (
-          <> has been saved to your device as an MP4 with sound.</>
-        )}
+        {' '}has been saved to your device as an MP4 with sound.
       </p>
 
       <div className="mt-6 flex flex-col justify-center gap-3 sm:flex-row">
-        {mobile && onSaveToGallery ? (
-          <>
-            <Button onClick={onSaveToGallery} disabled={saving}>
-              {saveLabel}
-            </Button>
-            <Button variant="ghost" onClick={onRedownload} disabled={saving}>
-              Save again
-            </Button>
-          </>
-        ) : (
-          <Button variant="ghost" onClick={onRedownload}>Download again</Button>
-        )}
-        <Button variant={mobile ? 'ghost' : undefined} onClick={onReset} disabled={saving}>
-          Download another
-        </Button>
+        <Button variant="ghost" onClick={onRedownload}>Download again</Button>
+        <Button onClick={onReset}>Download another</Button>
       </div>
     </motion.div>
   );

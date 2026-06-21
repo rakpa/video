@@ -41,6 +41,7 @@ import { VideoPreview, VideoPreviewSkeleton } from './components/VideoPreview';
 import { QualitySelector } from './components/QualitySelector';
 import { ProUpgradePanel } from './components/ProUpgradePanel';
 import { DownloadProgress } from './components/DownloadProgress';
+import { MobileSavePrompt } from './components/MobileSavePrompt';
 import { SuccessState } from './components/SuccessState';
 import { ErrorBanner } from './components/ErrorBanner';
 import { Footer } from './components/Footer';
@@ -116,9 +117,6 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
   /** IG/FB: decoded thumbnail — card stays on skeleton until this is set. */
   const [preloadedThumb, setPreloadedThumb] = useState<PreloadedThumb | null>(null);
   const [savingToGallery, setSavingToGallery] = useState(false);
-  // Mobile gallery prep: 'preparing' while the H.264 MP4 is fetched/transcoded
-  // in the background, 'ready' once it's cached for an instant share-on-tap.
-  const [galleryPrep, setGalleryPrep] = useState<'idle' | 'preparing' | 'ready' | 'error'>('idle');
 
   const lastJobId = useRef<string | null>(null);
   // The pre-fetched, gallery-ready video so the Save tap can open the share
@@ -274,23 +272,20 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
   }, [url]);
 
   /**
-   * Fetch the gallery-ready MP4 and open the OS share sheet (Save Video → Photos).
-   * Called automatically on mobile when a download finishes.
+   * Mobile: open share sheet from a user tap (iOS requires gesture).
+   * Returns to ready when done or cancelled.
    */
-  const saveToGallery = useCallback(async (jobId: string, { silent = false } = {}) => {
+  const handleMobileSave = useCallback(async () => {
+    if (!galleryPayload.current) return;
+    setSavingToGallery(true);
     setError(null);
-    if (!silent) setSavingToGallery(true);
     try {
-      const payload = await fetchVideoFile(jobId);
-      galleryPayload.current = payload;
-      setGalleryPrep('ready');
-      await shareVideoToGallery(payload);
+      const result = await shareVideoToGallery(galleryPayload.current);
+      if (result !== 'unavailable') setPhase('ready');
     } catch (e) {
-      setGalleryPrep('error');
       setError(e instanceof Error ? e.message : 'Could not save to gallery.');
-      throw e;
     } finally {
-      if (!silent) setSavingToGallery(false);
+      setSavingToGallery(false);
     }
   }, []);
 
@@ -306,7 +301,6 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
       setActiveQuality(quality);
       setProgress(INITIAL_PROGRESS);
       galleryPayload.current = null;
-      setGalleryPrep('idle');
       setPhase('downloading');
       setProgress({ ...INITIAL_PROGRESS, percent: 1 });
       try {
@@ -340,8 +334,6 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
           onProgress: setProgress,
           onDone: () => {
             if (isMobileDevice()) {
-              // Stay on the download card at 100% while we fetch + open share —
-              // skip the intermediate "Preparing for Photos" success screen.
               setProgress((p) => ({
                 ...p,
                 percent: 100,
@@ -351,11 +343,19 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
               }));
               void (async () => {
                 try {
-                  await saveToGallery(jobId, { silent: true });
-                } catch {
-                  /* error state set inside saveToGallery */
+                  const payload = await fetchVideoFile(jobId);
+                  galleryPayload.current = payload;
+                  const result = await shareVideoToGallery(payload);
+                  // Share sheet = final step (IMG_5567). Skip success / video-player screens.
+                  if (result === 'unavailable') {
+                    setPhase('mobile-save');
+                  } else {
+                    setPhase('ready');
+                  }
+                } catch (e) {
+                  setError(e instanceof Error ? e.message : 'Could not save to gallery.');
+                  setPhase('error');
                 }
-                setPhase('success');
               })();
             } else {
               setPhase('success');
@@ -372,25 +372,28 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
         setPhase('error');
       }
     },
-    [info, url, pro, saveToGallery],
+    [info, url, pro],
   );
 
   const handleSaveToGallery = useCallback(async () => {
     if (galleryPayload.current) {
-      setSavingToGallery(true);
-      setError(null);
-      try {
-        await shareVideoToGallery(galleryPayload.current);
-      } catch (e) {
-        setError(e instanceof Error ? e.message : 'Could not save to gallery.');
-      } finally {
-        setSavingToGallery(false);
-      }
+      await handleMobileSave();
       return;
     }
     if (!lastJobId.current) return;
-    await saveToGallery(lastJobId.current);
-  }, [saveToGallery]);
+    setSavingToGallery(true);
+    try {
+      const payload = await fetchVideoFile(lastJobId.current);
+      galleryPayload.current = payload;
+      const result = await shareVideoToGallery(payload);
+      if (result === 'unavailable') setPhase('mobile-save');
+      else setPhase('ready');
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not save to gallery.');
+    } finally {
+      setSavingToGallery(false);
+    }
+  }, [handleMobileSave]);
 
   const handleRedownload = useCallback(() => {
     if (isMobileDevice()) {
@@ -405,7 +408,6 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
     unsubscribe.current = null;
     lastJobId.current = null;
     galleryPayload.current = null;
-    setGalleryPrep('idle');
     setPreloadedThumb(null);
     fetchedUrl.current = '';
     setUrl('');
@@ -424,9 +426,11 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
   const previewCardReady =
     !isSocialPreview || Boolean(preloadedThumb) || (phase === 'ready' && !info?.thumbnail);
 
-  const view: 'ready' | 'downloading' | 'success' | null =
+  const view: 'ready' | 'downloading' | 'mobile-save' | 'success' | null =
     phase === 'downloading'
       ? 'downloading'
+      : phase === 'mobile-save'
+        ? 'mobile-save'
       : phase === 'success'
         ? 'success'
       : phase === 'ready' || phase === 'preview' || phase === 'error'
@@ -502,13 +506,17 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
                 transition={{ duration: 0.25 }}
                 className="space-y-5"
               >
-                {view === 'success' ? (
+                {view === 'mobile-save' && galleryPayload.current ? (
+                  <MobileSavePrompt
+                    filename={galleryPayload.current.filename}
+                    sizeBytes={galleryPayload.current.blob.size}
+                    saving={savingToGallery}
+                    onSave={handleMobileSave}
+                    onDone={() => setPhase('ready')}
+                  />
+                ) : view === 'success' && !isMobileDevice() ? (
                   <SuccessState
                     title={info.title}
-                    mobile={isMobileDevice()}
-                    saving={savingToGallery}
-                    prepFailed={galleryPrep === 'error'}
-                    onSaveToGallery={handleSaveToGallery}
                     onReset={handleReset}
                     onRedownload={handleRedownload}
                   />

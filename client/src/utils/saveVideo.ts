@@ -9,10 +9,10 @@ export function isMobileDevice(): boolean {
 }
 
 function parseFilename(header: string | null): string {
-  if (!header) return 'ClipVault-video.mp4';
+  if (!header) return 'video.mp4';
   const match = /filename\*=UTF-8''([^;]+)|filename="([^"]+)"|filename=([^\s;]+)/i.exec(header);
   const raw = match?.[1] ?? match?.[2] ?? match?.[3];
-  if (!raw) return 'ClipVault-video.mp4';
+  if (!raw) return 'video.mp4';
   try {
     return decodeURIComponent(raw);
   } catch {
@@ -20,14 +20,12 @@ function parseFilename(header: string | null): string {
   }
 }
 
-/** MP4/MOV files contain an `ftyp` box near the start. */
 function isMp4Bytes(buf: ArrayBuffer): boolean {
   if (buf.byteLength < 12) return false;
   const v = new DataView(buf);
   return v.getUint8(4) === 0x66 && v.getUint8(5) === 0x74 && v.getUint8(6) === 0x79 && v.getUint8(7) === 0x70;
 }
 
-/** iOS Photos only imports H.264 (avc1) via "Save Video" — HEVC share sheets look fine but save nothing. */
 function isH264Mp4(buf: ArrayBuffer): boolean {
   const head = new TextDecoder('latin1').decode(buf.slice(0, Math.min(buf.byteLength, 512 * 1024)));
   const hasAvc = head.includes('avc1') || head.includes('avc3');
@@ -45,14 +43,17 @@ export interface VideoFilePayload {
   filename: string;
 }
 
-/** Simple ASCII name so iOS Photos reliably accepts the file. */
-export function gallerySafeFilename(original: string): string {
-  const stem = original
-    .replace(/\.[^/.]+$/, '')
-    .replace(/[^\w\s-]/g, '')
-    .trim()
-    .slice(0, 48);
-  return `${stem || 'ClipVault-video'}.mp4`;
+export type ShareResult = 'shared' | 'cancelled' | 'unavailable';
+
+/** iOS camera-roll style name — shows as IMG_5567 in the share sheet / Photos. */
+export function iosGalleryFilename(): string {
+  const n = Math.floor(1000 + Math.random() * 9000);
+  return `IMG_${n}.mp4`;
+}
+
+export function formatFileSize(bytes: number): string {
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
 interface FileStatus {
@@ -64,10 +65,6 @@ interface FileStatus {
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-/**
- * Poll until IG/FB gallery transcode finishes. YouTube resolves immediately.
- * Avoids holding /api/file open for minutes (mobile browsers kill those requests).
- */
 export async function waitForGalleryReady(jobId: string, timeoutMs = 12 * 60_000): Promise<void> {
   if (!isApiConfigured()) return;
 
@@ -94,10 +91,6 @@ export async function waitForGalleryReady(jobId: string, timeoutMs = 12 * 60_000
   throw new Error('Timed out preparing the video for your gallery. Try again.');
 }
 
-/**
- * Fetch the finished MP4 for sharing. Polls until gallery-ready for IG/FB, then
- * downloads in a short request so mobile connections do not time out mid-transcode.
- */
 export async function fetchVideoFile(jobId: string): Promise<VideoFilePayload> {
   if (!isApiConfigured()) {
     throw new Error(API_NOT_CONFIGURED_MSG);
@@ -145,53 +138,20 @@ export async function fetchVideoFile(jobId: string): Promise<VideoFilePayload> {
       );
     }
 
-    const rawName = parseFilename(res.headers.get('Content-Disposition'));
+    parseFilename(res.headers.get('Content-Disposition'));
     const blob = new Blob([buf], { type: 'video/mp4' });
-    return { blob, filename: gallerySafeFilename(rawName) };
+    const filename = isMobileDevice() ? iosGalleryFilename() : 'ClipVault-video.mp4';
+    return { blob, filename };
   }
 
   throw lastError ?? new Error('Could not fetch the video file.');
 }
 
-/** Full-screen video player so the user can Save Video from the native controls. */
-function openVideoSaveViewer(blob: Blob, _filename: string): void {
-  const url = URL.createObjectURL(blob);
-  const overlay = document.createElement('div');
-  overlay.setAttribute('role', 'dialog');
-  overlay.setAttribute('aria-label', 'Save video');
-  overlay.className = 'fixed inset-0 z-[100] flex flex-col items-center justify-center bg-black/90 p-5';
-
-  const video = document.createElement('video');
-  video.src = url;
-  video.controls = true;
-  video.playsInline = true;
-  video.autoplay = true;
-  video.className = 'max-h-[65vh] w-full max-w-lg rounded-xl bg-black';
-
-  const hint = document.createElement('p');
-  hint.className = 'mt-4 max-w-sm text-center text-sm text-white/90';
-  hint.textContent =
-    'Tap the Share icon on the video (or below it), then choose Save Video / Save to Photos.';
-
-  const done = document.createElement('button');
-  done.type = 'button';
-  done.className = 'mt-5 rounded-2xl bg-white px-6 py-3 text-sm font-semibold text-slate-900';
-  done.textContent = 'Done';
-  done.onclick = () => {
-    URL.revokeObjectURL(url);
-    overlay.remove();
-  };
-
-  overlay.append(video, hint, done);
-  document.body.appendChild(overlay);
-  void video.play().catch(() => undefined);
-}
-
 /**
- * Share the MP4 via the OS sheet (Save Video / Photos).
- * Never pass title/url — that makes iOS share a webpage preview instead of the file.
+ * Open the OS share sheet (Save Video → Photos). Requires a user tap on iOS —
+ * call this from a button handler when auto-share is blocked.
  */
-export async function shareVideoToGallery(payload: VideoFilePayload): Promise<void> {
+export async function shareVideoToGallery(payload: VideoFilePayload): Promise<ShareResult> {
   const file = new File([payload.blob], payload.filename, {
     type: 'video/mp4',
     lastModified: Date.now(),
@@ -200,22 +160,23 @@ export async function shareVideoToGallery(payload: VideoFilePayload): Promise<vo
   if (navigator.share && navigator.canShare?.({ files: [file] })) {
     try {
       await navigator.share({ files: [file] });
-      return;
+      return 'shared';
     } catch (err) {
-      if (err instanceof Error && err.name === 'AbortError') return;
+      if (err instanceof Error && err.name === 'AbortError') return 'cancelled';
     }
   }
 
-  openVideoSaveViewer(payload.blob, payload.filename);
+  return 'unavailable';
 }
 
-/** Mobile save: wait for gallery-ready → fetch MP4 → open the OS share sheet. */
 export async function saveMobileVideoToGallery(jobId: string): Promise<void> {
   const payload = await fetchVideoFile(jobId);
-  await shareVideoToGallery(payload);
+  const result = await shareVideoToGallery(payload);
+  if (result === 'unavailable') {
+    throw new Error('Could not open the save menu. Tap Save Video below.');
+  }
 }
 
-/** Desktop: stream via hidden link (no full-file memory buffer). */
 export function classicFileDownload(jobId: string): void {
   const a = document.createElement('a');
   a.href = apiUrl(`/api/file/${jobId}`);
