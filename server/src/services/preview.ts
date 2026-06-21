@@ -1,6 +1,5 @@
 import type { PlatformId } from './platform.js';
 import type { VideoInfo } from './ytdlp.js';
-import { fetchQuickPreview } from './ytdlp.js';
 import { fetchYoutubePreview } from './previewYoutube.js';
 
 export { extractYoutubeId, fetchYoutubePreview } from './previewYoutube.js';
@@ -87,34 +86,35 @@ async function fetchInstagramPreview(url: string): Promise<VideoInfo | null> {
   const id = extractInstagramShortcode(clean);
 
   const og = await scrapeOpenGraph(clean);
-  if (og?.image) {
+  if (og?.title || og?.image) {
     const { title, author } = parseInstagramTitle(og.title);
     return {
       id,
       title,
       author,
       durationSeconds: null,
-      thumbnail: og.image,
+      // OG images are often a low-res still — wait for yt-dlp's frame on /api/info.
+      thumbnail: null,
       formats: [],
     };
   }
 
-  return fetchQuickPreview(clean);
+  return null;
 }
 
 async function fetchFacebookPreview(url: string): Promise<VideoInfo | null> {
   const og = await scrapeOpenGraph(url.trim());
-  if (og?.image) {
+  if (og?.title || og?.image) {
     return {
       id: '',
       title: og.title?.replace(/\s*\|\s*Facebook.*$/i, '').trim() || 'Facebook video',
       author: 'Facebook',
       durationSeconds: null,
-      thumbnail: og.image,
+      thumbnail: null,
       formats: [],
     };
   }
-  return fetchQuickPreview(url.trim());
+  return null;
 }
 
 export async function fetchPreview(url: string, platform: PlatformId): Promise<VideoInfo | null> {

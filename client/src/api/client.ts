@@ -109,14 +109,17 @@ export async function fetchVideoPreview(url: string): Promise<VideoInfo | null> 
   const isJson = res.headers.get('content-type')?.includes('application/json');
   if (!isJson) return instant;
   const api = (await res.json()) as VideoInfo;
-  if (!instant) return api;
+  const skipThumb = platformId === 'instagram' || platformId === 'facebook';
+  if (!instant) {
+    return skipThumb ? { ...api, thumbnail: null } : api;
+  }
   return {
     ...instant,
     ...api,
     platform: api.platform ?? instant.platform,
     title: api.title || instant.title,
     author: api.author || instant.author,
-    thumbnail: api.thumbnail ?? instant.thumbnail,
+    thumbnail: skipThumb ? null : (api.thumbnail ?? instant.thumbnail),
   };
 }
 

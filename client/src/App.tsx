@@ -172,13 +172,14 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
     void previewPromise.then((preview) => {
       if (!preview || fetchedUrl.current !== normalized) return;
       hasPreview = true;
+      const skipThumb = platform.id === 'instagram' || platform.id === 'facebook';
       setInfo((prev) => ({
         ...prev!,
         ...preview,
         formats: prev?.formats ?? PLACEHOLDER_FORMATS,
         title: preview.title || prev?.title || 'Untitled video',
         author: preview.author || prev?.author || 'Unknown',
-        thumbnail: preview.thumbnail ?? prev?.thumbnail ?? null,
+        thumbnail: skipThumb ? (prev?.thumbnail ?? null) : (preview.thumbnail ?? prev?.thumbnail ?? null),
       }));
       setPhase((p) => (p === 'preview' ? 'ready' : p));
     });
@@ -191,7 +192,7 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
         ...data,
         title: data.title || prev?.title || 'Untitled video',
         author: data.author || prev?.author || 'Unknown',
-        thumbnail: prev?.thumbnail ?? data.thumbnail,
+        thumbnail: data.thumbnail ?? prev?.thumbnail ?? null,
       }));
       setSelected((current) => {
         const chosen = data.formats.find((f) => f.id === current);

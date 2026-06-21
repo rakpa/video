@@ -1,5 +1,5 @@
 import { motion } from 'framer-motion';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { VideoInfo } from '../types';
 import { formatDuration } from '../utils/format';
 import { apiUrl } from '../config/api';
@@ -25,17 +25,45 @@ interface Props {
   info: VideoInfo;
 }
 
+function resolveThumbSrc(info: VideoInfo): string | null {
+  if (!info.thumbnail) return null;
+  return info.platform === 'youtube'
+    ? info.thumbnail
+    : apiUrl(`/api/thumb?url=${encodeURIComponent(info.thumbnail)}`);
+}
+
 /** Rich metadata card: thumbnail, title, author, duration, platform badge. */
 export function VideoPreview({ info }: Props) {
   const [portrait, setPortrait] = useState(false);
+  const thumbSrc = resolveThumbSrc(info);
+  const [shownSrc, setShownSrc] = useState<string | null>(null);
 
-  // YouTube thumbnails load directly (fast); Facebook/Instagram CDNs block
-  // hotlinking, so route those through our /api/thumb proxy so they render.
-  const thumbSrc = info.thumbnail
-    ? info.platform === 'youtube'
-      ? info.thumbnail
-      : apiUrl(`/api/thumb?url=${encodeURIComponent(info.thumbnail)}`)
-    : null;
+  // Preload before swapping src so IG/FB never flash a low-res OG still then the real frame.
+  useEffect(() => {
+    if (!thumbSrc) {
+      setShownSrc(null);
+      setPortrait(false);
+      return;
+    }
+    if (thumbSrc === shownSrc) return;
+
+    let cancelled = false;
+    const img = new Image();
+    img.onload = () => {
+      if (cancelled) return;
+      setPortrait(img.naturalHeight > img.naturalWidth);
+      setShownSrc(thumbSrc);
+    };
+    img.onerror = () => {
+      if (!cancelled) setShownSrc(null);
+    };
+    img.src = thumbSrc;
+
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- shownSrc intentionally excluded
+  }, [thumbSrc]);
 
   return (
     <motion.div
@@ -50,12 +78,10 @@ export function VideoPreview({ info }: Props) {
             portrait ? 'mx-auto aspect-[9/16] w-44 sm:mx-0' : 'aspect-video w-full sm:w-64'
           }`}
         >
-          {thumbSrc ? (
+          {shownSrc ? (
             <img
-              src={thumbSrc}
+              src={shownSrc}
               alt={info.title}
-              loading="lazy"
-              onLoad={(e) => setPortrait(e.currentTarget.naturalHeight > e.currentTarget.naturalWidth)}
               className="h-full w-full object-cover"
             />
           ) : (
