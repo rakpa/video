@@ -235,6 +235,7 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
         }
         if (result === 'cancelled') return;
 
+        setMobileSaving(false);
         setMobileSavePayload(payload);
       } catch (e) {
         setError(
@@ -565,6 +566,8 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
   /** Mobile IG/FB: Download stays hidden until the thumbnail has decoded. */
   const mobileSocial = isMobileDevice() && isSocialPreview;
   const mobileThumbLoaded = Boolean(preloadedThumb);
+  /** Mobile: processing card only while downloading — hidden once save prompt is ready. */
+  const showMobileProcessing = isMobileDevice() && mobileSaving && !mobileSavePayload;
 
   /** Mobile: after thumbnail (IG/FB) download in background then auto-open save sheet. */
   useEffect(() => {
@@ -688,13 +691,13 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
                     <SuccessState />
                   ) : isMobileDevice() && mobileSavePayload ? (
                     <MobileSavePrompt payload={mobileSavePayload} onDone={handleMobileSaveDone} />
-                  ) : isMobileDevice() ? (
+                  ) : showMobileProcessing ? (
                     <DownloadProgress
                       progress={progress}
                       qualityLabel={qualityLabel}
                       mobileSave
                     />
-                  ) : (
+                  ) : !isMobileDevice() ? (
                     <>
                       <QualitySelector
                         formats={info.formats}
@@ -727,7 +730,7 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
                         )}
                       </AnimatePresence>
                     </>
-                  )}
+                  ) : null}
                 </>
               </motion.div>
             )}
