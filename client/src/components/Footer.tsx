@@ -22,7 +22,10 @@ function goToSection(id: string) {
 
 function FootLink({ children, onClick }: { children: React.ReactNode; onClick: () => void }) {
   return (
-    <button onClick={onClick} className="text-sm text-slate-500 transition hover:text-slate-900">
+    <button
+      onClick={onClick}
+      className="block w-full text-left text-sm text-slate-500 transition hover:text-slate-900 sm:whitespace-nowrap"
+    >
       {children}
     </button>
   );
@@ -33,7 +36,7 @@ export function Footer() {
   return (
     <footer className="mt-24 border-t border-slate-200">
       <div className="mx-auto max-w-5xl px-5 py-12">
-        <div className="grid gap-10 sm:grid-cols-2 lg:grid-cols-[1.6fr_1fr_1fr_1fr_1fr]">
+        <div className="grid gap-10 sm:grid-cols-2 lg:grid-cols-[1.5fr_1fr_1.15fr_1fr_1fr]">
           {/* Brand */}
           <div>
             <button onClick={() => navigate('/')} className="flex items-center gap-2.5" aria-label="ClipVault — home">
@@ -90,10 +93,16 @@ export function Footer() {
           <div>
             <h3 className="text-xs font-semibold uppercase tracking-wider text-slate-400">Support</h3>
             <div className="mt-4 flex flex-col items-start gap-2.5">
-              <a href={`mailto:${COMPANY.contactEmail}`} className="text-sm text-slate-500 transition hover:text-slate-900">
+              <a
+                href={`mailto:${COMPANY.contactEmail}`}
+                className="block w-full text-left text-sm text-slate-500 transition hover:text-slate-900"
+              >
                 Email support
               </a>
-              <a href={`mailto:${COMPANY.dmcaEmail}`} className="text-sm text-slate-500 transition hover:text-slate-900">
+              <a
+                href={`mailto:${COMPANY.dmcaEmail}`}
+                className="block w-full text-left text-sm text-slate-500 transition hover:text-slate-900"
+              >
                 Copyright / DMCA
               </a>
             </div>
