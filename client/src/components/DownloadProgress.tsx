@@ -9,8 +9,6 @@ interface Props {
   processingOnly?: boolean;
   /** Mobile gallery save flow — different copy from desktop download. */
   mobileSave?: boolean;
-  /** Mobile: auto-open blocked — waiting for browser gesture. */
-  mobileOpening?: boolean;
 }
 
 function stageLabel(p: ProgressUpdate): string {
@@ -21,7 +19,7 @@ function stageLabel(p: ProgressUpdate): string {
   return 'Downloading';
 }
 
-export function DownloadProgress({ progress, qualityLabel, processingOnly, mobileSave, mobileOpening }: Props) {
+export function DownloadProgress({ progress, qualityLabel, processingOnly, mobileSave }: Props) {
   const pct = Math.max(0, Math.min(100, progress.percent));
   const showPercent = !processingOnly && pct >= 1;
   const display = useCountUp(showPercent ? pct : 0);
@@ -40,19 +38,13 @@ export function DownloadProgress({ progress, qualityLabel, processingOnly, mobil
             transition={{ duration: 1.2, repeat: Infinity }}
           />
           <span className="font-semibold text-slate-900">
-            {mobileOpening
-              ? 'Opening save menu…'
-              : mobileSave
-                ? 'We are processing your download'
-                : 'Download is in progress'}
+            {mobileSave ? 'We are processing your download' : 'Download is in progress'}
           </span>
         </div>
         <p className="mt-3 text-sm text-slate-500">
-          {mobileOpening
-            ? 'If the save menu does not appear, tap anywhere on the screen.'
-            : mobileSave
-              ? 'Your save menu will open automatically when the video is ready.'
-              : "Your file will appear in your browser's downloads when ready."}
+          {mobileSave
+            ? 'Your save menu will open automatically when the video is ready.'
+            : "Your file will appear in your browser's downloads when ready."}
         </p>
         <div className="relative mt-5 h-2 w-full overflow-hidden rounded-full bg-slate-100">
           <motion.div

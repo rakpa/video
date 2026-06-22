@@ -56,32 +56,40 @@ export function cancelMobileGalleryGestureFallback(): void {
 }
 
 /**
- * Try Web Share immediately with quick retries (works on Android / some WebViews).
+ * Invoke navigator.share synchronously inside a user-gesture handler (touch/pointer).
+ * Must not await anything before calling navigator.share.
  */
-export async function autoOpenMobileGallerySave(payload: VideoFilePayload): Promise<ShareResult> {
-  cancelMobileGalleryGestureFallback();
-  for (let i = 0; i < 5; i += 1) {
-    const result = await openGalleryShareSheet(payload);
-    if (result !== 'unavailable') return result;
-    if (i < 4) await sleep(i === 0 ? 0 : 40);
-  }
-  return 'unavailable';
-}
-
-/** One-shot tap anywhere → share sheet (iOS fallback when auto-open is blocked). */
-export function armMobileGalleryGestureSave(
+export function invokeGalleryShareFromGesture(
   payload: VideoFilePayload,
   onResult: (result: ShareResult) => void,
-): () => void {
+): void {
+  if (!navigator.share) {
+    onResult('unavailable');
+    return;
+  }
+  const file = toShareFile(payload);
+  try {
+    if (navigator.canShare && !navigator.canShare({ files: [file] })) {
+      onResult('unavailable');
+      return;
+    }
+  } catch {
+    onResult('unavailable');
+    return;
+  }
+  navigator
+    .share({ files: [file] })
+    .then(() => onResult('shared'))
+    .catch((err: unknown) => {
+      const name = err instanceof Error ? err.name : '';
+      onResult(name === 'AbortError' ? 'cancelled' : 'unavailable');
+    });
+}
+
+/** Best-effort auto-open right after async prep (Android; iOS usually blocks). */
+export async function autoOpenMobileGallerySave(payload: VideoFilePayload): Promise<ShareResult> {
   cancelMobileGalleryGestureFallback();
-  const open = () => {
-    cancelMobileGalleryGestureFallback();
-    void openGalleryShareSheet(payload).then(onResult);
-  };
-  mobileGestureTouchHandler = () => open();
-  document.addEventListener('touchstart', mobileGestureTouchHandler, true);
-  document.addEventListener('click', mobileGestureTouchHandler, true);
-  return cancelMobileGalleryGestureFallback;
+  return shareVideoToGallery(payload);
 }
 
 /** iOS camera-roll style name — shows as IMG_5567 in the share sheet / Photos. */

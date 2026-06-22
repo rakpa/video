@@ -21,11 +21,11 @@ import {
   triggerFileDownload,
 } from './api/client';
 import {
-  armMobileGalleryGestureSave,
   autoOpenMobileGallerySave,
   cancelMobileGalleryGestureFallback,
   openGalleryShareSheet,
   waitForMobileGalleryPayload,
+  type ShareResult,
   type VideoFilePayload,
 } from './utils/saveVideo';
 
@@ -45,6 +45,7 @@ import { VideoPreview, VideoPreviewSkeleton } from './components/VideoPreview';
 import { QualitySelector } from './components/QualitySelector';
 import { ProUpgradePanel } from './components/ProUpgradePanel';
 import { DownloadProgress } from './components/DownloadProgress';
+import { MobileSavePrompt } from './components/MobileSavePrompt';
 import { SuccessState } from './components/SuccessState';
 import { ErrorBanner } from './components/ErrorBanner';
 import { Footer } from './components/Footer';
@@ -121,12 +122,10 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
   const [infoWarm, setInfoWarm] = useState(false);
   /** IG/FB: decoded thumbnail — card stays on skeleton until this is set. */
   const [preloadedThumb, setPreloadedThumb] = useState<PreloadedThumb | null>(null);
-  /** Mobile: background download / auto gallery save in progress. */
+  /** Mobile: background download in progress. */
   const [mobileSaving, setMobileSaving] = useState(false);
-  /** Mobile: auto-save blocked — show Download as fallback. */
-  const [mobileShareFallback, setMobileShareFallback] = useState(false);
-  /** Mobile: waiting for a screen tap to open save sheet (iOS). */
-  const [mobileOpeningSave, setMobileOpeningSave] = useState(false);
+  /** Mobile: gallery-ready file — auto-opens save sheet via MobileSavePrompt. */
+  const [mobileSavePayload, setMobileSavePayload] = useState<VideoFilePayload | null>(null);
 
   const lastJobId = useRef<string | null>(null);
   // The pre-fetched, gallery-ready video so the Save tap can open the share
@@ -143,7 +142,6 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
   const prefetchPayloadPromise = useRef<Promise<VideoFilePayload | null> | null>(null);
   const autoShareKeyRef = useRef('');
   const mobileAutoSaveInflightRef = useRef('');
-  const disarmGestureRef = useRef<(() => void) | null>(null);
   const proPanelRef = useRef<HTMLDivElement>(null);
 
   const mobilePrefetchKey = useCallback(
@@ -221,8 +219,8 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
       if (autoShareKeyRef.current === key || mobileAutoSaveInflightRef.current === key) return;
 
       mobileAutoSaveInflightRef.current = key;
-      setMobileOpeningSave(false);
       setMobileSaving(true);
+      setMobileSavePayload(null);
       setError(null);
 
       try {
@@ -235,24 +233,10 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
           autoShareKeyRef.current = key;
           return;
         }
-        if (result === 'cancelled') {
-          setMobileShareFallback(true);
-          return;
-        }
+        if (result === 'cancelled') return;
 
-        setMobileOpeningSave(true);
-        disarmGestureRef.current?.();
-        disarmGestureRef.current = armMobileGalleryGestureSave(payload, (retry) => {
-          setMobileOpeningSave(false);
-          if (retry === 'shared') {
-            autoShareKeyRef.current = key;
-          } else {
-            setMobileShareFallback(true);
-            setError('Tap Download to open the save menu.');
-          }
-        });
+        setMobileSavePayload(payload);
       } catch (e) {
-        setMobileShareFallback(true);
         setError(
           e instanceof ApiError ? e.message : e instanceof Error ? e.message : 'Could not prepare this video.',
         );
@@ -265,6 +249,17 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
       }
     },
     [ensureMobilePayload, mobilePrefetchKey],
+  );
+
+  const handleMobileSaveDone = useCallback(
+    (result: ShareResult) => {
+      setMobileSavePayload(null);
+      if (result === 'shared' && fetchedUrl.current && info) {
+        const isIgFb = info.platform === 'instagram' || info.platform === 'facebook';
+        autoShareKeyRef.current = mobilePrefetchKey(fetchedUrl.current, selected, isIgFb);
+      }
+    },
+    [info, selected, mobilePrefetchKey],
   );
 
   useStripeReturn(useCallback(() => setPro(true), []));
@@ -292,13 +287,10 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
     prefetchPayloadPromise.current = null;
     autoShareKeyRef.current = '';
     mobileAutoSaveInflightRef.current = '';
-    disarmGestureRef.current?.();
-    disarmGestureRef.current = null;
     cancelMobileGalleryGestureFallback();
     galleryPayload.current = null;
     setMobileSaving(false);
-    setMobileShareFallback(false);
-    setMobileOpeningSave(false);
+    setMobileSavePayload(null);
     setPreloadedThumb(null);
     fetchedUrl.current = normalized;
 
@@ -572,7 +564,7 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
   /** Mobile: after thumbnail (IG/FB) download in background then auto-open save sheet. */
   useEffect(() => {
     if (!isMobileDevice() || phase !== 'ready' || !fetchedUrl.current || !info) return;
-    if (mobileShareFallback || mobileOpeningSave) return;
+    if (mobileSavePayload) return;
     if (mobileSocial && !mobileThumbLoaded) return;
 
     const isIgFb = info.platform === 'instagram' || info.platform === 'facebook';
@@ -590,8 +582,7 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
     infoWarm,
     selected,
     info,
-    mobileShareFallback,
-    mobileOpeningSave,
+    mobileSavePayload,
     mobileSocial,
     mobileThumbLoaded,
     runMobileAutoSave,
@@ -690,12 +681,13 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
                     />
                   ) : view === 'success' ? (
                     <SuccessState />
-                  ) : isMobileDevice() && !mobileShareFallback ? (
+                  ) : isMobileDevice() && mobileSavePayload ? (
+                    <MobileSavePrompt payload={mobileSavePayload} onDone={handleMobileSaveDone} />
+                  ) : isMobileDevice() ? (
                     <DownloadProgress
                       progress={progress}
                       qualityLabel={qualityLabel}
                       mobileSave
-                      mobileOpening={mobileOpeningSave}
                     />
                   ) : (
                     <>
@@ -711,21 +703,7 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
                           (info.platform !== 'instagram' && info.platform !== 'facebook') || infoWarm
                         }
                         saving={mobileSaving}
-                        onDownload={() => {
-                          const cached = galleryPayload.current;
-                          if (cached) {
-                            setError(null);
-                            void openGalleryShareSheet(cached).then((result) => {
-                              if (result === 'unavailable') {
-                                setError('Could not open the save menu. Tap Download again.');
-                              } else {
-                                setMobileShareFallback(false);
-                              }
-                            });
-                            return;
-                          }
-                          void handleDownload(selected, codecMode);
-                        }}
+                        onDownload={() => void handleDownload(selected, codecMode)}
                         onUpgrade={() => proPanelRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })}
                       />
                       <AnimatePresence>
