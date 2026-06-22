@@ -21,6 +21,9 @@ import {
   triggerFileDownload,
 } from './api/client';
 import {
+  armMobileGalleryGestureSave,
+  autoOpenMobileGallerySave,
+  cancelMobileGalleryGestureFallback,
   openGalleryShareSheet,
   waitForMobileGalleryPayload,
   type VideoFilePayload,
@@ -118,8 +121,12 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
   const [infoWarm, setInfoWarm] = useState(false);
   /** IG/FB: decoded thumbnail — card stays on skeleton until this is set. */
   const [preloadedThumb, setPreloadedThumb] = useState<PreloadedThumb | null>(null);
-  /** Mobile: user tapped Download — preparing then gallery save sheet. */
+  /** Mobile: background download / auto gallery save in progress. */
   const [mobileSaving, setMobileSaving] = useState(false);
+  /** Mobile: auto-save blocked — show Download as fallback. */
+  const [mobileShareFallback, setMobileShareFallback] = useState(false);
+  /** Mobile: waiting for a screen tap to open save sheet (iOS). */
+  const [mobileOpeningSave, setMobileOpeningSave] = useState(false);
 
   const lastJobId = useRef<string | null>(null);
   // The pre-fetched, gallery-ready video so the Save tap can open the share
@@ -134,6 +141,9 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
   const prefetchUrl = useRef('');
   const prefetchKeyRef = useRef('');
   const prefetchPayloadPromise = useRef<Promise<VideoFilePayload | null> | null>(null);
+  const autoShareKeyRef = useRef('');
+  const mobileAutoSaveInflightRef = useRef('');
+  const disarmGestureRef = useRef<(() => void) | null>(null);
   const proPanelRef = useRef<HTMLDivElement>(null);
 
   const mobilePrefetchKey = useCallback(
@@ -203,6 +213,60 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
     [mobilePrefetchKey],
   );
 
+  const runMobileAutoSave = useCallback(
+    async (normalized: string, quality: QualityId, isIgFb: boolean) => {
+      if (!isMobileDevice() || !isApiConfigured()) return;
+
+      const key = mobilePrefetchKey(normalized, quality, isIgFb);
+      if (autoShareKeyRef.current === key || mobileAutoSaveInflightRef.current === key) return;
+
+      mobileAutoSaveInflightRef.current = key;
+      setMobileOpeningSave(false);
+      setMobileSaving(true);
+      setError(null);
+
+      try {
+        const payload = await ensureMobilePayload(normalized, quality, isIgFb);
+        if (fetchedUrl.current !== normalized) return;
+        if (mobilePrefetchKey(fetchedUrl.current, quality, isIgFb) !== key) return;
+
+        const result = await autoOpenMobileGallerySave(payload);
+        if (result === 'shared') {
+          autoShareKeyRef.current = key;
+          return;
+        }
+        if (result === 'cancelled') {
+          setMobileShareFallback(true);
+          return;
+        }
+
+        setMobileOpeningSave(true);
+        disarmGestureRef.current?.();
+        disarmGestureRef.current = armMobileGalleryGestureSave(payload, (retry) => {
+          setMobileOpeningSave(false);
+          if (retry === 'shared') {
+            autoShareKeyRef.current = key;
+          } else {
+            setMobileShareFallback(true);
+            setError('Tap Download to open the save menu.');
+          }
+        });
+      } catch (e) {
+        setMobileShareFallback(true);
+        setError(
+          e instanceof ApiError ? e.message : e instanceof Error ? e.message : 'Could not prepare this video.',
+        );
+        setPhase('error');
+      } finally {
+        if (mobileAutoSaveInflightRef.current === key) {
+          mobileAutoSaveInflightRef.current = '';
+        }
+        setMobileSaving(false);
+      }
+    },
+    [ensureMobilePayload, mobilePrefetchKey],
+  );
+
   useStripeReturn(useCallback(() => setPro(true), []));
 
   const pickDefault = (formats: AvailableFormat[]): QualityId =>
@@ -226,8 +290,15 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
     prefetchUrl.current = '';
     prefetchKeyRef.current = '';
     prefetchPayloadPromise.current = null;
+    autoShareKeyRef.current = '';
+    mobileAutoSaveInflightRef.current = '';
+    disarmGestureRef.current?.();
+    disarmGestureRef.current = null;
+    cancelMobileGalleryGestureFallback();
     galleryPayload.current = null;
     setMobileSaving(false);
+    setMobileShareFallback(false);
+    setMobileOpeningSave(false);
     setPreloadedThumb(null);
     fetchedUrl.current = normalized;
 
@@ -498,6 +569,35 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
   const mobileSocial = isMobileDevice() && isSocialPreview;
   const mobileThumbLoaded = Boolean(preloadedThumb);
 
+  /** Mobile: after thumbnail (IG/FB) download in background then auto-open save sheet. */
+  useEffect(() => {
+    if (!isMobileDevice() || phase !== 'ready' || !fetchedUrl.current || !info) return;
+    if (mobileShareFallback || mobileOpeningSave) return;
+    if (mobileSocial && !mobileThumbLoaded) return;
+
+    const isIgFb = info.platform === 'instagram' || info.platform === 'facebook';
+    if (isIgFb && !infoWarm) {
+      setMobileSaving(true);
+      return;
+    }
+
+    const key = mobilePrefetchKey(fetchedUrl.current, selected, isIgFb);
+    if (autoShareKeyRef.current === key) return;
+
+    void runMobileAutoSave(fetchedUrl.current, selected, isIgFb);
+  }, [
+    phase,
+    infoWarm,
+    selected,
+    info,
+    mobileShareFallback,
+    mobileOpeningSave,
+    mobileSocial,
+    mobileThumbLoaded,
+    runMobileAutoSave,
+    mobilePrefetchKey,
+  ]);
+
   const view: 'ready' | 'downloading' | 'success' | null =
     phase === 'downloading' && !isMobileDevice()
       ? 'downloading'
@@ -590,9 +690,15 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
                     />
                   ) : view === 'success' ? (
                     <SuccessState />
+                  ) : isMobileDevice() && !mobileShareFallback ? (
+                    <DownloadProgress
+                      progress={progress}
+                      qualityLabel={qualityLabel}
+                      mobileSave
+                      mobileOpening={mobileOpeningSave}
+                    />
                   ) : (
                     <>
-                      {(!mobileSocial || mobileThumbLoaded) && (
                       <QualitySelector
                         formats={info.formats}
                         selected={selected}
@@ -602,16 +708,26 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
                         pro={pro}
                         refining={refining}
                         downloadReady={
-                          isMobileDevice()
-                            ? mobileThumbLoaded && phase === 'ready'
-                            : (info.platform !== 'instagram' && info.platform !== 'facebook') || infoWarm
+                          (info.platform !== 'instagram' && info.platform !== 'facebook') || infoWarm
                         }
-                        showDownloadButton={!mobileSocial || mobileThumbLoaded}
                         saving={mobileSaving}
-                        onDownload={() => void handleDownload(selected, codecMode)}
+                        onDownload={() => {
+                          const cached = galleryPayload.current;
+                          if (cached) {
+                            setError(null);
+                            void openGalleryShareSheet(cached).then((result) => {
+                              if (result === 'unavailable') {
+                                setError('Could not open the save menu. Tap Download again.');
+                              } else {
+                                setMobileShareFallback(false);
+                              }
+                            });
+                            return;
+                          }
+                          void handleDownload(selected, codecMode);
+                        }}
                         onUpgrade={() => proPanelRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })}
                       />
-                      )}
                       <AnimatePresence>
                         {showProUpgrade && (
                           <motion.div
