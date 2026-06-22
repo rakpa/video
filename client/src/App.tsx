@@ -311,7 +311,7 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
     const isSocial = platform.id === 'instagram' || platform.id === 'facebook';
     const instant =
       platform.id === 'instagram'
-        ? fetchClientInstagramPreview(normalized)
+        ? await fetchClientInstagramPreview(normalized)
         : platform.id === 'facebook'
           ? fetchClientFacebookPreview(normalized)
           : null;
@@ -319,19 +319,23 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
     setInfo({
       platform: platform.id,
       id: instant?.id ?? '',
-      title: isSocial ? 'Loading…' : (instant?.title ?? 'Loading…'),
-      author: isSocial ? '…' : (instant?.author ?? '…'),
+      title: isSocial ? (instant?.title ?? 'Loading…') : (instant?.title ?? 'Loading…'),
+      author: isSocial ? (instant?.author ?? '…') : (instant?.author ?? '…'),
       durationSeconds: null,
-      thumbnail: null,
+      thumbnail: instant?.thumbnail ?? null,
       formats: PLACEHOLDER_FORMATS,
     });
     if (instant && !isSocial) setPhase('ready');
+    if (isSocial && instant?.thumbnail) {
+      setPhase('ready');
+      void preloadThumbnail({ ...instant, platform: platform.id }).then((loaded) => {
+        if (fetchedUrl.current !== normalized || !loaded) return;
+        setPreloadedThumb(loaded);
+      });
+    }
 
     const previewPromise = fetchVideoPreview(normalized).catch(() => null);
-    const infoPromise = (isSocial
-      ? new Promise<void>((r) => setTimeout(r, 400)).then(() => fetchVideoInfo(normalized))
-      : fetchVideoInfo(normalized)
-    ).then((data) => {
+    const infoPromise = fetchVideoInfo(normalized).then((data) => {
       if (fetchedUrl.current === normalized) {
         infoWarmRef.current = true;
         setInfoWarm(true);
@@ -370,9 +374,10 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
         };
         setInfo((prev) => ({ ...prev!, ...card }));
         if (preview.thumbnail) {
-          const loaded = await preloadThumbnail(card);
-          if (fetchedUrl.current !== normalized) return;
-          setPreloadedThumb(loaded);
+          void preloadThumbnail(card).then((loaded) => {
+            if (fetchedUrl.current !== normalized) return;
+            if (loaded) setPreloadedThumb(loaded);
+          });
         }
         setPhase('ready');
       });
@@ -567,10 +572,11 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
   const previewCardReady =
     !isSocialPreview ||
     Boolean(preloadedThumb) ||
-    (phase === 'ready' && !isMobileDevice() && (!info?.thumbnail || infoWarm));
+    Boolean(info?.thumbnail) ||
+    (phase === 'ready' && !isMobileDevice() && infoWarm);
   /** Mobile IG/FB: Download stays hidden until the thumbnail has decoded. */
   const mobileSocial = isMobileDevice() && isSocialPreview;
-  const mobileThumbLoaded = Boolean(preloadedThumb);
+  const mobileThumbLoaded = Boolean(preloadedThumb) || Boolean(info?.thumbnail);
   /** Mobile: processing card only while downloading — hidden once save prompt is ready. */
   const showMobileProcessing = isMobileDevice() && mobileSaving && !mobileSavePayload;
 
@@ -681,7 +687,7 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
                 className="space-y-5"
               >
                 <>
-                  {!previewCardReady || (info.title === 'Loading…' && !info.thumbnail) ? (
+                  {!previewCardReady ? (
                     <VideoPreviewSkeleton />
                   ) : (
                     <VideoPreview info={info} preloadedThumb={preloadedThumb} />

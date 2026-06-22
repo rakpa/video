@@ -2,6 +2,9 @@ import { Router } from 'express';
 
 export const thumbRouter = Router();
 
+const THUMB_CACHE_TTL_MS = 60 * 60 * 1000;
+const thumbCache = new Map<string, { body: Buffer; contentType: string; expires: number }>();
+
 /**
  * GET /api/thumb?url=...
  * Proxies a remote thumbnail through our server so hotlink/CORS-protected CDNs
@@ -19,6 +22,14 @@ thumbRouter.get('/thumb', async (req, res) => {
     return res.status(400).json({ error: 'Invalid thumbnail url.' });
   }
 
+  const cacheKey = target.href;
+  const cached = thumbCache.get(cacheKey);
+  if (cached && cached.expires > Date.now()) {
+    res.setHeader('Content-Type', cached.contentType);
+    res.setHeader('Cache-Control', 'public, max-age=3600');
+    return res.end(cached.body);
+  }
+
   try {
     const upstream = await fetch(target.href, {
       headers: {
@@ -32,9 +43,13 @@ thumbRouter.get('/thumb', async (req, res) => {
 
     if (!upstream.ok || !upstream.body) return res.status(502).json({ error: 'Could not load thumbnail.' });
 
-    res.setHeader('Content-Type', upstream.headers.get('content-type') ?? 'image/jpeg');
+    const contentType = upstream.headers.get('content-type') ?? 'image/jpeg';
+    const body = Buffer.from(await upstream.arrayBuffer());
+    thumbCache.set(cacheKey, { body, contentType, expires: Date.now() + THUMB_CACHE_TTL_MS });
+
+    res.setHeader('Content-Type', contentType);
     res.setHeader('Cache-Control', 'public, max-age=3600');
-    res.end(Buffer.from(await upstream.arrayBuffer()));
+    res.end(body);
   } catch {
     res.status(502).json({ error: 'Could not load thumbnail.' });
   }

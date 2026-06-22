@@ -87,7 +87,7 @@ export async function fetchVideoPreview(url: string): Promise<VideoInfo | null> 
 
   const instant =
     platformId === 'instagram'
-      ? fetchClientInstagramPreview(url)
+      ? await fetchClientInstagramPreview(url)
       : platformId === 'facebook'
         ? fetchClientFacebookPreview(url)
         : null;

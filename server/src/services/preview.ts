@@ -1,7 +1,7 @@
 import type { PlatformId } from './platform.js';
 import type { VideoInfo } from './ytdlp.js';
+import { ensureInfoJsonCache } from './ytdlp.js';
 import { fetchYoutubePreview } from './previewYoutube.js';
-
 export { extractYoutubeId, fetchYoutubePreview } from './previewYoutube.js';
 
 const OG_CACHE_TTL_MS = 10 * 60 * 1000;
@@ -46,6 +46,44 @@ const FETCH_HEADERS = {
   'Accept-Language': 'en-US,en;q=0.9',
 };
 
+/** Race scrapes — resolve as soon as any URL returns an image (or best metadata when all finish). */
+async function raceForMetadata(
+  tasks: Array<() => Promise<{ title?: string; image?: string; author?: string } | null>>,
+): Promise<{ title?: string; image?: string; author?: string } | null> {
+  if (!tasks.length) return null;
+
+  return new Promise((resolve) => {
+    let pending = tasks.length;
+    let fallback: { title?: string; image?: string; author?: string } | null = null;
+    let done = false;
+
+    const merge = (r: { title?: string; image?: string; author?: string }) => {
+      fallback = {
+        title: r.title ?? fallback?.title,
+        image: r.image ?? fallback?.image,
+        author: r.author ?? fallback?.author,
+      };
+    };
+
+    for (const task of tasks) {
+      void task().then((r) => {
+        if (done) return;
+        pending--;
+        if (r?.image) {
+          done = true;
+          resolve(r);
+          return;
+        }
+        if (r) merge(r);
+        if (pending === 0) {
+          done = true;
+          resolve(fallback);
+        }
+      });
+    }
+  });
+}
+
 /** Scrape og:title / og:image from one URL (~1–3s when reachable). */
 async function scrapeOpenGraphOnce(
   url: string,
@@ -82,11 +120,36 @@ async function scrapeOpenGraphFast(
   const unique = [...new Set(urls.filter(Boolean))];
   if (!unique.length) return null;
 
-  const results = await Promise.all(unique.map((u) => scrapeOpenGraphOnce(u)));
-  const withImage = results.find((r) => r?.image);
-  const hit = withImage ?? results.find(Boolean) ?? null;
+  const hit = await raceForMetadata(
+    unique.map((u, i) => () => scrapeOpenGraphOnce(u, i === 0 ? 3000 : 5000)),
+  );
   if (hit) ogCache.set(cacheKey, { data: hit, expires: Date.now() + OG_CACHE_TTL_MS });
   return hit;
+}
+
+async function fetchInstagramOembed(
+  clean: string,
+): Promise<{ title?: string; image?: string; author?: string } | null> {
+  try {
+    const res = await fetch(`https://www.instagram.com/oembed/?url=${encodeURIComponent(clean)}`, {
+      headers: FETCH_HEADERS,
+      signal: AbortSignal.timeout(2500),
+    });
+    if (!res.ok) return null;
+    const data = (await res.json()) as {
+      title?: string;
+      author_name?: string;
+      thumbnail_url?: string;
+    };
+    if (!data.thumbnail_url && !data.title) return null;
+    return {
+      title: data.title,
+      image: data.thumbnail_url,
+      author: data.author_name,
+    };
+  } catch {
+    return null;
+  }
 }
 
 function extractInstagramShortcode(url: string): string {
@@ -146,9 +209,20 @@ async function fetchInstagramPreview(url: string): Promise<VideoInfo | null> {
   const id = extractInstagramShortcode(clean);
   const embed = instagramEmbedUrl(clean);
 
-  const og = await scrapeOpenGraphFast([embed, clean], `ig:${id || clean}`);
+  void ensureInfoJsonCache(clean).catch(() => undefined);
+
+  const og = await raceForMetadata([
+    () => fetchInstagramOembed(clean),
+    () => scrapeOpenGraphOnce(embed, 3000),
+    () => scrapeOpenGraphOnce(clean, 4500),
+  ]);
   if (og?.title || og?.image) {
-    const { title, author } = parseInstagramTitle(og.title);
+    const { title, author } = og.author
+      ? { title: og.title ?? 'Instagram Reel', author: og.author }
+      : parseInstagramTitle(og.title);
+    if (og.image) {
+      ogCache.set(`ig:${id || clean}`, { data: og, expires: Date.now() + OG_CACHE_TTL_MS });
+    }
     return {
       id,
       title,
@@ -180,6 +254,7 @@ function facebookScrapeUrls(url: string): string[] {
 
 async function fetchFacebookPreview(url: string): Promise<VideoInfo | null> {
   const trimmed = url.trim();
+  void ensureInfoJsonCache(trimmed).catch(() => undefined);
   const og = await scrapeOpenGraphFast(facebookScrapeUrls(trimmed), `fb:${trimmed}`);
   if (og?.title || og?.image) {
     return {

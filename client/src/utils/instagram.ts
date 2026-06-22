@@ -28,12 +28,13 @@ export function cleanInstagramUrl(url: string): string {
 }
 
 /**
- * Instant Instagram card (no network) — avoids the skeleton screen while the
- * API fetches thumbnail/title. YouTube has oEmbed; IG needs this placeholder.
+ * Fast Instagram preview from the browser (oEmbed when CORS allows).
+ * Falls back to a placeholder while the API OG scrape runs.
  */
-export function fetchClientInstagramPreview(url: string): VideoInfo {
+export async function fetchClientInstagramPreview(url: string): Promise<VideoInfo> {
   const id = extractInstagramShortcode(url) ?? '';
-  return {
+  const clean = cleanInstagramUrl(url);
+  const fallback: VideoInfo = {
     platform: 'instagram',
     id,
     title: 'Instagram Reel',
@@ -42,4 +43,27 @@ export function fetchClientInstagramPreview(url: string): VideoInfo {
     thumbnail: null,
     formats: [],
   };
+
+  try {
+    const res = await fetch(`https://www.instagram.com/oembed/?url=${encodeURIComponent(clean)}`, {
+      signal: AbortSignal.timeout(3500),
+    });
+    if (res.ok) {
+      const data = (await res.json()) as {
+        title?: string;
+        author_name?: string;
+        thumbnail_url?: string;
+      };
+      return {
+        ...fallback,
+        title: data.title ?? fallback.title,
+        author: data.author_name ?? fallback.author,
+        thumbnail: data.thumbnail_url ?? null,
+      };
+    }
+  } catch {
+    /* CORS blocked or timed out — server preview will supply the thumbnail */
+  }
+
+  return fallback;
 }
