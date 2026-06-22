@@ -26,7 +26,7 @@ export interface Job {
   /** Cached H.264 path after gallery normalize (Instagram/Facebook). */
   galleryPath?: string;
   /** Shared in-flight normalize promise (avoid duplicate ffmpeg runs). */
-  galleryNormalize?: Promise<string>;
+  galleryNormalize?: Promise<string | undefined>;
   /** Set when gallery transcode fails — client may fall back to the raw file. */
   galleryNormalizeFailed?: boolean;
   /** Mobile fast path — smaller IG/FB file, skip normalize retry. */
@@ -106,7 +106,7 @@ export function warmGalleryNormalize(job: Job): void {
       job.galleryNormalize = undefined;
       job.galleryNormalizeFailed = true;
       logger.warn('Background gallery normalize failed:', (err as Error).message);
-      throw err;
+      return undefined;
     });
 }
 
@@ -240,9 +240,8 @@ async function runWithRetry(job: Job, url: string, quality: QualityDef, mode: Co
             streamTotal: 1,
           };
           emit(job, job.progress);
-          try {
-            if (job.galleryNormalize) await job.galleryNormalize;
-          } catch (err) {
+          if (job.galleryNormalize) await job.galleryNormalize;
+          if (!job.galleryPath) {
             if (job.fast) {
               job.status = 'error';
               job.errorMessage =
@@ -251,13 +250,12 @@ async function runWithRetry(job: Job, url: string, quality: QualityDef, mode: Co
               scheduleDestroyJob(job.id);
               return;
             }
-            logger.warn('Gallery normalize failed, retrying once:', (err as Error).message);
+            logger.warn('Gallery normalize failed, retrying once');
             job.galleryNormalize = undefined;
             job.galleryNormalizeFailed = false;
             warmGalleryNormalize(job);
-            try {
-              if (job.galleryNormalize) await job.galleryNormalize;
-            } catch (retryErr) {
+            if (job.galleryNormalize) await job.galleryNormalize;
+            if (!job.galleryPath) {
               job.status = 'error';
               job.errorMessage =
                 'Could not prepare this video for your gallery. Try again or pick 720p.';

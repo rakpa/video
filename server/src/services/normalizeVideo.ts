@@ -108,31 +108,47 @@ async function runFfmpeg(args: string[], timeoutMs: number): Promise<void> {
 
 /** Remux H.264 in a new container — near-zero RAM vs full transcode. */
 async function remuxForGallery(inputPath: string, jobDir: string, fast = false): Promise<string> {
+  await fsp.mkdir(jobDir, { recursive: true });
+  try {
+    await fsp.access(inputPath);
+  } catch {
+    throw new Error(`Gallery remux input missing: ${inputPath}`);
+  }
+
   const outputPath = path.join(jobDir, 'gallery-ready.mp4');
-  const strategies: { label: string; args: string[] }[] = fast
-    ? [{ label: 'copy all streams', args: ['-i', inputPath, '-c', 'copy'] }]
+  const tempPath = path.join(jobDir, 'gallery-ready.tmp.mp4');
+  const strategies: { label: string; args: string[]; faststart: boolean }[] = fast
+    ? [
+        { label: 'copy all streams', args: ['-i', inputPath, '-c', 'copy'], faststart: true },
+        { label: 'copy without faststart', args: ['-i', inputPath, '-c', 'copy'], faststart: false },
+      ]
     : [
-        { label: 'copy all streams', args: ['-i', inputPath, '-c', 'copy'] },
+        { label: 'copy all streams', args: ['-i', inputPath, '-c', 'copy'], faststart: true },
         {
           label: 'copy video + aac audio',
           args: ['-i', inputPath, '-c:v', 'copy', '-c:a', 'aac', '-b:a', '128k', '-ac', '2'],
+          faststart: true,
         },
-        { label: 'copy video only', args: ['-i', inputPath, '-c:v', 'copy', '-an'] },
+        { label: 'copy without faststart', args: ['-i', inputPath, '-c', 'copy'], faststart: false },
+        { label: 'copy video only', args: ['-i', inputPath, '-c:v', 'copy', '-an'], faststart: true },
         {
           label: 'copy with genpts',
           args: ['-fflags', '+genpts', '-i', inputPath, '-c', 'copy'],
+          faststart: true,
         },
       ];
 
   const errors: string[] = [];
   for (const strategy of strategies) {
+    await fsp.unlink(tempPath).catch(() => undefined);
     await fsp.unlink(outputPath).catch(() => undefined);
     try {
       logger.info(`Gallery remux (${strategy.label}): ${path.basename(inputPath)}`);
-      await runFfmpeg(
-        [...strategy.args, '-movflags', '+faststart', '-y', outputPath],
-        3 * 60_000,
-      );
+      const tail = strategy.faststart
+        ? ['-movflags', '+faststart', '-y', tempPath]
+        : ['-y', tempPath];
+      await runFfmpeg([...strategy.args, ...tail], 3 * 60_000);
+      await fsp.rename(tempPath, outputPath);
       if (!(await verifyH264Mp4(outputPath))) {
         throw new Error('Output is not H.264');
       }
@@ -142,6 +158,7 @@ async function remuxForGallery(inputPath: string, jobDir: string, fast = false):
       const msg = (err as Error).message;
       errors.push(`${strategy.label}: ${msg}`);
       logger.warn(`Gallery remux failed (${strategy.label}):`, msg);
+      await fsp.unlink(tempPath).catch(() => undefined);
       await fsp.unlink(outputPath).catch(() => undefined);
     }
   }
@@ -329,6 +346,13 @@ const TRANSCODE_STRATEGIES: TranscodeStrategy[] = config.lowMemoryMode
     ];
 
 async function transcodeForGallery(inputPath: string, jobDir: string, fast = false): Promise<string> {
+  await fsp.mkdir(jobDir, { recursive: true });
+  try {
+    await fsp.access(inputPath);
+  } catch {
+    throw new Error(`Gallery transcode input missing: ${inputPath}`);
+  }
+
   const errors: string[] = [];
   // Mobile fast path: smallest/fastest only. Quality downloads skip 360p tier.
   const strategies = fast
@@ -397,7 +421,12 @@ export function normalizeForGallery(inputPath: string, jobDir: string, fast = fa
     const codec = await probeVideoCodec(inputPath);
     logger.info(`Gallery normalize probe=${codec} file=${path.basename(inputPath)} fast=${fast}`);
     if (codec === 'h264') {
-      return remuxForGallery(inputPath, jobDir, fast);
+      try {
+        return await remuxForGallery(inputPath, jobDir, fast);
+      } catch (remuxErr) {
+        logger.warn('Gallery remux failed, falling back to transcode:', (remuxErr as Error).message);
+        return transcodeForGallery(inputPath, jobDir, fast);
+      }
     }
     return transcodeForGallery(inputPath, jobDir, fast);
   });
