@@ -253,7 +253,12 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
 
   const handleMobileSaveDone = useCallback(
     (result: ShareResult) => {
+      if (result === 'unavailable') {
+        setError('Could not open the save menu. Tap Save to Gallery again.');
+        return;
+      }
       setMobileSavePayload(null);
+      setError(null);
       if (result === 'shared' && fetchedUrl.current && info) {
         const isIgFb = info.platform === 'instagram' || info.platform === 'facebook';
         autoShareKeyRef.current = mobilePrefetchKey(fetchedUrl.current, selected, isIgFb);

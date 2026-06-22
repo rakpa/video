@@ -14,11 +14,14 @@ interface Props {
 
 /**
  * Opens the gallery save sheet as soon as this mounts (Android). On iOS the
- * share API needs a touch — a Save button appears only if auto-open fails.
+ * share API needs a tap — Save to Gallery uses a synchronous share call on click.
  */
 export function MobileSavePrompt({ payload, onDone }: Props) {
   const triedAuto = useRef(false);
+  const sharing = useRef(false);
   const [showButton, setShowButton] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [localError, setLocalError] = useState<string | null>(null);
 
   useLayoutEffect(() => {
     if (triedAuto.current) return;
@@ -26,14 +29,23 @@ export function MobileSavePrompt({ payload, onDone }: Props) {
     void shareVideoToGallery(payload).then((result) => {
       if (result === 'shared' || result === 'cancelled') onDone(result);
     });
-    const t = window.setTimeout(() => setShowButton(true), 700);
+    const t = window.setTimeout(() => setShowButton(true), 500);
     return () => window.clearTimeout(t);
   }, [payload, onDone]);
 
-  const handleSave = (e: React.TouchEvent | React.PointerEvent) => {
-    e.preventDefault();
+  const handleSave = () => {
+    if (sharing.current || busy) return;
+    sharing.current = true;
+    setBusy(true);
+    setLocalError(null);
     invokeGalleryShareFromGesture(payload, (result) => {
-      onDone(result);
+      sharing.current = false;
+      setBusy(false);
+      if (result === 'shared' || result === 'cancelled') {
+        onDone(result);
+        return;
+      }
+      setLocalError('Could not open the save menu. Tap Save to Gallery again.');
     });
   };
 
@@ -49,24 +61,27 @@ export function MobileSavePrompt({ payload, onDone }: Props) {
           animate={{ opacity: [1, 0.3, 1] }}
           transition={{ duration: 1.2, repeat: Infinity }}
         />
-        <span className="font-semibold text-slate-900">Opening save menu…</span>
+        <span className="font-semibold text-slate-900">
+          {busy ? 'Opening save menu…' : 'Your video is ready'}
+        </span>
       </div>
       <p className="mt-3 text-sm text-slate-500">
-        {showButton
-          ? 'Tap Save to Gallery below to add this video to your device.'
-          : 'Your video is ready — the save menu should appear momentarily.'}
+        {localError ??
+          (showButton
+            ? 'Tap Save to Gallery, then choose Save Video to add it to your Photos.'
+            : 'Opening the save menu…')}
       </p>
-      {showButton && (
+      {(showButton || localError) && (
         <button
           type="button"
-          onTouchStart={handleSave}
-          onPointerDown={handleSave}
-          className="btn-gradient mt-5 flex w-full items-center justify-center gap-2.5 rounded-2xl px-6 py-4 text-lg font-semibold text-white shadow-glow-soft"
+          onClick={handleSave}
+          disabled={busy}
+          className="btn-gradient mt-5 flex w-full items-center justify-center gap-2.5 rounded-2xl px-6 py-4 text-lg font-semibold text-white shadow-glow-soft disabled:opacity-70"
         >
           <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2.5" aria-hidden="true">
             <path strokeLinecap="round" strokeLinejoin="round" d="M12 3v12m0 0 4-4m-4 4-4-4M5 21h14" />
           </svg>
-          Save to Gallery
+          {busy ? 'Opening…' : 'Save to Gallery'}
         </button>
       )}
     </motion.div>

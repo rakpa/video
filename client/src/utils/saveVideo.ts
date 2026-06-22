@@ -55,9 +55,24 @@ export function cancelMobileGalleryGestureFallback(): void {
   mobileGestureTouchHandler = null;
 }
 
+function toShareFile(payload: VideoFilePayload): File {
+  const blob =
+    payload.blob.type === 'video/mp4'
+      ? payload.blob
+      : new Blob([payload.blob], { type: 'video/mp4' });
+  return new File([blob], payload.filename, {
+    type: 'video/mp4',
+    lastModified: Date.now(),
+  });
+}
+
+function isIos(): boolean {
+  return /iPhone|iPad|iPod/i.test(navigator.userAgent);
+}
+
 /**
- * Invoke navigator.share synchronously inside a user-gesture handler (touch/pointer).
- * Must not await anything before calling navigator.share.
+ * Invoke navigator.share synchronously inside a user-gesture handler (tap/click).
+ * Always attempts share — canShare often returns false on iOS even when share works.
  */
 export function invokeGalleryShareFromGesture(
   payload: VideoFilePayload,
@@ -69,21 +84,42 @@ export function invokeGalleryShareFromGesture(
   }
   const file = toShareFile(payload);
   try {
-    if (navigator.canShare && !navigator.canShare({ files: [file] })) {
+    if (!isIos() && navigator.canShare && !navigator.canShare({ files: [file] })) {
       onResult('unavailable');
       return;
     }
   } catch {
-    onResult('unavailable');
-    return;
+    /* attempt share anyway */
   }
   navigator
-    .share({ files: [file] })
+    .share({ files: [file], title: payload.filename })
     .then(() => onResult('shared'))
     .catch((err: unknown) => {
       const name = err instanceof Error ? err.name : '';
       onResult(name === 'AbortError' ? 'cancelled' : 'unavailable');
     });
+}
+
+/** Open the iOS/Android share sheet (Save Video → Photos). */
+export async function shareVideoToGallery(payload: VideoFilePayload): Promise<ShareResult> {
+  if (!navigator.share) return 'unavailable';
+
+  const file = toShareFile(payload);
+  try {
+    if (!isIos() && navigator.canShare && !navigator.canShare({ files: [file] })) {
+      return 'unavailable';
+    }
+  } catch {
+    /* attempt share anyway */
+  }
+
+  try {
+    await navigator.share({ files: [file], title: payload.filename });
+    return 'shared';
+  } catch (err) {
+    if (err instanceof Error && err.name === 'AbortError') return 'cancelled';
+    return 'unavailable';
+  }
 }
 
 /** Best-effort auto-open right after async prep (Android; iOS usually blocks). */
@@ -264,31 +300,6 @@ export async function fetchVideoFile(jobId: string): Promise<VideoFilePayload> {
 
   await waitForGalleryReady(jobId);
   return fetchVideoBytes(jobId);
-}
-
-function toShareFile(payload: VideoFilePayload): File {
-  return new File([payload.blob], payload.filename, {
-    type: 'video/mp4',
-    lastModified: Date.now(),
-  });
-}
-
-/** Open the iOS/Android share sheet (Save Video → Photos). */
-export async function shareVideoToGallery(payload: VideoFilePayload): Promise<ShareResult> {
-  if (!navigator.share) return 'unavailable';
-
-  const file = toShareFile(payload);
-  const canShareFiles = navigator.canShare?.({ files: [file] }) ?? true;
-
-  if (!canShareFiles) return 'unavailable';
-
-  try {
-    await navigator.share({ files: [file] });
-    return 'shared';
-  } catch (err) {
-    if (err instanceof Error && err.name === 'AbortError') return 'cancelled';
-    return 'unavailable';
-  }
 }
 
 /** Retry share a few times — helps when called from the Download button's async chain. */
