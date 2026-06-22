@@ -21,7 +21,6 @@ import {
   triggerFileDownload,
 } from './api/client';
 import {
-  autoOpenMobileGallerySave,
   cancelMobileGalleryGestureFallback,
   openGalleryShareSheet,
   waitForMobileGalleryPayload,
@@ -228,13 +227,6 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
         if (fetchedUrl.current !== normalized) return;
         if (mobilePrefetchKey(fetchedUrl.current, quality, isIgFb) !== key) return;
 
-        const result = await autoOpenMobileGallerySave(payload);
-        if (result === 'shared') {
-          autoShareKeyRef.current = key;
-          return;
-        }
-        if (result === 'cancelled') return;
-
         setMobileSaving(false);
         setMobileSavePayload(payload);
       } catch (e) {
@@ -252,13 +244,9 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
     [ensureMobilePayload, mobilePrefetchKey],
   );
 
-  const handleMobileSaveDone = useCallback(
+  const handleMobileSaved = useCallback(
     (result: ShareResult) => {
-      if (result === 'unavailable') {
-        setError('Could not open the save menu. Tap Save to Gallery again.');
-        return;
-      }
-      setMobileSavePayload(null);
+      if (result === 'unavailable') return;
       setError(null);
       if (result === 'shared' && fetchedUrl.current && info) {
         const isIgFb = info.platform === 'instagram' || info.platform === 'facebook';
@@ -267,6 +255,23 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
     },
     [info, selected, mobilePrefetchKey],
   );
+
+  const handleMobileDownloadAnother = useCallback(() => {
+    cancelMobileGalleryGestureFallback();
+    setMobileSavePayload(null);
+    setMobileSaving(false);
+    setUrl('');
+    setPhase('idle');
+    setInfo(null);
+    setError(null);
+    setPreloadedThumb(null);
+    fetchedUrl.current = '';
+    autoShareKeyRef.current = '';
+    galleryPayload.current = null;
+    prefetchKeyRef.current = '';
+    prefetchPayloadPromise.current = null;
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }, []);
 
   useStripeReturn(useCallback(() => setPro(true), []));
 
@@ -690,7 +695,12 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
                   ) : view === 'success' ? (
                     <SuccessState />
                   ) : isMobileDevice() && mobileSavePayload ? (
-                    <MobileSavePrompt payload={mobileSavePayload} onDone={handleMobileSaveDone} />
+                    <MobileSavePrompt
+                      payload={mobileSavePayload}
+                      author={info.author}
+                      onSaved={handleMobileSaved}
+                      onDownloadAnother={handleMobileDownloadAnother}
+                    />
                   ) : showMobileProcessing ? (
                     <DownloadProgress
                       progress={progress}
