@@ -5,8 +5,9 @@ import { useTheme, type Theme } from './hooks/useTheme';
 import { detectPlatform, normalizeUrl } from './utils/platform';
 import { API_NOT_CONFIGURED_MSG, isApiConfigured } from './config/api';
 import { PLACEHOLDER_FORMATS } from './utils/formats';
+import { fetchClientInstagramPreview } from './utils/instagram';
 import { fetchClientYoutubePreview } from './utils/youtube';
-import { preloadThumbnail, type PreloadedThumb } from './utils/preloadThumb';
+import { preloadThumbnail, warmThumbnailFetch, type PreloadedThumb } from './utils/preloadThumb';
 import { isPro, licenseToken } from './lib/license';
 import { useStripeReturn } from './hooks/useStripeReturn';
 import {
@@ -15,6 +16,7 @@ import {
   fetchVideoPreview,
   isMobileDevice,
   pingApiWarmup,
+  warmSocialPreview,
   startDownloadJob,
   subscribeProgress,
   triggerFileDownload,
@@ -318,17 +320,19 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
     const platform = detectPlatform(normalized)!;
     const isSocial = platform.id === 'instagram' || platform.id === 'facebook';
 
-    const revealSocialPreview = async (card: VideoInfo): Promise<boolean> => {
+    const revealSocialPreview = (card: VideoInfo): boolean => {
       if (!card.thumbnail || socialRevealedRef.current) return socialRevealedRef.current;
-      const loaded = await preloadThumbnail(card);
-      if (fetchedUrl.current !== normalized || !loaded) return false;
       socialRevealedRef.current = true;
-      setPreloadedThumb(loaded);
+      warmThumbnailFetch(card);
       setInfo((prev) => ({
         ...card,
         formats: prev?.formats ?? PLACEHOLDER_FORMATS,
       }));
       setPhase('ready');
+      void preloadThumbnail(card).then((loaded) => {
+        if (fetchedUrl.current !== normalized) return;
+        if (loaded) setPreloadedThumb(loaded);
+      });
       return true;
     };
 
@@ -374,19 +378,29 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
         setPhase((p) => (p === 'preview' ? 'ready' : p));
       });
     } else {
-      void previewPromise.then(async (preview) => {
-        if (!preview || fetchedUrl.current !== normalized) return;
+      if (platform.id === 'instagram') {
+        void fetchClientInstagramPreview(normalized).then((client) => {
+          if (!client.thumbnail || fetchedUrl.current !== normalized) return;
+          revealSocialPreview({
+            ...client,
+            platform: platform.id,
+            formats: PLACEHOLDER_FORMATS,
+          });
+        });
+      }
+
+      void previewPromise.then((preview) => {
+        if (!preview?.thumbnail || fetchedUrl.current !== normalized) return;
         hasPreview = true;
-        const card: VideoInfo = {
+        revealSocialPreview({
           platform: platform.id,
           id: preview.id,
           title: preview.title || 'Untitled video',
           author: preview.author || 'Unknown',
           durationSeconds: preview.durationSeconds ?? null,
-          thumbnail: preview.thumbnail ?? null,
+          thumbnail: preview.thumbnail,
           formats: PLACEHOLDER_FORMATS,
-        };
-        await revealSocialPreview(card);
+        });
       });
     }
 
@@ -415,8 +429,7 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
             thumbnail: data.thumbnail,
             formats: PLACEHOLDER_FORMATS,
           };
-          const revealed = await revealSocialPreview(card);
-          if (!revealed) {
+          if (!revealSocialPreview(card)) {
             setInfo(card);
             setPhase('ready');
           }
@@ -451,8 +464,7 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
             platform: platform.id,
             formats: PLACEHOLDER_FORMATS,
           };
-          const revealed = await revealSocialPreview(card);
-          if (!revealed) {
+          if (!revealSocialPreview(card)) {
             setInfo(card);
             setPhase('ready');
           }
@@ -491,7 +503,10 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
     if (normalized === fetchedUrl.current || phase === 'downloading') return;
     const isSocial =
       detectPlatform(trimmed)?.id === 'instagram' || detectPlatform(trimmed)?.id === 'facebook';
-    if (isSocial) pingApiWarmup();
+    if (isSocial) {
+      pingApiWarmup();
+      warmSocialPreview(normalized);
+    }
     const delay = likelyPaste || isSocial ? 0 : 200;
     const t = setTimeout(() => handleFetch(trimmed), delay);
     return () => clearTimeout(t);
@@ -601,11 +616,11 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
   const isBusy = phase === 'fetching' || phase === 'preview' || phase === 'downloading';
   const isSocialPreview = info?.platform === 'instagram' || info?.platform === 'facebook';
   const previewCardReady = isSocialPreview
-    ? Boolean(preloadedThumb)
+    ? Boolean(info?.thumbnail)
     : Boolean(info) && phase !== 'idle' && phase !== 'fetching';
-  /** Mobile IG/FB: wait until the thumbnail image is fully decoded. */
+  /** Mobile IG/FB: auto-save waits until thumbnail bytes are decoded. */
   const mobileSocial = isMobileDevice() && isSocialPreview;
-  const mobileThumbLoaded = Boolean(preloadedThumb);
+  const mobileThumbLoaded = Boolean(preloadedThumb) || Boolean(info?.thumbnail);
   /** Mobile: processing card only while downloading — hidden once save prompt is ready. */
   const showMobileProcessing = isMobileDevice() && mobileSaving && !mobileSavePayload;
 

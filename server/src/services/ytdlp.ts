@@ -471,6 +471,28 @@ export async function fetchQuickPreview(url: string): Promise<VideoInfo | null> 
   }
 }
 
+/** Read preview fields from a warm info-json cache (no yt-dlp spawn). */
+export function readCachedVideoInfo(url: string): VideoInfo | null {
+  const fresh = getFreshInfoJson(url, currentProxy() ?? '');
+  if (!fresh) return null;
+  try {
+    return parseInfoDump(fs.readFileSync(fresh, 'utf8'));
+  } catch {
+    return null;
+  }
+}
+
+/** Poll until info-json extraction finishes and a thumbnail is available. */
+export async function waitForCachedVideoInfo(url: string, maxWaitMs = 15000): Promise<VideoInfo | null> {
+  const deadline = Date.now() + maxWaitMs;
+  while (Date.now() < deadline) {
+    const info = readCachedVideoInfo(url);
+    if (info?.thumbnail) return info;
+    await new Promise((r) => setTimeout(r, 300));
+  }
+  return null;
+}
+
 export interface DownloadHandle {
   /** Absolute path to the finished MP4 once the promise resolves. */
   outputDir: string;

@@ -71,29 +71,17 @@ export function pingApiWarmup(): void {
   void fetch(apiUrl('/api/health')).catch(() => undefined);
 }
 
-/** Fetch metadata + quality options for a URL. */
-export function fetchVideoInfo(url: string): Promise<VideoInfo> {
-  return postJson<VideoInfo>('/api/info', { url });
+/** Fire-and-forget preview scrape so the thumbnail is ready when the UI asks. */
+export function warmSocialPreview(url: string): void {
+  if (!isApiConfigured()) return;
+  void fetch(apiUrl('/api/info/preview'), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ url }),
+  }).catch(() => undefined);
 }
 
-/** Fast preview (title + thumbnail). YouTube uses browser oEmbed; IG/FB use instant placeholders + API OG scrape. */
-export async function fetchVideoPreview(url: string): Promise<VideoInfo | null> {
-  const platformId = detectPlatform(url)?.id;
-
-  if (platformId === 'youtube') {
-    const local = await fetchClientYoutubePreview(url);
-    if (local) return local;
-  }
-
-  const instant =
-    platformId === 'instagram'
-      ? await fetchClientInstagramPreview(url)
-      : platformId === 'facebook'
-        ? fetchClientFacebookPreview(url)
-        : null;
-
-  if (!isApiConfigured()) return instant;
-
+async function fetchPreviewFromApi(url: string): Promise<VideoInfo | null> {
   let res: Response;
   try {
     res = await retryFetch(
@@ -106,24 +94,54 @@ export async function fetchVideoPreview(url: string): Promise<VideoInfo | null> 
       PREVIEW_RETRY,
     );
   } catch {
-    return instant ?? (platformId === 'youtube' ? fetchClientYoutubePreview(url) : null);
+    return null;
   }
-  if (res.status === 204) {
-    return instant ?? (platformId === 'youtube' ? fetchClientYoutubePreview(url) : null);
-  }
-  if (!res.ok) return instant;
+  if (res.status === 204) return null;
+  if (!res.ok) return null;
   const isJson = res.headers.get('content-type')?.includes('application/json');
-  if (!isJson) return instant;
-  const api = (await res.json()) as VideoInfo;
-  if (!instant) return api;
+  if (!isJson) return null;
+  return (await res.json()) as VideoInfo;
+}
+
+function mergeSocialPreview(client: VideoInfo | null, api: VideoInfo | null): VideoInfo | null {
+  if (!client && !api) return null;
+  if (!api) return client;
+  if (!client) return api;
   return {
-    ...instant,
+    ...client,
     ...api,
-    platform: api.platform ?? instant.platform,
-    title: api.title || instant.title,
-    author: api.author || instant.author,
-    thumbnail: api.thumbnail ?? instant.thumbnail,
+    platform: api.platform ?? client.platform,
+    title: api.title && api.title !== 'Instagram Reel' && api.title !== 'Facebook video' ? api.title : client.title,
+    author: api.author || client.author,
+    thumbnail: api.thumbnail ?? client.thumbnail,
+    durationSeconds: api.durationSeconds ?? client.durationSeconds,
   };
+}
+
+/** Fetch metadata + quality options for a URL. */
+export function fetchVideoInfo(url: string): Promise<VideoInfo> {
+  return postJson<VideoInfo>('/api/info', { url });
+}
+
+/** Fast preview (title + thumbnail). YouTube uses browser oEmbed; IG/FB race client + API in parallel. */
+export async function fetchVideoPreview(url: string): Promise<VideoInfo | null> {
+  const platformId = detectPlatform(url)?.id;
+
+  if (platformId === 'youtube') {
+    return fetchClientYoutubePreview(url);
+  }
+
+  const clientPromise =
+    platformId === 'instagram'
+      ? fetchClientInstagramPreview(url)
+      : platformId === 'facebook'
+        ? Promise.resolve(fetchClientFacebookPreview(url))
+        : Promise.resolve(null);
+
+  if (!isApiConfigured()) return clientPromise;
+
+  const [client, api] = await Promise.all([clientPromise, fetchPreviewFromApi(url)]);
+  return mergeSocialPreview(client, api);
 }
 
 /** Kick off a download job; returns the job id. `license` unlocks premium qualities. */

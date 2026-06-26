@@ -1,6 +1,6 @@
 import type { PlatformId } from './platform.js';
 import type { VideoInfo } from './ytdlp.js';
-import { ensureInfoJsonCache } from './ytdlp.js';
+import { ensureInfoJsonCache, readCachedVideoInfo, waitForCachedVideoInfo } from './ytdlp.js';
 import { fetchYoutubePreview } from './previewYoutube.js';
 import { warmThumbCache } from '../routes/thumb.js';
 export { extractYoutubeId, fetchYoutubePreview } from './previewYoutube.js';
@@ -85,19 +85,39 @@ async function raceForMetadata(
   });
 }
 
-/** Scrape og:title / og:image from one URL (~1–3s when reachable). */
+/** Scrape og:title / og:image — stop reading HTML once an image tag is found. */
 async function scrapeOpenGraphOnce(
   url: string,
   timeoutMs = 5000,
 ): Promise<{ title?: string; image?: string } | null> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
     const res = await fetch(url, {
       headers: FETCH_HEADERS,
       redirect: 'follow',
-      signal: AbortSignal.timeout(timeoutMs),
+      signal: controller.signal,
     });
-    if (!res.ok) return null;
-    const html = await res.text();
+    if (!res.ok || !res.body) return null;
+
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let html = '';
+    while (html.length < 160_000) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      html += decoder.decode(value, { stream: true });
+      const title = metaContent(html, 'og:title') ?? metaContent(html, 'twitter:title');
+      const image =
+        metaContent(html, 'og:image') ??
+        metaContent(html, 'twitter:image') ??
+        extractEmbeddedImage(html);
+      if (image) {
+        controller.abort();
+        return { title, image };
+      }
+    }
+
     const title = metaContent(html, 'og:title') ?? metaContent(html, 'twitter:title');
     const image =
       metaContent(html, 'og:image') ??
@@ -107,6 +127,8 @@ async function scrapeOpenGraphOnce(
     return { title, image };
   } catch {
     return null;
+  } finally {
+    clearTimeout(timer);
   }
 }
 
@@ -116,7 +138,7 @@ async function fetchInstagramOembed(
   try {
     const res = await fetch(`https://www.instagram.com/oembed/?url=${encodeURIComponent(clean)}`, {
       headers: FETCH_HEADERS,
-      signal: AbortSignal.timeout(2000),
+      signal: AbortSignal.timeout(3500),
     });
     if (!res.ok) return null;
     const data = (await res.json()) as {
@@ -195,6 +217,52 @@ function notePreviewImage(image?: string): void {
   if (image) warmThumbCache(image);
 }
 
+function buildInstagramPreview(
+  id: string,
+  og: { title?: string; image?: string; author?: string },
+  durationSeconds: number | null = null,
+): VideoInfo {
+  const parsed = parseInstagramTitle(og.title);
+  return {
+    id,
+    title: parsed.title,
+    author: og.author ?? parsed.author,
+    durationSeconds,
+    thumbnail: og.image ?? null,
+    formats: [],
+  };
+}
+
+/** Resolve as soon as any task returns a preview with a thumbnail. */
+async function raceSocialPreview(
+  tasks: Array<() => Promise<VideoInfo | null>>,
+): Promise<VideoInfo | null> {
+  if (!tasks.length) return null;
+
+  return new Promise((resolve) => {
+    let pending = tasks.length;
+    let fallback: VideoInfo | null = null;
+    let done = false;
+
+    for (const task of tasks) {
+      void task().then((result) => {
+        if (done) return;
+        if (result?.thumbnail) {
+          done = true;
+          resolve(result);
+          return;
+        }
+        pending--;
+        if (result && !fallback) fallback = result;
+        if (pending === 0) {
+          done = true;
+          resolve(fallback);
+        }
+      });
+    }
+  });
+}
+
 async function fetchFacebookOembed(
   url: string,
 ): Promise<{ title?: string; image?: string; author?: string } | null> {
@@ -203,7 +271,7 @@ async function fetchFacebookOembed(
       `https://www.facebook.com/plugins/video/oembed.json/?url=${encodeURIComponent(url)}`,
       {
         headers: FETCH_HEADERS,
-        signal: AbortSignal.timeout(2000),
+        signal: AbortSignal.timeout(3500),
       },
     );
     if (!res.ok) return null;
@@ -227,33 +295,57 @@ async function fetchInstagramPreview(url: string): Promise<VideoInfo | null> {
   const clean = cleanInstagramUrl(url.trim());
   const id = extractInstagramShortcode(clean);
   const embed = instagramEmbedUrl(clean);
+  const cacheKey = `ig:${id || clean}`;
 
-  void ensureInfoJsonCache(clean).catch(() => undefined);
+  const cached = ogCache.get(cacheKey);
+  if (cached && cached.expires > Date.now() && cached.data.image) {
+    notePreviewImage(cached.data.image);
+    return buildInstagramPreview(id, cached.data);
+  }
 
-  const og = await raceForMetadata([
-    () => fetchInstagramOembed(clean),
-    () => scrapeOpenGraphOnce(embed, 2000),
-    () => scrapeOpenGraphOnce(clean, 3500),
-  ]);
-  if (og?.title || og?.image) {
-    notePreviewImage(og.image);
-    const parsed = parseInstagramTitle(og.title);
-    const title = parsed.title;
-    const author = og.author ?? parsed.author;
-    if (og.image) {
-      ogCache.set(`ig:${id || clean}`, { data: og, expires: Date.now() + OG_CACHE_TTL_MS });
-    }
+  const warm = readCachedVideoInfo(clean);
+  if (warm?.thumbnail) {
+    notePreviewImage(warm.thumbnail);
     return {
-      id,
-      title,
-      author,
-      durationSeconds: null,
-      thumbnail: og.image ?? null,
+      id: warm.id || id,
+      title: warm.title,
+      author: warm.author,
+      durationSeconds: warm.durationSeconds,
+      thumbnail: warm.thumbnail,
       formats: [],
     };
   }
 
-  return null;
+  void ensureInfoJsonCache(clean).catch(() => undefined);
+
+  const hit = await raceSocialPreview([
+    async () => {
+      const og = await raceForMetadata([
+        () => scrapeOpenGraphOnce(embed, 1500),
+        () => fetchInstagramOembed(clean),
+        () => scrapeOpenGraphOnce(clean, 3000),
+      ]);
+      if (!og?.title && !og?.image) return null;
+      notePreviewImage(og.image);
+      if (og.image) ogCache.set(cacheKey, { data: og, expires: Date.now() + OG_CACHE_TTL_MS });
+      return buildInstagramPreview(id, og);
+    },
+    async () => {
+      const info = await waitForCachedVideoInfo(clean, 18000);
+      if (!info?.thumbnail) return null;
+      notePreviewImage(info.thumbnail);
+      return {
+        id: info.id || id,
+        title: info.title,
+        author: info.author,
+        durationSeconds: info.durationSeconds,
+        thumbnail: info.thumbnail,
+        formats: [],
+      };
+    },
+  ]);
+
+  return hit;
 }
 
 function facebookScrapeUrls(url: string): string[] {
@@ -280,7 +372,7 @@ async function fetchFacebookPreview(url: string): Promise<VideoInfo | null> {
   const trimmed = url.trim();
   const cacheKey = `fb:${trimmed}`;
   const cached = ogCache.get(cacheKey);
-  if (cached && cached.expires > Date.now()) {
+  if (cached && cached.expires > Date.now() && cached.data.image) {
     notePreviewImage(cached.data.image);
     return {
       id: '',
@@ -292,25 +384,56 @@ async function fetchFacebookPreview(url: string): Promise<VideoInfo | null> {
     };
   }
 
-  void ensureInfoJsonCache(trimmed).catch(() => undefined);
-  const scrapeUrls = facebookScrapeUrls(trimmed);
-  const og = await raceForMetadata([
-    () => fetchFacebookOembed(trimmed),
-    ...scrapeUrls.map((u, i) => () => scrapeOpenGraphOnce(u, i === 0 ? 2000 : 3000)),
-  ]);
-  if (og?.title || og?.image) {
-    notePreviewImage(og.image);
-    ogCache.set(`fb:${trimmed}`, { data: og, expires: Date.now() + OG_CACHE_TTL_MS });
+  const warm = readCachedVideoInfo(trimmed);
+  if (warm?.thumbnail) {
+    notePreviewImage(warm.thumbnail);
     return {
-      id: '',
-      title: og.title?.replace(/\s*\|\s*Facebook.*$/i, '').trim() || 'Facebook video',
-      author: og.author || 'Facebook',
-      durationSeconds: null,
-      thumbnail: og.image ?? null,
+      id: warm.id,
+      title: warm.title,
+      author: warm.author,
+      durationSeconds: warm.durationSeconds,
+      thumbnail: warm.thumbnail,
       formats: [],
     };
   }
-  return null;
+
+  void ensureInfoJsonCache(trimmed).catch(() => undefined);
+  const scrapeUrls = facebookScrapeUrls(trimmed);
+
+  const hit = await raceSocialPreview([
+    async () => {
+      const og = await raceForMetadata([
+        () => fetchFacebookOembed(trimmed),
+        ...scrapeUrls.map((u, i) => () => scrapeOpenGraphOnce(u, i === 0 ? 1500 : 2500)),
+      ]);
+      if (!og?.title && !og?.image) return null;
+      notePreviewImage(og.image);
+      ogCache.set(cacheKey, { data: og, expires: Date.now() + OG_CACHE_TTL_MS });
+      return {
+        id: '',
+        title: og.title?.replace(/\s*\|\s*Facebook.*$/i, '').trim() || 'Facebook video',
+        author: og.author || 'Facebook',
+        durationSeconds: null,
+        thumbnail: og.image ?? null,
+        formats: [],
+      };
+    },
+    async () => {
+      const info = await waitForCachedVideoInfo(trimmed, 18000);
+      if (!info?.thumbnail) return null;
+      notePreviewImage(info.thumbnail);
+      return {
+        id: info.id,
+        title: info.title,
+        author: info.author,
+        durationSeconds: info.durationSeconds,
+        thumbnail: info.thumbnail,
+        formats: [],
+      };
+    },
+  ]);
+
+  return hit;
 }
 
 export async function fetchPreview(url: string, platform: PlatformId): Promise<VideoInfo | null> {
