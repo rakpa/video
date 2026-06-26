@@ -176,8 +176,12 @@ function instagramEmbedUrl(url: string): string {
 
 function parseInstagramTitle(raw?: string): { title: string; author: string } {
   if (!raw) return { title: 'Instagram Reel', author: 'Instagram' };
-  const byMatch = raw.match(/^Video by (.+?) on Instagram/i);
-  if (byMatch) return { title: raw, author: byMatch[1].trim() };
+  const byMatch = raw.match(/^Video by (.+?) on Instagram(?::\s*(.*))?$/i);
+  if (byMatch) {
+    const author = byMatch[1].trim();
+    const caption = byMatch[2]?.replace(/^["']|["']$/g, '').trim();
+    return { title: caption || `Reel by ${author}`, author };
+  }
   const onMatch = raw.match(/^(.+?) on Instagram(?::\s*(.*))?$/i);
   if (onMatch) {
     const author = onMatch[1].trim();
@@ -233,9 +237,9 @@ async function fetchInstagramPreview(url: string): Promise<VideoInfo | null> {
   ]);
   if (og?.title || og?.image) {
     notePreviewImage(og.image);
-    const { title, author } = og.author
-      ? { title: og.title ?? 'Instagram Reel', author: og.author }
-      : parseInstagramTitle(og.title);
+    const parsed = parseInstagramTitle(og.title);
+    const title = parsed.title;
+    const author = og.author ?? parsed.author;
     if (og.image) {
       ogCache.set(`ig:${id || clean}`, { data: og, expires: Date.now() + OG_CACHE_TTL_MS });
     }

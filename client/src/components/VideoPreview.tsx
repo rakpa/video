@@ -67,9 +67,9 @@ export function VideoPreview({ info, preloadedThumb }: Props) {
 
   return (
     <motion.div
-      initial={{ opacity: 0, y: 14 }}
+      initial={preloadedThumb ? false : { opacity: 0, y: 14 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.4 }}
+      transition={{ duration: preloadedThumb ? 0.2 : 0.4 }}
       className="glass overflow-hidden rounded-3xl p-4 shadow-card sm:p-5"
     >
       <div className="flex flex-col gap-4 sm:flex-row">

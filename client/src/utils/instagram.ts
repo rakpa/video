@@ -27,6 +27,27 @@ export function cleanInstagramUrl(url: string): string {
   }
 }
 
+/** Parse Instagram oEmbed titles into a clean caption + author. */
+export function parseInstagramTitle(raw?: string): { title: string; author: string } {
+  if (!raw) return { title: 'Instagram Reel', author: 'Instagram' };
+  const byMatch = raw.match(/^Video by (.+?) on Instagram(?::\s*(.*))?$/i);
+  if (byMatch) {
+    const author = byMatch[1].trim();
+    const caption = byMatch[2]?.replace(/^["']|["']$/g, '').trim();
+    return { title: caption || `Reel by ${author}`, author };
+  }
+  const onMatch = raw.match(/^(.+?) on Instagram(?::\s*(.*))?$/i);
+  if (onMatch) {
+    const author = onMatch[1].trim();
+    const caption = onMatch[2]?.replace(/^["']|["']$/g, '').trim();
+    return { title: caption || raw, author };
+  }
+  return {
+    title: raw.replace(/\s*on Instagram.*$/i, '').trim() || 'Instagram Reel',
+    author: 'Instagram',
+  };
+}
+
 /**
  * Fast Instagram preview from the browser (oEmbed when CORS allows).
  * Falls back to a placeholder while the API OG scrape runs.
@@ -54,10 +75,11 @@ export async function fetchClientInstagramPreview(url: string): Promise<VideoInf
         author_name?: string;
         thumbnail_url?: string;
       };
+      const parsed = parseInstagramTitle(data.title);
       return {
         ...fallback,
-        title: data.title ?? fallback.title,
-        author: data.author_name ?? fallback.author,
+        title: parsed.title,
+        author: data.author_name ?? parsed.author,
         thumbnail: data.thumbnail_url ?? null,
       };
     }

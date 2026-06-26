@@ -5,8 +5,7 @@ import { useTheme, type Theme } from './hooks/useTheme';
 import { detectPlatform, normalizeUrl } from './utils/platform';
 import { API_NOT_CONFIGURED_MSG, isApiConfigured } from './config/api';
 import { PLACEHOLDER_FORMATS } from './utils/formats';
-import { fetchClientInstagramPreview } from './utils/instagram';
-import { fetchClientFacebookPreview } from './utils/facebook';
+import { fetchClientYoutubePreview } from './utils/youtube';
 import { preloadThumbnail, type PreloadedThumb } from './utils/preloadThumb';
 import { isPro, licenseToken } from './lib/license';
 import { useStripeReturn } from './hooks/useStripeReturn';
@@ -141,6 +140,7 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
   const prefetchPayloadPromise = useRef<Promise<VideoFilePayload | null> | null>(null);
   const desktopPrefetchReadyKey = useRef('');
   const desktopPrefetchInflight = useRef('');
+  const socialRevealedRef = useRef(false);
   const autoShareKeyRef = useRef('');
   const mobileAutoSaveInflightRef = useRef('');
   const proPanelRef = useRef<HTMLDivElement>(null);
@@ -274,6 +274,7 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
     prefetchPayloadPromise.current = null;
     desktopPrefetchReadyKey.current = '';
     desktopPrefetchInflight.current = '';
+    socialRevealedRef.current = false;
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }, []);
 
@@ -302,6 +303,7 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
     prefetchPayloadPromise.current = null;
     desktopPrefetchReadyKey.current = '';
     desktopPrefetchInflight.current = '';
+    socialRevealedRef.current = false;
     autoShareKeyRef.current = '';
     mobileAutoSaveInflightRef.current = '';
     cancelMobileGalleryGestureFallback();
@@ -315,31 +317,35 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
 
     const platform = detectPlatform(normalized)!;
     const isSocial = platform.id === 'instagram' || platform.id === 'facebook';
-    const instant =
-      platform.id === 'instagram'
-        ? await fetchClientInstagramPreview(normalized)
-        : platform.id === 'facebook'
-          ? fetchClientFacebookPreview(normalized)
-          : null;
 
-    setInfo({
-      platform: platform.id,
-      id: instant?.id ?? '',
-      title: isSocial ? (instant?.title ?? 'Loading…') : (instant?.title ?? 'Loading…'),
-      author: isSocial ? (instant?.author ?? '…') : (instant?.author ?? '…'),
-      durationSeconds: null,
-      thumbnail: instant?.thumbnail ?? null,
-      formats: PLACEHOLDER_FORMATS,
-    });
-    if (instant && !isSocial) setPhase('ready');
-    if (isSocial) {
+    const revealSocialPreview = async (card: VideoInfo): Promise<boolean> => {
+      if (!card.thumbnail || socialRevealedRef.current) return socialRevealedRef.current;
+      const loaded = await preloadThumbnail(card);
+      if (fetchedUrl.current !== normalized || !loaded) return false;
+      socialRevealedRef.current = true;
+      setPreloadedThumb(loaded);
+      setInfo((prev) => ({
+        ...card,
+        formats: prev?.formats ?? PLACEHOLDER_FORMATS,
+      }));
       setPhase('ready');
-      if (instant?.thumbnail) {
-        void preloadThumbnail({ ...instant, platform: platform.id }).then((loaded) => {
-          if (fetchedUrl.current !== normalized || !loaded) return;
-          setPreloadedThumb(loaded);
-        });
-      }
+      return true;
+    };
+
+    const instant =
+      platform.id === 'youtube' ? await fetchClientYoutubePreview(normalized) : null;
+
+    if (!isSocial) {
+      setInfo({
+        platform: platform.id,
+        id: instant?.id ?? '',
+        title: instant?.title ?? 'Loading…',
+        author: instant?.author ?? '…',
+        durationSeconds: null,
+        thumbnail: instant?.thumbnail ?? null,
+        formats: PLACEHOLDER_FORMATS,
+      });
+      if (instant) setPhase('ready');
     }
 
     const previewPromise = fetchVideoPreview(normalized).catch(() => null);
@@ -351,7 +357,7 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
       return data;
     });
     infoWarmPromise.current = infoPromise.then(() => undefined).catch(() => undefined);
-    let hasPreview = Boolean(instant && !isSocial);
+    let hasPreview = Boolean(instant);
 
     if (!isSocial) {
       void previewPromise.then((preview) => {
@@ -373,21 +379,14 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
         hasPreview = true;
         const card: VideoInfo = {
           platform: platform.id,
-          id: preview.id || instant?.id || '',
-          title: preview.title || instant?.title || 'Untitled video',
-          author: preview.author || instant?.author || 'Unknown',
+          id: preview.id,
+          title: preview.title || 'Untitled video',
+          author: preview.author || 'Unknown',
           durationSeconds: preview.durationSeconds ?? null,
           thumbnail: preview.thumbnail ?? null,
           formats: PLACEHOLDER_FORMATS,
         };
-        setInfo((prev) => ({ ...prev!, ...card }));
-        if (preview.thumbnail) {
-          void preloadThumbnail(card).then((loaded) => {
-            if (fetchedUrl.current !== normalized) return;
-            if (loaded) setPreloadedThumb(loaded);
-          });
-        }
-        setPhase('ready');
+        await revealSocialPreview(card);
       });
     }
 
@@ -395,24 +394,33 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
       if (isSocial) {
         const data = await infoPromise;
         if (fetchedUrl.current !== normalized) return;
-        setInfo((prev) => {
-          if (!prev) return prev;
-          const thumbnail = prev.thumbnail ?? data.thumbnail ?? null;
-          if (!prev.thumbnail && data.thumbnail) {
-            void preloadThumbnail({ ...data, platform: platform.id, thumbnail: data.thumbnail }).then(
-              (loaded) => {
-                if (fetchedUrl.current !== normalized) return;
-                setPreloadedThumb(loaded);
-              },
-            );
-          }
-          return {
-            ...data,
-            title: data.title || prev.title || 'Untitled video',
-            author: data.author || prev.author || 'Unknown',
-            thumbnail,
+
+        if (socialRevealedRef.current) {
+          setInfo((prev) =>
+            prev
+              ? {
+                  ...prev,
+                  formats: data.formats,
+                  durationSeconds: data.durationSeconds ?? prev.durationSeconds,
+                }
+              : prev,
+          );
+        } else {
+          const card: VideoInfo = {
+            platform: platform.id,
+            id: data.id,
+            title: data.title || 'Untitled video',
+            author: data.author || 'Unknown',
+            durationSeconds: data.durationSeconds,
+            thumbnail: data.thumbnail,
+            formats: PLACEHOLDER_FORMATS,
           };
-        });
+          const revealed = await revealSocialPreview(card);
+          if (!revealed) {
+            setInfo(card);
+            setPhase('ready');
+          }
+        }
         setSelected((current) => {
           const chosen = data.formats.find((f) => f.id === current);
           return chosen?.available ? current : pickDefault(data.formats);
@@ -436,22 +444,18 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
       if (fetchedUrl.current !== normalized) return;
       if (isSocial) {
         const preview = await previewPromise.catch(() => null);
-        if (preview) {
+        if (preview?.thumbnail) {
           hasPreview = true;
           const card: VideoInfo = {
             ...preview,
             platform: platform.id,
-            thumbnail: preview.thumbnail ?? null,
             formats: PLACEHOLDER_FORMATS,
           };
-          setInfo(card);
-          if (preview.thumbnail) {
-            void preloadThumbnail(card).then((loaded) => {
-              if (fetchedUrl.current !== normalized) return;
-              setPreloadedThumb(loaded);
-            });
+          const revealed = await revealSocialPreview(card);
+          if (!revealed) {
+            setInfo(card);
+            setPhase('ready');
           }
-          setPhase('ready');
           setInfoWarm(false);
           infoWarmRef.current = false;
         } else {
@@ -596,10 +600,12 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
   const showProUpgrade = !pro && Boolean(selectedFmt?.premium);
   const isBusy = phase === 'fetching' || phase === 'preview' || phase === 'downloading';
   const isSocialPreview = info?.platform === 'instagram' || info?.platform === 'facebook';
-  const previewCardReady = Boolean(info) && phase !== 'idle' && phase !== 'fetching';
-  /** Mobile IG/FB: Download stays hidden until the thumbnail has decoded. */
+  const previewCardReady = isSocialPreview
+    ? Boolean(preloadedThumb)
+    : Boolean(info) && phase !== 'idle' && phase !== 'fetching';
+  /** Mobile IG/FB: wait until the thumbnail image is fully decoded. */
   const mobileSocial = isMobileDevice() && isSocialPreview;
-  const mobileThumbLoaded = Boolean(preloadedThumb) || Boolean(info?.thumbnail);
+  const mobileThumbLoaded = Boolean(preloadedThumb);
   /** Mobile: processing card only while downloading — hidden once save prompt is ready. */
   const showMobileProcessing = isMobileDevice() && mobileSaving && !mobileSavePayload;
 
@@ -744,9 +750,9 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
           </AnimatePresence>
 
           <AnimatePresence mode="wait">
-            {info && view && (
+            {((info && view) || phase === 'preview') && (
               <motion.div
-                key={view}
+                key={view ?? 'preview'}
                 initial={{ opacity: 0, y: 8 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -8 }}
@@ -754,20 +760,20 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
                 className="space-y-5"
               >
                 <>
-                  {!previewCardReady ? (
+                  {!previewCardReady || !info ? (
                     <VideoPreviewSkeleton />
                   ) : (
                     <VideoPreview info={info} preloadedThumb={preloadedThumb} />
                   )}
-                  {view === 'downloading' ? (
+                  {info && view === 'downloading' ? (
                     <DownloadProgress
                       progress={progress}
                       qualityLabel={qualityLabel}
                       processingOnly
                     />
-                  ) : view === 'success' ? (
+                  ) : info && view === 'success' ? (
                     <SuccessState />
-                  ) : isMobileDevice() && mobileSavePayload ? (
+                  ) : info && isMobileDevice() && mobileSavePayload ? (
                     <MobileSavePrompt
                       payload={mobileSavePayload}
                       author={info.author}
@@ -780,7 +786,7 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
                       qualityLabel={qualityLabel}
                       mobileSave
                     />
-                  ) : !isMobileDevice() ? (
+                  ) : info && !isMobileDevice() ? (
                     <>
                       <QualitySelector
                         formats={info.formats}
