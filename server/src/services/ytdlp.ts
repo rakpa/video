@@ -534,8 +534,8 @@ function downloadTuning(
   const platform = detectPlatform(url)?.id;
   if (platform === 'instagram' || platform === 'facebook') {
     return fast
-      ? { httpChunkSize: '5M', concurrentFragments: '4' }
-      : { httpChunkSize: '2M', concurrentFragments: '2' };
+      ? { httpChunkSize: '5M', concurrentFragments: '6' }
+      : { httpChunkSize: '4M', concurrentFragments: '4' };
   }
   return { httpChunkSize: '5M', concurrentFragments: '6' };
 }
@@ -609,7 +609,7 @@ export function startDownload(
     '--no-part',
     '--progress',
     '--restrict-filenames',
-    ...(skipMergePost ? [] : ['--postprocessor-args', 'ffmpeg:-movflags +faststart']),
+    '--postprocessor-args', 'ffmpeg:-movflags +faststart',
     '--http-chunk-size', tuning.httpChunkSize,
     '--concurrent-fragments', tuning.concurrentFragments,
     '--retries', fast ? '3' : '10',

@@ -2,6 +2,7 @@ import type { PlatformId } from './platform.js';
 import type { VideoInfo } from './ytdlp.js';
 import { ensureInfoJsonCache } from './ytdlp.js';
 import { fetchYoutubePreview } from './previewYoutube.js';
+import { warmThumbCache } from '../routes/thumb.js';
 export { extractYoutubeId, fetchYoutubePreview } from './previewYoutube.js';
 
 const OG_CACHE_TTL_MS = 10 * 60 * 1000;
@@ -109,31 +110,13 @@ async function scrapeOpenGraphOnce(
   }
 }
 
-/** Race several scrape URLs and return the first hit with an image (or any metadata). */
-async function scrapeOpenGraphFast(
-  urls: string[],
-  cacheKey: string,
-): Promise<{ title?: string; image?: string } | null> {
-  const cached = ogCache.get(cacheKey);
-  if (cached && cached.expires > Date.now()) return cached.data;
-
-  const unique = [...new Set(urls.filter(Boolean))];
-  if (!unique.length) return null;
-
-  const hit = await raceForMetadata(
-    unique.map((u, i) => () => scrapeOpenGraphOnce(u, i === 0 ? 3000 : 5000)),
-  );
-  if (hit) ogCache.set(cacheKey, { data: hit, expires: Date.now() + OG_CACHE_TTL_MS });
-  return hit;
-}
-
 async function fetchInstagramOembed(
   clean: string,
 ): Promise<{ title?: string; image?: string; author?: string } | null> {
   try {
     const res = await fetch(`https://www.instagram.com/oembed/?url=${encodeURIComponent(clean)}`, {
       headers: FETCH_HEADERS,
-      signal: AbortSignal.timeout(2500),
+      signal: AbortSignal.timeout(2000),
     });
     if (!res.ok) return null;
     const data = (await res.json()) as {
@@ -204,6 +187,38 @@ function parseInstagramTitle(raw?: string): { title: string; author: string } {
   return { title: raw.replace(/\s*on Instagram.*$/i, '').trim() || 'Instagram Reel', author: 'Instagram' };
 }
 
+function notePreviewImage(image?: string): void {
+  if (image) warmThumbCache(image);
+}
+
+async function fetchFacebookOembed(
+  url: string,
+): Promise<{ title?: string; image?: string; author?: string } | null> {
+  try {
+    const res = await fetch(
+      `https://www.facebook.com/plugins/video/oembed.json/?url=${encodeURIComponent(url)}`,
+      {
+        headers: FETCH_HEADERS,
+        signal: AbortSignal.timeout(2000),
+      },
+    );
+    if (!res.ok) return null;
+    const data = (await res.json()) as {
+      title?: string;
+      author_name?: string;
+      thumbnail_url?: string;
+    };
+    if (!data.thumbnail_url && !data.title) return null;
+    return {
+      title: data.title,
+      image: data.thumbnail_url,
+      author: data.author_name,
+    };
+  } catch {
+    return null;
+  }
+}
+
 async function fetchInstagramPreview(url: string): Promise<VideoInfo | null> {
   const clean = cleanInstagramUrl(url.trim());
   const id = extractInstagramShortcode(clean);
@@ -213,10 +228,11 @@ async function fetchInstagramPreview(url: string): Promise<VideoInfo | null> {
 
   const og = await raceForMetadata([
     () => fetchInstagramOembed(clean),
-    () => scrapeOpenGraphOnce(embed, 3000),
-    () => scrapeOpenGraphOnce(clean, 4500),
+    () => scrapeOpenGraphOnce(embed, 2000),
+    () => scrapeOpenGraphOnce(clean, 3500),
   ]);
   if (og?.title || og?.image) {
+    notePreviewImage(og.image);
     const { title, author } = og.author
       ? { title: og.title ?? 'Instagram Reel', author: og.author }
       : parseInstagramTitle(og.title);
@@ -240,12 +256,16 @@ function facebookScrapeUrls(url: string): string[] {
   const trimmed = url.trim();
   const urls = [trimmed];
   try {
+    const parsed = new URL(trimmed);
     const mobile = new URL(trimmed);
     mobile.hostname = 'm.facebook.com';
     urls.push(mobile.href);
     urls.push(
       `https://www.facebook.com/plugins/video.php?href=${encodeURIComponent(trimmed)}&show_text=false`,
     );
+    if (parsed.hostname === 'fb.watch') {
+      urls.push(`https://www.facebook.com/watch/?v=${parsed.pathname.replace(/^\//, '')}`);
+    }
   } catch {
     /* keep original */
   }
@@ -254,13 +274,33 @@ function facebookScrapeUrls(url: string): string[] {
 
 async function fetchFacebookPreview(url: string): Promise<VideoInfo | null> {
   const trimmed = url.trim();
+  const cacheKey = `fb:${trimmed}`;
+  const cached = ogCache.get(cacheKey);
+  if (cached && cached.expires > Date.now()) {
+    notePreviewImage(cached.data.image);
+    return {
+      id: '',
+      title: cached.data.title?.replace(/\s*\|\s*Facebook.*$/i, '').trim() || 'Facebook video',
+      author: 'Facebook',
+      durationSeconds: null,
+      thumbnail: cached.data.image ?? null,
+      formats: [],
+    };
+  }
+
   void ensureInfoJsonCache(trimmed).catch(() => undefined);
-  const og = await scrapeOpenGraphFast(facebookScrapeUrls(trimmed), `fb:${trimmed}`);
+  const scrapeUrls = facebookScrapeUrls(trimmed);
+  const og = await raceForMetadata([
+    () => fetchFacebookOembed(trimmed),
+    ...scrapeUrls.map((u, i) => () => scrapeOpenGraphOnce(u, i === 0 ? 2000 : 3000)),
+  ]);
   if (og?.title || og?.image) {
+    notePreviewImage(og.image);
+    ogCache.set(`fb:${trimmed}`, { data: og, expires: Date.now() + OG_CACHE_TTL_MS });
     return {
       id: '',
       title: og.title?.replace(/\s*\|\s*Facebook.*$/i, '').trim() || 'Facebook video',
-      author: 'Facebook',
+      author: og.author || 'Facebook',
       durationSeconds: null,
       thumbnail: og.image ?? null,
       formats: [],

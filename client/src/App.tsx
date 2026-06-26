@@ -139,6 +139,8 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
   const prefetchUrl = useRef('');
   const prefetchKeyRef = useRef('');
   const prefetchPayloadPromise = useRef<Promise<VideoFilePayload | null> | null>(null);
+  const desktopPrefetchReadyKey = useRef('');
+  const desktopPrefetchInflight = useRef('');
   const autoShareKeyRef = useRef('');
   const mobileAutoSaveInflightRef = useRef('');
   const proPanelRef = useRef<HTMLDivElement>(null);
@@ -270,6 +272,8 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
     galleryPayload.current = null;
     prefetchKeyRef.current = '';
     prefetchPayloadPromise.current = null;
+    desktopPrefetchReadyKey.current = '';
+    desktopPrefetchInflight.current = '';
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }, []);
 
@@ -296,6 +300,8 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
     prefetchUrl.current = '';
     prefetchKeyRef.current = '';
     prefetchPayloadPromise.current = null;
+    desktopPrefetchReadyKey.current = '';
+    desktopPrefetchInflight.current = '';
     autoShareKeyRef.current = '';
     mobileAutoSaveInflightRef.current = '';
     cancelMobileGalleryGestureFallback();
@@ -326,12 +332,14 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
       formats: PLACEHOLDER_FORMATS,
     });
     if (instant && !isSocial) setPhase('ready');
-    if (isSocial && instant?.thumbnail) {
+    if (isSocial) {
       setPhase('ready');
-      void preloadThumbnail({ ...instant, platform: platform.id }).then((loaded) => {
-        if (fetchedUrl.current !== normalized || !loaded) return;
-        setPreloadedThumb(loaded);
-      });
+      if (instant?.thumbnail) {
+        void preloadThumbnail({ ...instant, platform: platform.id }).then((loaded) => {
+          if (fetchedUrl.current !== normalized || !loaded) return;
+          setPreloadedThumb(loaded);
+        });
+      }
     }
 
     const previewPromise = fetchVideoPreview(normalized).catch(() => null);
@@ -501,6 +509,7 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
       const mobile = isMobileDevice();
       const isIgFb = platform?.id === 'instagram' || platform?.id === 'facebook';
       const currentUrl = fetchedUrl.current || url;
+      const desktopPrefetchKey = `${currentUrl}:${quality}:desktop`;
 
       /** Mobile: tap Download → prepare file → open gallery save sheet. */
       if (mobile) {
@@ -534,28 +543,46 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
             throw new Error('Still preparing this video. Wait a moment and try again.');
           }
         }
+
+        const attachDesktopJob = (jobId: string) => {
+          lastJobId.current = jobId;
+          unsubscribe.current?.();
+          unsubscribe.current = subscribeProgress(jobId, {
+            onProgress: (p) => setProgress(p),
+            onDone: () => {
+              void triggerFileDownload(jobId);
+              setPhase('success');
+            },
+            onError: (message) => {
+              setError(message);
+              setPhase('error');
+            },
+          });
+        };
+
+        if (
+          isIgFb &&
+          prefetchJobId.current &&
+          prefetchKeyRef.current === desktopPrefetchKey
+        ) {
+          if (desktopPrefetchReadyKey.current === desktopPrefetchKey) {
+            void triggerFileDownload(prefetchJobId.current);
+            setPhase('success');
+            return;
+          }
+          attachDesktopJob(prefetchJobId.current);
+          return;
+        }
+
         const effectiveMode: CodecMode = isIgFb ? 'compatible' : mode;
         const jobId = await startDownloadJob(
           currentUrl,
           quality,
           effectiveMode,
           licenseToken(),
-          { fast: false, reuse: false },
+          { fast: isIgFb, reuse: true },
         );
-        lastJobId.current = jobId;
-        unsubscribe.current?.();
-
-        unsubscribe.current = subscribeProgress(jobId, {
-          onProgress: () => {},
-          onDone: () => {
-            void triggerFileDownload(jobId);
-            setPhase('success');
-          },
-          onError: (message) => {
-            setError(message);
-            setPhase('error');
-          },
-        });
+        attachDesktopJob(jobId);
       } catch (e) {
         setError(e instanceof ApiError ? e.message : e instanceof Error ? e.message : 'Could not start the download.');
         setPhase('error');
@@ -569,11 +596,7 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
   const showProUpgrade = !pro && Boolean(selectedFmt?.premium);
   const isBusy = phase === 'fetching' || phase === 'preview' || phase === 'downloading';
   const isSocialPreview = info?.platform === 'instagram' || info?.platform === 'facebook';
-  const previewCardReady =
-    !isSocialPreview ||
-    Boolean(preloadedThumb) ||
-    Boolean(info?.thumbnail) ||
-    (phase === 'ready' && !isMobileDevice() && infoWarm);
+  const previewCardReady = Boolean(info) && phase !== 'idle' && phase !== 'fetching';
   /** Mobile IG/FB: Download stays hidden until the thumbnail has decoded. */
   const mobileSocial = isMobileDevice() && isSocialPreview;
   const mobileThumbLoaded = Boolean(preloadedThumb) || Boolean(info?.thumbnail);
@@ -607,6 +630,50 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
     runMobileAutoSave,
     mobilePrefetchKey,
   ]);
+
+  /** Desktop IG/FB: start downloading in the background once metadata is warm. */
+  useEffect(() => {
+    if (isMobileDevice() || !infoWarm || phase !== 'ready' || !info) return;
+    if (info.platform !== 'instagram' && info.platform !== 'facebook') return;
+
+    const normalized = fetchedUrl.current;
+    if (!normalized) return;
+
+    const key = `${normalized}:${selected}:desktop`;
+    if (prefetchKeyRef.current === key && prefetchJobId.current) return;
+    if (desktopPrefetchInflight.current === key) return;
+
+    desktopPrefetchReadyKey.current = '';
+    desktopPrefetchInflight.current = key;
+    prefetchKeyRef.current = key;
+    prefetchJobId.current = null;
+
+    void startDownloadJob(normalized, selected, 'compatible', licenseToken(), {
+      fast: true,
+      reuse: true,
+    })
+      .then((jobId) => {
+        if (fetchedUrl.current !== normalized || prefetchKeyRef.current !== key) return;
+        prefetchJobId.current = jobId;
+        lastJobId.current = jobId;
+        unsubscribe.current?.();
+        unsubscribe.current = subscribeProgress(jobId, {
+          onProgress: () => {},
+          onDone: () => {
+            if (prefetchKeyRef.current === key) desktopPrefetchReadyKey.current = key;
+          },
+          onError: () => {
+            if (prefetchKeyRef.current === key) desktopPrefetchReadyKey.current = '';
+          },
+        });
+      })
+      .catch(() => {
+        if (prefetchKeyRef.current === key) desktopPrefetchReadyKey.current = '';
+      })
+      .finally(() => {
+        if (desktopPrefetchInflight.current === key) desktopPrefetchInflight.current = '';
+      });
+  }, [infoWarm, phase, info, selected]);
 
   const view: 'ready' | 'downloading' | 'success' | null =
     phase === 'downloading' && !isMobileDevice()
