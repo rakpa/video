@@ -47,10 +47,10 @@ export function PlanComparison() {
       className="mx-auto mt-6 max-w-2xl"
     >
       <h1 className="text-center text-3xl font-bold tracking-tight text-slate-900 sm:text-4xl">
-        Simple pricing, <span className="gradient-text">serious quality</span>
+        <span className="gradient-text">$9/year</span> — serious quality, silly price
       </h1>
       <p className="mx-auto mt-3 max-w-md text-center text-slate-600">
-        Start free at 1080p. Upgrade to Pro yearly when you need 2K, 4K, or MP3 — cancel anytime.
+        Start free at 1080p. One yearly payment unlocks 2K, 4K &amp; MP3 — less than $1 a month.
       </p>
 
       <div className="glass mt-10 overflow-hidden rounded-3xl shadow-card">
