@@ -102,14 +102,14 @@ export const config = {
   // --- Monetisation ---
   // Resolutions at or below this height are free; above requires a Pro license.
   // 1080 → 720p & 1080p free; 2K (1440p) & 4K (2160p) are Pro.
-  freeMaxHeight: Number(process.env.FREE_MAX_HEIGHT ?? 1080),
+  // Set to 1080 when Pro gating for 2K/4K is enabled. 2160 = all qualities open for testing.
+  freeMaxHeight: Number(process.env.FREE_MAX_HEIGHT ?? 2160),
 
   // Stripe. Leave keys empty to run without billing (pricing page shows a notice).
   stripeSecret: process.env.STRIPE_SECRET_KEY ?? '',
   stripePublishableKey: process.env.STRIPE_PUBLISHABLE_KEY ?? '',
   stripeWebhookSecret: process.env.STRIPE_WEBHOOK_SECRET ?? '',
-  // $9.00/year — strong value positioning for Pro.
-  priceYearlyCents: Number(process.env.PRICE_YEARLY_CENTS ?? process.env.PRICE_LIFETIME_CENTS ?? 900),
+  priceYearlyCents: Number(process.env.PRICE_YEARLY_CENTS ?? process.env.PRICE_LIFETIME_CENTS ?? 1999),
 
   // Secret used to HMAC-sign stateless Pro license tokens. CHANGE IN PRODUCTION.
   licenseSecret: process.env.LICENSE_SECRET ?? 'dev-insecure-license-secret-change-me',

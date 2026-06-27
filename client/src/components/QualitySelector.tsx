@@ -23,6 +23,8 @@ interface Props {
   onDownload: () => void;
   /** Scroll/focus the inline Pro upgrade panel. */
   onUpgrade?: () => void;
+  /** Native max height from yt-dlp — drives honest availability for 2K/4K. */
+  sourceMaxHeight?: number | null;
 }
 
 /**
@@ -30,7 +32,7 @@ interface Props {
  * above the free tier show a PRO lock until the user upgrades. Controlled by the
  * parent so the URL-bar Download button stays in sync.
  */
-export function QualitySelector({ formats, selected, onSelect, mode, onModeChange, pro, refining = false, downloadReady = true, saving = false, showDownloadButton = true, onDownload, onUpgrade }: Props) {
+export function QualitySelector({ formats, selected, onSelect, mode, onModeChange, pro, refining = false, downloadReady = true, saving = false, showDownloadButton = true, onDownload, onUpgrade, sourceMaxHeight }: Props) {
   // In compatible mode, only resolutions up to 1080p are offered (H.264 ceiling).
   const visibleFormats = useMemo(
     () =>
@@ -64,7 +66,15 @@ export function QualitySelector({ formats, selected, onSelect, mode, onModeChang
       className="space-y-5"
     >
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <h3 className="text-sm font-medium uppercase tracking-wider text-slate-400">Choose quality</h3>
+        <div>
+          <h3 className="text-sm font-medium uppercase tracking-wider text-slate-400">Choose quality</h3>
+          {typeof sourceMaxHeight === 'number' && sourceMaxHeight > 0 && (
+            <p className="mt-1 text-xs text-slate-500">
+              Source video is up to <span className="font-semibold text-slate-700">{sourceMaxHeight}p</span>
+              {sourceMaxHeight < 2160 ? ' — 2K/4K only appear when the source supports them' : ''}
+            </p>
+          )}
+        </div>
         <CodecToggle mode={mode} onChange={handleModeChange} />
       </div>
 

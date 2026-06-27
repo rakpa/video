@@ -1,7 +1,23 @@
 import { motion } from 'framer-motion';
 
+function verifiedLabel(height: number): string {
+  if (height >= 2160) return '4K (2160p)';
+  if (height >= 1440) return '2K (1440p)';
+  return `${height}p`;
+}
+
+interface Props {
+  /** Measured height of the saved file (ffprobe), when available. */
+  outputHeight?: number | null;
+  /** Label the user picked before download (e.g. "4K"). */
+  requestedLabel?: string;
+}
+
 /** Desktop: shown after browser download starts — replaces quality/download controls. */
-export function SuccessState() {
+export function SuccessState({ outputHeight, requestedLabel }: Props) {
+  const verified =
+    typeof outputHeight === 'number' && outputHeight > 0 ? verifiedLabel(outputHeight) : null;
+
   return (
     <motion.div
       initial={{ opacity: 0, y: 14 }}
@@ -36,6 +52,15 @@ export function SuccessState() {
       <h3 className="mt-5 text-2xl font-bold text-slate-900">Download Successful! 🎉</h3>
       <p className="mx-auto mt-2 max-w-md text-sm leading-relaxed text-slate-500">
         Your file has been downloaded successfully.
+        {verified && (
+          <>
+            <br />
+            <span className="font-medium text-emerald-700">
+              Verified output: {verified}
+              {requestedLabel ? ` (you chose ${requestedLabel})` : ''}
+            </span>
+          </>
+        )}
         <br />
         You can now access it from your Downloads folder.
       </p>

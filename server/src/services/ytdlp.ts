@@ -15,6 +15,8 @@ export interface VideoInfo {
   author: string;
   durationSeconds: number | null;
   thumbnail: string | null;
+  /** Native max video height from the source (null if unknown). */
+  sourceMaxHeight: number | null;
   /** Available qualities for this specific video, with size estimates. */
   formats: AvailableFormat[];
 }
@@ -357,7 +359,7 @@ function parseInfoDump(stdout: string): VideoInfo {
     tag: q.tag,
     height: q.height,
     estimatedBytes: estimateSize(raw, q.height, duration),
-    available: maxHeight === 0 ? true : maxHeight >= Math.min(q.height, 360),
+    available: maxHeight === 0 ? true : maxHeight >= q.height,
     premium: q.height > config.freeMaxHeight,
   }));
 
@@ -367,6 +369,7 @@ function parseInfoDump(stdout: string): VideoInfo {
     author: raw.uploader ?? raw.channel ?? 'Unknown',
     durationSeconds: duration,
     thumbnail: pickThumbnail(raw),
+    sourceMaxHeight: maxHeight > 0 ? maxHeight : null,
     formats,
   };
 }
@@ -464,6 +467,7 @@ export async function fetchQuickPreview(url: string): Promise<VideoInfo | null> 
       author: info.author,
       durationSeconds: info.durationSeconds,
       thumbnail: info.thumbnail,
+      sourceMaxHeight: info.sourceMaxHeight,
       formats: [],
     };
   } catch {
@@ -596,11 +600,7 @@ export function startDownload(
   const fast = options?.fast ?? false;
   const tuning = downloadTuning(url, fast);
   const igFbMaxHeight =
-    platformId === 'instagram' || platformId === 'facebook'
-      ? fast
-        ? 480
-        : quality.height
-      : undefined;
+    platformId === 'instagram' || platformId === 'facebook' ? quality.height : undefined;
 
   let formatArg = buildSelector(quality, mode, platformId, { maxHeight: igFbMaxHeight });
   let singleFileH264 = false;

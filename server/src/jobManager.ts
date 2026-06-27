@@ -6,7 +6,7 @@ import { config, currentProxy } from './config.js';
 import { startDownload, ensureInfoJsonCache, YtDlpError, type ProgressUpdate } from './services/ytdlp.js';
 import { getQuality, type CodecMode, type QualityDef } from './services/formats.js';
 import { detectPlatform, type PlatformId } from './services/platform.js';
-import { needsGalleryNormalize, normalizeForGallery, canServeDirectToGallery } from './services/normalizeVideo.js';
+import { needsGalleryNormalize, normalizeForGallery, canServeDirectToGallery, probeVideoHeight } from './services/normalizeVideo.js';
 import { getFreshInfoJson } from './services/infoJsonCache.js';
 import { logger } from './utils/logger.js';
 
@@ -33,8 +33,10 @@ export interface Job {
   fast?: boolean;
   /** Dedupe key for prefetch / reuse. */
   cacheKey?: string;
+  /** Verified output height (ffprobe) after download completes. */
+  outputHeight?: number | null;
   /** SSE listeners subscribed to this job's progress. */
-  listeners: Set<(p: ProgressUpdate | { done: true } | { error: string }) => void>;
+  listeners: Set<(p: ProgressUpdate | { done: true; outputHeight?: number | null } | { error: string }) => void>;
 }
 
 const jobs = new Map<string, Job>();
@@ -69,16 +71,12 @@ function countRunningJobs(): number {
   return n;
 }
 
-/** Cap IG/FB only on mobile fast path — desktop/quality downloads use selected resolution. */
-function effectiveQuality(url: string, quality: QualityDef, fast?: boolean): QualityDef {
-  const platform = detectPlatform(url)?.id;
-  if (fast && (platform === 'instagram' || platform === 'facebook') && quality.height > 720) {
-    return getQuality('720') ?? quality;
-  }
+/** Respect the user's quality choice — fast mode only tunes chunk parallelism. */
+function effectiveQuality(_url: string, quality: QualityDef, _fast?: boolean): QualityDef {
   return quality;
 }
 
-function emit(job: Job, payload: ProgressUpdate | { done: true } | { error: string }) {
+function emit(job: Job, payload: ProgressUpdate | { done: true; outputHeight?: number | null } | { error: string }) {
   for (const fn of job.listeners) fn(payload);
 }
 
@@ -147,7 +145,7 @@ export async function createJob(
   }
 
   if (q.id !== quality.id) {
-    logger.info(`Low-memory cap: ${quality.label} → ${q.label} for ${detectPlatform(url)?.id ?? 'video'}`);
+    logger.info(`Quality adjusted: ${quality.label} → ${q.label}`);
   }
 
   await fsp.mkdir(config.tmpRoot, { recursive: true });
@@ -268,7 +266,16 @@ async function runWithRetry(job: Job, url: string, quality: QualityDef, mode: Co
       }
 
       job.progress = { ...job.progress, percent: 100, stage: 'done' };
-      emit(job, { done: true });
+      const finalPath = job.galleryPath ?? job.filePath;
+      if (finalPath) {
+        job.outputHeight = await probeVideoHeight(finalPath);
+        if (job.outputHeight) {
+          logger.info(
+            `Download ${job.id}: output ${job.outputHeight}p (requested ${quality.label}, source allows up to selected cap)`,
+          );
+        }
+      }
+      emit(job, { done: true, outputHeight: job.outputHeight ?? null });
       return;
     } catch (err) {
       const blocked = err instanceof YtDlpError && err.code === 'BLOCKED';

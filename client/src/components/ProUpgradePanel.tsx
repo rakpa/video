@@ -5,7 +5,7 @@ import { navigate } from '../hooks/useRoute';
 import { PaymentBadges } from './PaymentBadges';
 import { Confetti } from './Confetti';
 
-const moneyWhole = (cents: number) => `$${Math.round(cents / 100)}`;
+const formatYearlyPrice = (cents: number) => `$${(cents / 100).toFixed(2)}`;
 
 interface Props {
   selectedQuality?: string;
@@ -42,7 +42,7 @@ export function ProUpgradePanel({ selectedQuality, inline = false }: Props) {
     }
   };
 
-  const yearlyCents = cfg?.plans.yearly.cents ?? 900;
+  const yearlyCents = cfg?.plans.yearly.cents ?? 1999;
   const perMonth = (yearlyCents / 12 / 100).toFixed(2);
 
   return (
@@ -103,7 +103,7 @@ export function ProUpgradePanel({ selectedQuality, inline = false }: Props) {
                 className="mt-2 flex items-end justify-center gap-1"
               >
                 <span className="text-[clamp(3.5rem,14vw,5rem)] font-black leading-none tracking-tighter">
-                  {moneyWhole(yearlyCents)}
+                  {formatYearlyPrice(yearlyCents)}
                 </span>
                 <span className="mb-2 text-lg font-bold text-violet-200 sm:text-xl">/year</span>
               </motion.div>
@@ -165,7 +165,7 @@ export function ProUpgradePanel({ selectedQuality, inline = false }: Props) {
                 <svg viewBox="0 0 24 24" className="h-5 w-5" fill="currentColor" aria-hidden="true">
                   <path d="m12 2 2.4 7.4H22l-6 4.4 2.3 7.2-6.3-4.6L5.7 21 8 13.8 2 9.4h7.6L12 2Z" />
                 </svg>
-                Yes — {moneyWhole(yearlyCents)} for the full year
+                Yes — {formatYearlyPrice(yearlyCents)} for the full year
               </>
             )}
           </motion.button>

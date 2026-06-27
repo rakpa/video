@@ -205,7 +205,7 @@ export function restoreProAccess(email: string): Promise<RedeemResult> {
 
 export interface ProgressHandlers {
   onProgress: (p: ProgressUpdate) => void;
-  onDone: () => void;
+  onDone: (outputHeight?: number | null) => void;
   onError: (message: string) => void;
 }
 
@@ -273,8 +273,19 @@ export function subscribeProgress(jobId: string, handlers: ProgressHandlers): ()
     }
   });
 
-  es.addEventListener('done', () => {
-    settle(() => handlers.onDone());
+  es.addEventListener('done', (e) => {
+    let outputHeight: number | null | undefined;
+    try {
+      const raw = (e as MessageEvent).data;
+      if (raw) {
+        const parsed = JSON.parse(raw) as { outputHeight?: number | null };
+        if (typeof parsed.outputHeight === 'number') outputHeight = parsed.outputHeight;
+        else if (parsed.outputHeight === null) outputHeight = null;
+      }
+    } catch {
+      /* ignore malformed frame */
+    }
+    settle(() => handlers.onDone(outputHeight));
   });
 
   es.addEventListener('error', (e) => {

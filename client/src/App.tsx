@@ -111,6 +111,7 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
   const [error, setError] = useState<string | null>(null);
   const [progress, setProgress] = useState<ProgressUpdate>(INITIAL_PROGRESS);
   const [activeQuality, setActiveQuality] = useState<QualityId | null>(null);
+  const [outputHeight, setOutputHeight] = useState<number | null>(null);
 
   const [selected, setSelected] = useState<QualityId>('1080');
   const [codecMode, setCodecMode] = useState<CodecMode>('best');
@@ -145,13 +146,8 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
   const proPanelRef = useRef<HTMLDivElement>(null);
 
   const mobilePrefetchKey = useCallback(
-    (normalized: string, quality: QualityId, isIgFb: boolean) => {
-      let effectiveQuality = quality;
-      if (isIgFb && (quality === '1080' || quality === '1440' || quality === '2160')) {
-        effectiveQuality = '720';
-      }
-      return `${normalized}:${effectiveQuality}`;
-    },
+    (normalized: string, quality: QualityId, isIgFb: boolean) =>
+      `${normalized}:${quality}${isIgFb ? ':igfb' : ''}`,
     [],
   );
 
@@ -174,11 +170,6 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
         }
       }
 
-      let effectiveQuality = quality;
-      if (isIgFb && (quality === '1080' || quality === '1440' || quality === '2160')) {
-        effectiveQuality = '720';
-      }
-
       if (prefetchKeyRef.current !== key) {
         galleryPayload.current = null;
         prefetchPayloadPromise.current = null;
@@ -187,7 +178,7 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
       prefetchUrl.current = normalized;
       prefetchJobId.current = null;
 
-      const run = startDownloadJob(normalized, effectiveQuality, 'compatible', licenseToken(), {
+      const run = startDownloadJob(normalized, quality, 'compatible', licenseToken(), {
         fast: true,
         reuse: false,
       })
@@ -505,6 +496,7 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
 
       setProgress(INITIAL_PROGRESS);
       galleryPayload.current = null;
+      setOutputHeight(null);
       setPhase('downloading');
       setProgress({ ...INITIAL_PROGRESS, percent: 1 });
       try {
@@ -520,7 +512,8 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
           unsubscribe.current?.();
           unsubscribe.current = subscribeProgress(jobId, {
             onProgress: (p) => setProgress(p),
-            onDone: () => {
+            onDone: (height) => {
+              if (typeof height === 'number') setOutputHeight(height);
               void triggerFileDownload(jobId);
               setPhase('success');
             },
@@ -654,7 +647,7 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
                       processingOnly
                     />
                   ) : info && view === 'success' ? (
-                    <SuccessState />
+                    <SuccessState outputHeight={outputHeight} requestedLabel={qualityLabel || undefined} />
                   ) : info && isMobileDevice() && mobileSavePayload ? (
                     <MobileSavePrompt
                       payload={mobileSavePayload}
@@ -672,6 +665,7 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
                         onModeChange={setCodecMode}
                         pro={pro}
                         refining={refining}
+                        sourceMaxHeight={info!.sourceMaxHeight}
                         downloadReady={
                           (info!.platform !== 'instagram' && info!.platform !== 'facebook') || infoWarm
                         }

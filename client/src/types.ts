@@ -29,6 +29,8 @@ export interface VideoInfo {
   durationSeconds: number | null;
   thumbnail: string | null;
   formats: AvailableFormat[];
+  /** Native max height from yt-dlp (null until /api/info loads). */
+  sourceMaxHeight?: number | null;
 }
 
 export interface ProgressUpdate {

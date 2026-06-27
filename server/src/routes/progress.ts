@@ -28,12 +28,18 @@ progressRouter.get('/progress/:jobId', (req, res) => {
 
   // Immediately replay the latest known state so the client isn't blank.
   send('progress', job.progress);
-  if (job.status === 'ready' && isGalleryReady(job)) send('done', { ready: true });
+  if (job.status === 'ready' && isGalleryReady(job)) {
+    send('done', { ready: true, outputHeight: job.outputHeight ?? null });
+  }
   if (job.status === 'error') send('error', { message: job.errorMessage });
 
   const listener = (payload: unknown) => {
     if (payload && typeof payload === 'object' && 'done' in payload) {
-      send('done', { ready: true });
+      const outputHeight =
+        'outputHeight' in payload && typeof (payload as { outputHeight?: unknown }).outputHeight === 'number'
+          ? (payload as { outputHeight: number }).outputHeight
+          : job.outputHeight ?? null;
+      send('done', { ready: true, outputHeight });
     } else if (payload && typeof payload === 'object' && 'error' in payload) {
       send('error', { message: (payload as { error: string }).error });
     } else {

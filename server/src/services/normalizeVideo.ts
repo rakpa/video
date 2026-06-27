@@ -92,6 +92,32 @@ async function probeVideoCodec(filePath: string): Promise<'h264' | 'hevc' | 'oth
   return 'other';
 }
 
+/** Reads the encoded height of the finished MP4 (for quality verification). */
+export async function probeVideoHeight(filePath: string): Promise<number | null> {
+  const ffprobe = config.ffmpegPath.replace(/ffmpeg$/i, 'ffprobe');
+  try {
+    const { stdout } = await exec(
+      ffprobe,
+      [
+        '-v',
+        'error',
+        '-select_streams',
+        'v:0',
+        '-show_entries',
+        'stream=height',
+        '-of',
+        'csv=p=0',
+        filePath,
+      ],
+      { windowsHide: true, timeout: 15_000 },
+    );
+    const h = Number.parseInt(stdout.trim(), 10);
+    return Number.isFinite(h) && h > 0 ? h : null;
+  } catch {
+    return null;
+  }
+}
+
 /** Confirm the output is H.264 (avc1) — iOS only offers "Save Video" for this codec. */
 async function verifyH264Mp4(filePath: string): Promise<boolean> {
   const head = await readHeadBytes(filePath).catch(() => null);

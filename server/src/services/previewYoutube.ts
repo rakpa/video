@@ -48,6 +48,7 @@ export async function fetchYoutubePreview(url: string): Promise<VideoInfo | null
         author: 'Unknown',
         durationSeconds: null,
         thumbnail,
+        sourceMaxHeight: null,
         formats: [],
       };
     }
@@ -59,6 +60,7 @@ export async function fetchYoutubePreview(url: string): Promise<VideoInfo | null
       author: data.author_name ?? 'Unknown',
       durationSeconds: null,
       thumbnail: data.thumbnail_url ?? thumbnail,
+      sourceMaxHeight: null,
       formats: [],
     };
   } catch {
@@ -68,6 +70,7 @@ export async function fetchYoutubePreview(url: string): Promise<VideoInfo | null
       author: 'Unknown',
       durationSeconds: null,
       thumbnail,
+      sourceMaxHeight: null,
       formats: [],
     };
   }

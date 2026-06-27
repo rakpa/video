@@ -229,6 +229,7 @@ function buildInstagramPreview(
     author: og.author ?? parsed.author,
     durationSeconds,
     thumbnail: og.image ?? null,
+    sourceMaxHeight: null,
     formats: [],
   };
 }
@@ -312,7 +313,8 @@ async function fetchInstagramPreview(url: string): Promise<VideoInfo | null> {
       author: warm.author,
       durationSeconds: warm.durationSeconds,
       thumbnail: warm.thumbnail,
-      formats: [],
+      sourceMaxHeight: null,
+    formats: [],
     };
   }
 
@@ -340,7 +342,8 @@ async function fetchInstagramPreview(url: string): Promise<VideoInfo | null> {
         author: info.author,
         durationSeconds: info.durationSeconds,
         thumbnail: info.thumbnail,
-        formats: [],
+        sourceMaxHeight: null,
+    formats: [],
       };
     },
   ]);
@@ -380,7 +383,8 @@ async function fetchFacebookPreview(url: string): Promise<VideoInfo | null> {
       author: 'Facebook',
       durationSeconds: null,
       thumbnail: cached.data.image ?? null,
-      formats: [],
+      sourceMaxHeight: null,
+    formats: [],
     };
   }
 
@@ -393,7 +397,8 @@ async function fetchFacebookPreview(url: string): Promise<VideoInfo | null> {
       author: warm.author,
       durationSeconds: warm.durationSeconds,
       thumbnail: warm.thumbnail,
-      formats: [],
+      sourceMaxHeight: null,
+    formats: [],
     };
   }
 
@@ -415,7 +420,8 @@ async function fetchFacebookPreview(url: string): Promise<VideoInfo | null> {
         author: og.author || 'Facebook',
         durationSeconds: null,
         thumbnail: og.image ?? null,
-        formats: [],
+        sourceMaxHeight: null,
+    formats: [],
       };
     },
     async () => {
@@ -428,7 +434,8 @@ async function fetchFacebookPreview(url: string): Promise<VideoInfo | null> {
         author: info.author,
         durationSeconds: info.durationSeconds,
         thumbnail: info.thumbnail,
-        formats: [],
+        sourceMaxHeight: null,
+    formats: [],
       };
     },
   ]);
