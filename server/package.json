@@ -1,8 +1,8 @@
 {
-  "name": "clipvault-server",
+  "name": "vidcliply-server",
   "version": "1.0.0",
   "private": true,
-  "description": "Backend for ClipVault — video downloader (yt-dlp + ffmpeg)",
+  "description": "Backend for VidCliply — video downloader (yt-dlp + ffmpeg)",
   "type": "module",
   "scripts": {
     "dev": "tsx watch src/index.ts",

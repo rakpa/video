@@ -31,7 +31,7 @@ const PRICING_FAQ = [
   },
   {
     q: 'Is my payment secure?',
-    a: 'Yes. All payments are handled by Stripe over 256-bit SSL encryption. ClipVault never touches your full card number.',
+    a: `Yes. All payments are handled by Stripe over 256-bit SSL encryption. ${COMPANY.brand} never touches your full card number.`,
   },
 ];
 

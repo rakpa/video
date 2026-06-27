@@ -1,4 +1,4 @@
-# ClipVault — full-stack image (Node API + yt-dlp + ffmpeg + built React UI)
+# VidCliply — full-stack image (Node API + yt-dlp + ffmpeg + built React UI)
 FROM node:20-bookworm-slim
 
 # yt-dlp is installed via pip (python module) rather than the release binary:

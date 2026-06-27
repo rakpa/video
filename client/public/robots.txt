@@ -1,7 +1,5 @@
-# ClipVault — robots.txt
-# Allow all crawlers full access.
+# VidCliply — robots.txt
 User-agent: *
 Allow: /
 
-# Replace the domain below with your production domain before launch.
-Sitemap: https://clipvault.app/sitemap.xml
+Sitemap: https://vidcliply.com/sitemap.xml

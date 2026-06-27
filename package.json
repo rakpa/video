@@ -1,8 +1,8 @@
 {
-  "name": "clipvault",
+  "name": "vidcliply",
   "version": "1.0.0",
   "private": true,
-  "description": "ClipVault — premium video downloader (client + server)",
+  "description": "VidCliply — premium video downloader (client + server)",
   "engines": {
     "node": "22.x"
   },

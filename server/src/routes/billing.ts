@@ -49,7 +49,7 @@ billingRouter.post('/billing/checkout', async (req, res) => {
             unit_amount: amount,
             ...(isSub ? { recurring: { interval: 'month' as const } } : {}),
             product_data: {
-              name: isSub ? 'ClipVault Pro — Monthly' : 'ClipVault Pro — Lifetime',
+              name: isSub ? 'VidCliply Pro — Monthly' : 'VidCliply Pro — Lifetime',
               description: 'Unlocks HD, 2K and 4K downloads with sound.',
             },
           },

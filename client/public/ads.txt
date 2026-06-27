@@ -1,4 +1,1 @@
-# ClipVault ads.txt
-# Replace pub-XXXXXXXXXXXXXXXX with your real Google AdSense publisher ID
-# (found in your AdSense account) before going live.
-google.com, pub-XXXXXXXXXXXXXXXX, DIRECT, f08c47fec0942fa0
+# VidCliply ads.txt

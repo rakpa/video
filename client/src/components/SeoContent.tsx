@@ -1,26 +1,29 @@
 import { navigate } from '../hooks/useRoute';
+import { COMPANY } from '../config/company';
 
 /**
  * On-theme, long-form marketing/SEO section for the home page. Original prose
- * describing what ClipVault does, the platforms and qualities it supports, a
+ * describing what VidCliply does, the platforms and qualities it supports, a
  * quick 3-step how-to, reasons to choose it, and a compact FAQ. Rendered in the
  * idle marketing block beneath the existing FAQ accordion.
  */
 export function SeoContent() {
+  const brand = COMPANY.brand;
+
   return (
     <section className="mx-auto mt-24 max-w-3xl text-[16px] leading-relaxed text-slate-600">
       <h2 className="text-center text-2xl font-bold tracking-tight text-slate-900 sm:text-3xl">
         Download any video, the easy way
       </h2>
       <p className="mx-auto mt-3 max-w-xl text-center text-slate-600">
-        ClipVault is a free online video downloader for YouTube, Facebook, and Instagram. Paste a link and get a
+        {brand} is a free online video downloader for YouTube, Facebook, and Instagram. Paste a link and get a
         clean, ready-to-play MP4 — always with sound, never with a watermark.
       </p>
 
       <div className="mt-10 space-y-6">
         <p>
           Most "save video" tools fall short in the same ways: they hide the real download behind fake buttons, bundle
-          unwanted software, or hand you a silent file because they grabbed the video without its audio. ClipVault was
+          unwanted software, or hand you a silent file because they grabbed the video without its audio. {brand} was
           built to avoid all of that. We detect the platform automatically, fetch the best available video and audio,
           and merge them server-side so your file plays with sound the very first time — on any phone, laptop, or TV.
         </p>
@@ -59,13 +62,13 @@ export function SeoContent() {
           <h3 className="text-lg font-bold text-slate-900">How to download a video in 3 steps</h3>
           <ol className="ml-5 mt-3 list-decimal space-y-2 marker:font-semibold marker:text-indigo-500">
             <li>Copy the video's link from YouTube, Facebook, or Instagram using the share menu.</li>
-            <li>Paste it into the box at the top of this page — ClipVault recognises the platform for you.</li>
+            <li>Paste it into the box at the top of this page — {brand} recognises the platform for you.</li>
             <li>Choose a quality and press Download. Your MP4, with sound, saves straight to your device.</li>
           </ol>
         </div>
 
         <div>
-          <h3 className="text-lg font-bold text-slate-900">Why choose ClipVault</h3>
+          <h3 className="text-lg font-bold text-slate-900">Why choose {brand}</h3>
           <ul className="ml-5 mt-3 list-disc space-y-2 marker:text-indigo-500">
             <li>Free to use, with no sign-up required for standard downloads.</li>
             <li>Audio always merged — no silent files.</li>

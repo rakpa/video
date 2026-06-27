@@ -2,6 +2,7 @@ import { navigate } from '../hooks/useRoute';
 import { LEGAL_LINKS } from '../pages/LegalPages';
 import { CONTENT_ROUTES } from '../pages/ContentPages';
 import { COMPANY } from '../config/company';
+import { BrandLogo } from './BrandLogo';
 
 const GUIDE_LINKS = [
   { path: '/how-to-download-videos', label: 'How to download' },
@@ -39,14 +40,7 @@ export function Footer() {
         <div className="grid gap-10 sm:grid-cols-2 lg:grid-cols-[1.5fr_1fr_1.15fr_1fr_1fr]">
           {/* Brand */}
           <div>
-            <button onClick={() => navigate('/')} className="flex items-center gap-2.5" aria-label="ClipVault — home">
-              <div className="grid h-9 w-9 place-items-center rounded-xl bg-accent-gradient shadow-glow-soft">
-                <svg viewBox="0 0 24 24" className="h-5 w-5 text-white" fill="currentColor" aria-hidden="true">
-                  <path d="M8 5v14l11-7L8 5Z" />
-                </svg>
-              </div>
-              <span className="text-lg font-bold tracking-tight text-slate-900">ClipVault</span>
-            </button>
+            <BrandLogo />
             <p className="mt-4 max-w-xs text-sm leading-relaxed text-slate-500">
               The fastest, cleanest way to download videos from YouTube, Facebook, and Instagram —
               in HD, 2K, and 4K, always with sound.
@@ -113,14 +107,14 @@ export function Footer() {
         <div className="mt-10 rounded-2xl border border-slate-200 bg-slate-50 p-5 text-xs leading-relaxed text-slate-500">
           <p className="mb-1.5 font-medium text-slate-700">⚖️ Please download responsibly</p>
           <p>
-            Only download content you own or have the rights to. By using ClipVault you agree to respect each
+            Only download content you own or have the rights to. By using {COMPANY.brand} you agree to respect each
             platform's Terms of Service and all applicable copyright laws. This tool is provided for personal,
-            lawful use only. ClipVault is not affiliated with YouTube, Meta, Facebook, or Instagram.
+            lawful use only. {COMPANY.brand} is not affiliated with YouTube, Meta, Facebook, or Instagram.
           </p>
         </div>
 
         <p className="mt-6 text-center text-xs text-slate-400 sm:text-left">
-          © {new Date().getFullYear()} ClipVault · Built with yt-dlp &amp; ffmpeg
+          © {new Date().getFullYear()} {COMPANY.brand} · Built with yt-dlp &amp; ffmpeg
         </p>
       </div>
     </footer>

@@ -49,15 +49,16 @@ import { MobileSavePrompt } from './components/MobileSavePrompt';
 import { SuccessState } from './components/SuccessState';
 import { ErrorBanner } from './components/ErrorBanner';
 import { Footer } from './components/Footer';
+import { COMPANY } from './config/company';
 
 const HOME_FAQ = [
   {
-    q: 'Is ClipVault free to use?',
+    q: `Is ${COMPANY.brand} free to use?`,
     a: 'Yes. You can download videos up to 1080p with sound, for free, with no account. Pro unlocks 2K, 4K, MP3 audio, and unlimited downloads.',
   },
   {
     q: 'Which sites are supported?',
-    a: 'YouTube, Facebook, and Instagram links work today. Just paste a standard video URL and ClipVault detects the platform automatically.',
+    a: `YouTube, Facebook, and Instagram links work today. Just paste a standard video URL and ${COMPANY.brand} detects the platform automatically.`,
   },
   {
     q: 'Do downloads include audio?',
@@ -69,7 +70,7 @@ const HOME_FAQ = [
   },
   {
     q: 'Is downloading videos legal?',
-    a: 'You are responsible for only downloading content you own or have the rights to. ClipVault is a tool for personal, lawful use — please respect each platform’s terms and copyright law.',
+    a: `You are responsible for only downloading content you own or have the rights to. ${COMPANY.brand} is a tool for personal, lawful use — please respect each platform’s terms and copyright law.`,
   },
 ];
 
@@ -101,7 +102,7 @@ export default function App() {
 
 function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: () => void }) {
   useDocumentMeta({
-    title: 'ClipVault — Free Video Downloader for YouTube, Facebook & Instagram',
+    title: COMPANY.pageTitle,
     description:
       'Download YouTube, Facebook and Instagram videos in HD, 2K and 4K — always with sound, no watermark, no sign-up. Free online video downloader.',
   });
@@ -730,7 +731,7 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
               </p>
 
               <p className="text-center text-xs text-slate-400">
-                By using ClipVault you accept our{' '}
+                By using {COMPANY.brand} you accept our{' '}
                 <button onClick={() => navigate('/terms')} className="font-medium text-indigo-600 transition hover:text-indigo-700 hover:underline">
                   Terms of Service
                 </button>{' '}

@@ -1,4 +1,4 @@
-# 🎬 ClipVault — Premium Video Downloader
+# 🎬 VidCliply — Premium Video Downloader
 
 A polished, production-ready web app to download videos from **YouTube, Facebook, and Instagram** by pasting a URL. Choose **720p · 1080p · 2K · 4K** — always merged to a single **MP4 with sound**.
 

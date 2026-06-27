@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { navigate } from '../hooks/useRoute';
 import { ThemeToggle } from './ThemeToggle';
+import { BrandLogo } from './BrandLogo';
 import { isPro } from '../lib/license';
 
 interface Props {
@@ -27,20 +28,6 @@ const MOBILE_EXTRA = [
   { label: 'Contact', path: '/contact' },
 ];
 
-/** Brand mark — always links home. */
-function Logo() {
-  return (
-    <button onClick={() => navigate('/')} className="flex items-center gap-2.5" aria-label="ClipVault — home">
-      <div className="grid h-9 w-9 place-items-center rounded-xl bg-accent-gradient shadow-glow-soft">
-        <svg viewBox="0 0 24 24" className="h-5 w-5 text-white" fill="currentColor" aria-hidden="true">
-          <path d="M8 5v14l11-7L8 5Z" />
-        </svg>
-      </div>
-      <span className="text-lg font-bold tracking-tight text-slate-900">ClipVault</span>
-    </button>
-  );
-}
-
 /** Shared top bar used by every page: brand, nav (desktop inline / mobile drawer), theme. */
 export function SiteHeader({ theme, onToggleTheme, maxWidth = 'max-w-5xl', showNav = true }: Props) {
   const pro = isPro();
@@ -53,7 +40,7 @@ export function SiteHeader({ theme, onToggleTheme, maxWidth = 'max-w-5xl', showN
   return (
     <header className={`relative z-30 mx-auto ${maxWidth} px-5`}>
       <div className="flex items-center justify-between py-5 sm:py-6">
-        <Logo />
+        <BrandLogo />
 
         {/* Desktop nav */}
         {showNav && (

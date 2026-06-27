@@ -172,7 +172,7 @@ async function readVideoPayloadFromResponse(res: Response): Promise<VideoFilePay
   }
 
   parseFilename(res.headers.get('Content-Disposition'));
-  const filename = isMobileDevice() ? iosGalleryFilename() : 'ClipVault-video.mp4';
+  const filename = isMobileDevice() ? iosGalleryFilename() : 'VidCliply-video.mp4';
   return { blob, filename };
 }
 

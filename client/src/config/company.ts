@@ -1,13 +1,16 @@
 /**
- * Single place to edit your legal/business identity. Replace the placeholders
- * with your real registered details before going live. Keeping them here means
- * every legal page updates at once.
+ * Single place to edit your legal/business identity. Keeping brand + domain here
+ * means every page, logo, and legal doc updates at once.
  */
 export const COMPANY = {
   /** Public product/brand name. */
-  brand: 'ClipVault',
+  brand: 'VidCliply',
   /** Website domain (no protocol). */
-  domain: 'clipvault.example',
+  domain: 'vidcliply.com',
+  /** Canonical production URL (no trailing slash). */
+  siteUrl: 'https://vidcliply.com',
+  /** Default browser / SEO page title suffix. */
+  pageTitle: 'VidCliply — Free Video Downloader for YouTube, Facebook & Instagram',
   /** Legal entity that operates the free downloader tool. */
   toolEntity: '[Your Company Ltd.]',
   /**
@@ -19,8 +22,8 @@ export const COMPANY = {
   /** Jurisdiction whose laws govern the Terms. */
   jurisdiction: '[Country / State]',
   /** General contact + DMCA agent email. */
-  contactEmail: 'support@clipvault.example',
-  dmcaEmail: 'dmca@clipvault.example',
+  contactEmail: 'support@vidcliply.com',
+  dmcaEmail: 'dmca@vidcliply.com',
   /** Registered mailing address for legal notices. */
   address: '[Registered business address]',
   /** Shown as the "last updated" date on every legal page. */

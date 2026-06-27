@@ -135,7 +135,7 @@ if (serveClient) {
 startSweeper();
 
 app.listen(config.port, () => {
-  logger.info(`ClipVault API listening on port ${config.port}`);
+  logger.info(`VidCliply API listening on port ${config.port}`);
   logger.info(`Using yt-dlp: ${config.ytdlpPath} | ffmpeg: ${config.ffmpegPath}`);
   logger.info(`CORS origins: ${config.clientOrigin.join(', ')}`);
   logCookiesStatus();

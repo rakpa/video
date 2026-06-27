@@ -1,4 +1,4 @@
-# Deployment Guide - ClipVault
+# Deployment Guide - VidCliply
 
 **Latest Update**: Cambria font config has been added (`tailwind.config.cambria.ts`).
 
