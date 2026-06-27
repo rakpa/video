@@ -45,6 +45,10 @@ billingRouter.post('/billing/checkout', async (req, res) => {
     const session = await s.checkout.sessions.create({
       mode: isSub ? 'subscription' : 'payment',
       customer_creation: isSub ? undefined : 'always',
+      metadata: { vidcliply_plan: plan },
+      ...(isSub
+        ? { subscription_data: { metadata: { vidcliply_plan: plan } } }
+        : { payment_intent_data: { metadata: { vidcliply_plan: plan } } }),
       line_items: [
         {
           quantity: 1,

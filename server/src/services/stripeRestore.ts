@@ -8,28 +8,62 @@ export interface ProEntitlement {
 }
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-
-function escapeStripeSearch(value: string): string {
-  return value.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
-}
-
-async function searchCheckoutByEmail(stripe: Stripe, email: string): Promise<Stripe.Checkout.Session[]> {
-  const search = (
-    stripe.checkout.sessions as {
-      search?: (params: { query: string; limit?: number }) => Promise<{ data: Stripe.Checkout.Session[] }>;
-    }
-  ).search;
-  if (!search) return [];
-  const result = await search.call(stripe.checkout.sessions, {
-    query: `status:'complete' AND customer_details.email:'${escapeStripeSearch(email)}'`,
-    limit: 20,
-  });
-  return result.data;
-}
+const MAX_SESSION_PAGES = 5;
 
 function activeSubEntitlement(email: string, sub: Stripe.Subscription): ProEntitlement | null {
   if (sub.status !== 'active' && sub.status !== 'trialing') return null;
   return { email, plan: 'monthly', exp: sub.current_period_end * 1000 };
+}
+
+function sessionEmail(session: Stripe.Checkout.Session): string | null {
+  return session.customer_details?.email?.trim().toLowerCase() ?? session.customer_email?.trim().toLowerCase() ?? null;
+}
+
+async function entitlementFromSession(
+  stripe: Stripe,
+  email: string,
+  session: Stripe.Checkout.Session,
+): Promise<ProEntitlement | null> {
+  if (session.payment_status !== 'paid') return null;
+
+  if (session.mode === 'subscription' && session.subscription) {
+    const sub = await stripe.subscriptions.retrieve(String(session.subscription));
+    return activeSubEntitlement(email, sub);
+  }
+
+  if (session.mode === 'payment') {
+    return { email, plan: 'lifetime', exp: null };
+  }
+
+  return null;
+}
+
+/** Scans recent Checkout sessions when no Stripe Customer exists for the email. */
+async function lookupViaCheckoutSessions(stripe: Stripe, email: string): Promise<ProEntitlement | null> {
+  let lifetime: ProEntitlement | null = null;
+  let startingAfter: string | undefined;
+
+  for (let page = 0; page < MAX_SESSION_PAGES; page++) {
+    const sessions = await stripe.checkout.sessions.list({
+      limit: 100,
+      ...(startingAfter ? { starting_after: startingAfter } : {}),
+    });
+    if (sessions.data.length === 0) break;
+
+    for (const session of sessions.data) {
+      if (sessionEmail(session) !== email) continue;
+      const entitlement = await entitlementFromSession(stripe, email, session);
+      if (!entitlement) continue;
+      if (entitlement.plan === 'monthly') return entitlement;
+      lifetime = entitlement;
+    }
+
+    if (lifetime) return lifetime;
+    if (!sessions.has_more) break;
+    startingAfter = sessions.data[sessions.data.length - 1]?.id;
+  }
+
+  return lifetime;
 }
 
 /** Looks up an active Pro purchase in Stripe for the given checkout email. */
@@ -50,31 +84,13 @@ export async function lookupProEntitlement(stripe: Stripe, rawEmail: string): Pr
 
     const sessions = await stripe.checkout.sessions.list({ customer: customer.id, limit: 20 });
     for (const session of sessions.data) {
-      if (session.payment_status !== 'paid') continue;
-      if (session.mode === 'payment') {
-        lifetime = { email, plan: 'lifetime', exp: null };
-        break;
-      }
-      if (session.mode === 'subscription' && session.subscription) {
-        const sub = await stripe.subscriptions.retrieve(String(session.subscription));
-        const monthly = activeSubEntitlement(email, sub);
-        if (monthly) return monthly;
-      }
+      const entitlement = await entitlementFromSession(stripe, email, session);
+      if (!entitlement) continue;
+      if (entitlement.plan === 'monthly') return entitlement;
+      lifetime = entitlement;
     }
   }
 
-  const searched = await searchCheckoutByEmail(stripe, email);
-  for (const session of searched) {
-    if (session.payment_status !== 'paid') continue;
-    if (session.mode === 'subscription' && session.subscription) {
-      const sub = await stripe.subscriptions.retrieve(String(session.subscription));
-      const monthly = activeSubEntitlement(email, sub);
-      if (monthly) return monthly;
-    }
-    if (session.mode === 'payment') {
-      return { email, plan: 'lifetime', exp: null };
-    }
-  }
-
-  return lifetime;
+  if (lifetime) return lifetime;
+  return lookupViaCheckoutSessions(stripe, email);
 }
