@@ -51,6 +51,12 @@ export const config = {
     .map((o) => o.trim())
     .filter(Boolean),
 
+  /** Canonical public site URL for Stripe redirects (no trailing slash). */
+  siteUrl: (process.env.SITE_URL ?? process.env.CLIENT_ORIGIN?.split(',')[0]?.trim() ?? 'http://localhost:3080').replace(
+    /\/+$/,
+    '',
+  ),
+
   ytdlpPath: process.env.YTDLP_PATH ?? 'yt-dlp',
   ffmpegPath: process.env.FFMPEG_PATH ?? 'ffmpeg',
 
@@ -95,15 +101,16 @@ export const config = {
 
   // --- Monetisation ---
   // Resolutions at or below this height are free; above requires a Pro license.
-  // 2160 → everything (incl. 2K & 4K) is free for testing.
-  // (Override with FREE_MAX_HEIGHT, e.g. 1080, to gate higher resolutions again.)
-  freeMaxHeight: Number(process.env.FREE_MAX_HEIGHT ?? 2160),
+  // 1080 → 720p & 1080p free; 2K (1440p) & 4K (2160p) are Pro.
+  freeMaxHeight: Number(process.env.FREE_MAX_HEIGHT ?? 1080),
 
   // Stripe. Leave keys empty to run without billing (pricing page shows a notice).
   stripeSecret: process.env.STRIPE_SECRET_KEY ?? '',
+  stripePublishableKey: process.env.STRIPE_PUBLISHABLE_KEY ?? '',
   stripeWebhookSecret: process.env.STRIPE_WEBHOOK_SECRET ?? '',
-  priceMonthlyCents: Number(process.env.PRICE_MONTHLY_CENTS ?? 599),
-  priceLifetimeCents: Number(process.env.PRICE_LIFETIME_CENTS ?? 900),
+  // Default $1.00 for live checkout testing — override in production when ready.
+  priceMonthlyCents: Number(process.env.PRICE_MONTHLY_CENTS ?? 100),
+  priceLifetimeCents: Number(process.env.PRICE_LIFETIME_CENTS ?? 100),
 
   // Secret used to HMAC-sign stateless Pro license tokens. CHANGE IN PRODUCTION.
   licenseSecret: process.env.LICENSE_SECRET ?? 'dev-insecure-license-secret-change-me',

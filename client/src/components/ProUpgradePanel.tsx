@@ -40,7 +40,7 @@ export function ProUpgradePanel({ selectedQuality, inline = false }: Props) {
     }
   };
 
-  const selectedCents = cfg ? cfg.plans[plan].cents : plan === 'monthly' ? 599 : 900;
+  const selectedCents = cfg ? cfg.plans[plan].cents : 100;
 
   return (
     <motion.div
@@ -66,7 +66,7 @@ export function ProUpgradePanel({ selectedQuality, inline = false }: Props) {
             active={plan === 'monthly'}
             onClick={() => setPlan('monthly')}
             title="Monthly"
-            price={money(cfg?.plans.monthly.cents ?? 599)}
+            price={money(cfg?.plans.monthly.cents ?? 100)}
             suffix="/mo"
             note="Cancel anytime"
           />
@@ -74,7 +74,7 @@ export function ProUpgradePanel({ selectedQuality, inline = false }: Props) {
             active={plan === 'lifetime'}
             onClick={() => setPlan('lifetime')}
             title="Lifetime"
-            price={money(cfg?.plans.lifetime.cents ?? 900)}
+            price={money(cfg?.plans.lifetime.cents ?? 100)}
             suffix="once"
             note="Pay once, yours forever"
             badge="Best value"
@@ -103,8 +103,10 @@ export function ProUpgradePanel({ selectedQuality, inline = false }: Props) {
               <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/40 border-t-white" />
               Redirecting…
             </>
+          ) : plan === 'monthly' ? (
+            <>Subscribe for {money(selectedCents)}/mo</>
           ) : (
-            <>Subscribe now for {money(selectedCents)}</>
+            <>Pay {money(selectedCents)} once</>
           )}
         </motion.button>
 

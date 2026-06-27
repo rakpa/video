@@ -17,6 +17,7 @@ function getStripe(): Stripe | null {
 billingRouter.get('/billing/config', (_req, res) => {
   res.json({
     enabled: Boolean(config.stripeSecret),
+    publishableKey: config.stripePublishableKey || null,
     plans: {
       monthly: { cents: config.priceMonthlyCents, label: 'Monthly', interval: 'month' },
       lifetime: { cents: config.priceLifetimeCents, label: 'Lifetime', interval: null },
@@ -56,8 +57,8 @@ billingRouter.post('/billing/checkout', async (req, res) => {
         },
       ],
       allow_promotion_codes: true,
-      success_url: `${config.clientOrigin}/?status=success&session_id={CHECKOUT_SESSION_ID}`,
-      cancel_url: `${config.clientOrigin}/?status=cancel`,
+      success_url: `${config.siteUrl}/pricing?status=success&session_id={CHECKOUT_SESSION_ID}`,
+      cancel_url: `${config.siteUrl}/pricing?status=cancel`,
     });
     return res.json({ url: session.url });
   } catch (err) {

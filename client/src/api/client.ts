@@ -167,6 +167,7 @@ export async function startDownloadJob(
 
 export interface BillingConfig {
   enabled: boolean;
+  publishableKey?: string | null;
   plans: {
     monthly: { cents: number; label: string; interval: string | null };
     lifetime: { cents: number; label: string; interval: string | null };
