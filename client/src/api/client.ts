@@ -199,6 +199,11 @@ export function redeemSession(sessionId: string): Promise<RedeemResult> {
   return postJson<RedeemResult>('/api/billing/redeem', { session_id: sessionId });
 }
 
+/** Re-issues a Pro license for a returning customer by checkout email. */
+export function restoreProAccess(email: string): Promise<RedeemResult> {
+  return postJson<RedeemResult>('/api/billing/restore', { email });
+}
+
 export interface ProgressHandlers {
   onProgress: (p: ProgressUpdate) => void;
   onDone: () => void;

@@ -3,6 +3,7 @@ import { navigate } from '../hooks/useRoute';
 import { clearLicense, getLicense, type StoredLicense } from '../lib/license';
 import { useStripeReturn } from '../hooks/useStripeReturn';
 import { ProUpgradePanel } from '../components/ProUpgradePanel';
+import { RestoreProPanel } from '../components/RestoreProPanel';
 import { Confetti } from '../components/Confetti';
 import { SiteHeader } from '../components/SiteHeader';
 import { Button } from '../components/Button';
@@ -28,6 +29,10 @@ const PRICING_FAQ = [
   {
     q: 'Which payment methods do you accept?',
     a: 'Visa, Mastercard, American Express, and PayPal — all processed securely by Stripe. We never see or store your card details.',
+  },
+  {
+    q: 'I signed out or switched phones — how do I get Pro back?',
+    a: 'Go to Pricing and use “Restore Pro access”. Enter the same email you used at Stripe checkout — we’ll verify your purchase and unlock Pro on this device again.',
   },
   {
     q: 'Is my payment secure?',
@@ -62,6 +67,7 @@ export function PricingPage({ theme, onToggleTheme }: Props) {
             <PlanComparison />
             <div className="mx-auto mt-12 max-w-xl">
               <ProUpgradePanel />
+              <RestoreProPanel onRestored={(lic) => setLic(lic)} />
             </div>
             <Faq items={PRICING_FAQ} />
           </>
@@ -100,6 +106,11 @@ function ProStatus({
         <Button onClick={() => navigate('/')}>Start downloading</Button>
         <Button variant="ghost" onClick={onSignOut}>Sign out of Pro</Button>
       </div>
+
+      <p className="mx-auto mt-4 max-w-sm text-xs text-slate-400">
+        Signing out only removes Pro on this device. To use Pro again here, go to Pricing and tap{' '}
+        <span className="font-medium text-slate-500">Restore Pro access</span> with your checkout email.
+      </p>
 
       <p className="mt-5 text-xs text-slate-400">
         {license.plan === 'monthly' ? 'Need to update billing or cancel? ' : 'Questions about your purchase? '}

@@ -1,7 +1,9 @@
 import { Router } from 'express';
 import Stripe from 'stripe';
 import { config } from '../config.js';
+import { readJsonBody } from '../utils/body.js';
 import { signLicense, type Plan } from '../services/license.js';
+import { lookupProEntitlement } from '../services/stripeRestore.js';
 import { logger } from '../utils/logger.js';
 
 export const billingRouter = Router();
@@ -42,6 +44,7 @@ billingRouter.post('/billing/checkout', async (req, res) => {
   try {
     const session = await s.checkout.sessions.create({
       mode: isSub ? 'subscription' : 'payment',
+      customer_creation: isSub ? undefined : 'always',
       line_items: [
         {
           quantity: 1,
@@ -64,6 +67,38 @@ billingRouter.post('/billing/checkout', async (req, res) => {
   } catch (err) {
     logger.error('Stripe checkout error:', (err as Error).message);
     return res.status(502).json({ error: 'Could not start checkout. Please try again.' });
+  }
+});
+
+/**
+ * POST /api/billing/restore { email } → { token, email, plan, expiresAt }
+ * Re-issues a Pro license for returning customers (new device, signed out, etc.).
+ */
+billingRouter.post('/billing/restore', async (req, res) => {
+  const s = getStripe();
+  if (!s) return res.status(503).json({ error: 'Payments are not configured yet.' });
+
+  const email = String(readJsonBody(req).email ?? '').trim();
+  if (!email) return res.status(400).json({ error: 'Please enter the email you used at checkout.' });
+
+  try {
+    const entitlement = await lookupProEntitlement(s, email);
+    if (!entitlement) {
+      return res.status(404).json({
+        error: 'No active Pro purchase found for that email. Use the same address from your Stripe receipt.',
+      });
+    }
+
+    const token = signLicense({ email: entitlement.email, plan: entitlement.plan, exp: entitlement.exp });
+    return res.json({
+      token,
+      email: entitlement.email,
+      plan: entitlement.plan,
+      expiresAt: entitlement.exp,
+    });
+  } catch (err) {
+    logger.error('Stripe restore error:', (err as Error).message);
+    return res.status(502).json({ error: 'Could not restore your Pro access. Please try again.' });
   }
 });
 
