@@ -133,3 +133,9 @@ body {
   border: 2px solid rgba(124, 58, 237, 0.35);
   animation: pro-pulse-ring 2.4s ease-out infinite;
 }
+
+/* Pro pricing hero — keep headline on one line at all breakpoints */
+.pro-headline-one-line {
+  white-space: nowrap;
+  font-size: clamp(0.78rem, 2.35vw + 0.28rem, 2.75rem);
+}

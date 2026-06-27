@@ -7,6 +7,12 @@ import { Confetti } from './Confetti';
 
 const formatYearlyPrice = (cents: number) => `$${(cents / 100).toFixed(2)}`;
 
+function splitYearlyPrice(cents: number) {
+  const whole = Math.floor(cents / 100);
+  const frac = (cents % 100).toString().padStart(2, '0');
+  return { whole, frac };
+}
+
 interface Props {
   selectedQuality?: string;
   inline?: boolean;
@@ -44,6 +50,7 @@ export function ProUpgradePanel({ selectedQuality, inline = false }: Props) {
 
   const yearlyCents = cfg?.plans.yearly.cents ?? 1999;
   const perMonth = (yearlyCents / 12 / 100).toFixed(2);
+  const { whole: priceWhole, frac: priceFrac } = splitYearlyPrice(yearlyCents);
 
   return (
     <motion.div
@@ -55,7 +62,7 @@ export function ProUpgradePanel({ selectedQuality, inline = false }: Props) {
       {!inline && (
         <div className="text-center">
           <p className="text-sm font-semibold uppercase tracking-[0.2em] text-violet-600">Pro · Yearly only</p>
-          <h2 className="mt-2 text-[clamp(1.75rem,5vw,2.75rem)] font-extrabold leading-tight tracking-tight text-slate-900">
+          <h2 className="pro-headline-one-line mt-2 font-extrabold leading-none tracking-tight text-slate-900">
             One tiny price. <span className="gradient-text">A full year</span> of Pro.
           </h2>
           <p className="mx-auto mt-3 max-w-lg text-slate-600">
@@ -100,12 +107,15 @@ export function ProUpgradePanel({ selectedQuality, inline = false }: Props) {
                 initial={{ scale: 0.85, opacity: 0 }}
                 animate={{ scale: 1, opacity: 1 }}
                 transition={{ type: 'spring', stiffness: 260, damping: 18, delay: 0.1 }}
-                className="mt-2 flex items-end justify-center gap-1"
+                className="mt-2 flex items-end justify-center gap-0.5 sm:gap-1"
               >
-                <span className="text-[clamp(3.5rem,14vw,5rem)] font-black leading-none tracking-tighter">
-                  {formatYearlyPrice(yearlyCents)}
+                <span className="text-[clamp(4.25rem,20vw,6.25rem)] font-black leading-[0.85] tracking-tighter">
+                  ${priceWhole}
                 </span>
-                <span className="mb-2 text-lg font-bold text-violet-200 sm:text-xl">/year</span>
+                <span className="mb-1 text-[clamp(1.5rem,5vw,2.25rem)] font-black leading-none tracking-tight text-white/90">
+                  .{priceFrac}
+                </span>
+                <span className="mb-2 text-sm font-semibold text-violet-200 sm:text-base">/year</span>
               </motion.div>
 
               <p className="mt-1 text-sm font-medium text-violet-100">
