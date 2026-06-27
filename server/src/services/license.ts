@@ -6,12 +6,12 @@ import { config } from '../config.js';
  * HMAC so the server can verify it without a database. Good enough for a paid
  * unlock; swap for DB-backed sessions when you add real accounts.
  */
-export type Plan = 'monthly' | 'lifetime';
+export type Plan = 'yearly' | 'monthly' | 'lifetime';
 
 export interface License {
   email: string;
   plan: Plan;
-  /** Unix ms expiry; null = never expires (lifetime). */
+  /** Unix ms expiry; null = never expires (legacy lifetime). */
   exp: number | null;
 }
 

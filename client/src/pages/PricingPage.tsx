@@ -11,6 +11,7 @@ import { PlanComparison } from '../components/PlanComparison';
 import { Faq } from '../components/Faq';
 import { Footer } from '../components/Footer';
 import { COMPANY } from '../config/company';
+import { planAccessLabel, planLabel } from '../lib/plan';
 import type { Theme } from '../hooks/useTheme';
 
 const PRICING_FAQ = [
@@ -20,7 +21,7 @@ const PRICING_FAQ = [
   },
   {
     q: 'Can I cancel anytime?',
-    a: 'Yes. Monthly plans can be cancelled at any time from your account — you keep access until the end of the period. Lifetime is a one-time payment with nothing to cancel.',
+    a: 'Yes. Yearly Pro renews once a year and you can cancel anytime — you keep access until the end of your billing period.',
   },
   {
     q: 'Do you offer refunds?',
@@ -99,8 +100,9 @@ function ProStatus({
       <h1 className="mt-5 text-2xl font-bold text-slate-900">{justUpgraded ? 'Welcome to Pro! 🎉' : 'You’re on Pro'}</h1>
       <p className="mx-auto mt-2 max-w-sm text-sm text-slate-600">
         HD, 2K and 4K downloads are unlocked for <span className="font-medium text-slate-900">{license.email}</span>.
-        Plan: <span className="capitalize">{license.plan}</span>
-        {license.expiresAt ? ` · renews ${new Date(license.expiresAt).toLocaleDateString()}` : ' · lifetime access'}.
+        Plan: <span className="capitalize">{planLabel(license.plan)}</span>
+        {' · '}
+        {planAccessLabel(license.plan, license.expiresAt)}.
       </p>
       <div className="mt-6 flex flex-col justify-center gap-3 sm:flex-row">
         <Button onClick={() => navigate('/')}>Start downloading</Button>
@@ -113,7 +115,9 @@ function ProStatus({
       </p>
 
       <p className="mt-5 text-xs text-slate-400">
-        {license.plan === 'monthly' ? 'Need to update billing or cancel? ' : 'Questions about your purchase? '}
+        {license.plan === 'yearly' || license.plan === 'monthly'
+          ? 'Need to update billing or cancel? '
+          : 'Questions about your purchase? '}
         <a href={`mailto:${COMPANY.contactEmail}`} className="font-medium text-indigo-600 transition hover:text-indigo-700 hover:underline">
           Contact {COMPANY.contactEmail}
         </a>

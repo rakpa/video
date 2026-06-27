@@ -5,7 +5,7 @@
 export interface StoredLicense {
   token: string;
   email: string;
-  plan: 'monthly' | 'lifetime';
+  plan: 'yearly' | 'monthly' | 'lifetime';
   expiresAt: number | null;
 }
 

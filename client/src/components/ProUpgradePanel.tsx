@@ -5,8 +5,6 @@ import { navigate } from '../hooks/useRoute';
 import { PaymentBadges } from './PaymentBadges';
 import { Confetti } from './Confetti';
 
-type PlanId = 'monthly' | 'lifetime';
-
 const money = (cents: number) => `$${(cents / 100).toFixed(2)}`;
 
 interface Props {
@@ -19,7 +17,6 @@ interface Props {
 /** Pro checkout panel — embeddable inline or on the standalone pricing page. */
 export function ProUpgradePanel({ selectedQuality, inline = false }: Props) {
   const [cfg, setCfg] = useState<BillingConfig | null>(null);
-  const [plan, setPlan] = useState<PlanId>('monthly');
   const [agree, setAgree] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -32,7 +29,7 @@ export function ProUpgradePanel({ selectedQuality, inline = false }: Props) {
     setError(null);
     setBusy(true);
     try {
-      const url = await createCheckout(plan);
+      const url = await createCheckout('yearly');
       window.location.href = url;
     } catch (e) {
       setError(e instanceof ApiError ? e.message : 'Could not start checkout.');
@@ -40,7 +37,7 @@ export function ProUpgradePanel({ selectedQuality, inline = false }: Props) {
     }
   };
 
-  const selectedCents = cfg ? cfg.plans[plan].cents : 100;
+  const yearlyCents = cfg?.plans.yearly.cents ?? 100;
 
   return (
     <motion.div
@@ -61,24 +58,18 @@ export function ProUpgradePanel({ selectedQuality, inline = false }: Props) {
       </div>
 
       <div className={`glass rounded-3xl p-5 shadow-card sm:p-6 ${inline ? 'mt-4' : 'mx-auto mt-8'}`}>
-        <div className="grid grid-cols-2 gap-3">
-          <PlanCard
-            active={plan === 'monthly'}
-            onClick={() => setPlan('monthly')}
-            title="Monthly"
-            price={money(cfg?.plans.monthly.cents ?? 100)}
-            suffix="/mo"
-            note="Cancel anytime"
-          />
-          <PlanCard
-            active={plan === 'lifetime'}
-            onClick={() => setPlan('lifetime')}
-            title="Lifetime"
-            price={money(cfg?.plans.lifetime.cents ?? 100)}
-            suffix="once"
-            note="Pay once, yours forever"
-            badge="Best value"
-          />
+        <div className="rounded-2xl border border-accent/60 bg-indigo-50 p-5 shadow-glow">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <p className="text-sm font-medium text-slate-600">Yearly</p>
+              <p className="mt-1 text-3xl font-extrabold text-slate-900">
+                {money(yearlyCents)}
+                <span className="ml-1 text-base font-medium text-slate-400">/year</span>
+              </p>
+              <p className="mt-1 text-sm text-slate-500">Cancel anytime · renews annually</p>
+            </div>
+            <span className="rounded-full bg-accent-gradient px-3 py-1 text-xs font-bold text-white">Pro</span>
+          </div>
         </div>
 
         {error && (
@@ -103,10 +94,8 @@ export function ProUpgradePanel({ selectedQuality, inline = false }: Props) {
               <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/40 border-t-white" />
               Redirecting…
             </>
-          ) : plan === 'monthly' ? (
-            <>Subscribe for {money(selectedCents)}/mo</>
           ) : (
-            <>Pay {money(selectedCents)} once</>
+            <>Get Pro for {money(yearlyCents)}/year</>
           )}
         </motion.button>
 
@@ -162,50 +151,6 @@ export function ProUpgradeSuccess({ selectedQuality, onDismiss }: { selectedQual
         </button>
       )}
     </div>
-  );
-}
-
-function PlanCard({
-  active,
-  onClick,
-  title,
-  price,
-  suffix,
-  note,
-  badge,
-}: {
-  active: boolean;
-  onClick: () => void;
-  title: string;
-  price: string;
-  suffix: string;
-  note: string;
-  badge?: string;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      aria-pressed={active}
-      className={[
-        'relative flex flex-col items-start rounded-2xl border p-4 text-left transition-all',
-        active
-          ? 'border-accent/60 bg-indigo-50 shadow-glow'
-          : 'border-slate-200 bg-white hover:bg-slate-50',
-      ].join(' ')}
-    >
-      {badge && (
-        <span className="absolute -top-2 right-3 rounded-full bg-accent-gradient px-2 py-0.5 text-[11px] font-bold text-white">
-          {badge}
-        </span>
-      )}
-      <span className="text-sm font-medium text-slate-600">{title}</span>
-      <span className="mt-1 text-2xl font-extrabold text-slate-900">
-        {price}
-        <span className="ml-1 text-sm font-medium text-slate-400">{suffix}</span>
-      </span>
-      <span className="mt-1 text-xs text-slate-400">{note}</span>
-    </button>
   );
 }
 

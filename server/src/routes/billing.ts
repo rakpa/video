@@ -3,7 +3,7 @@ import Stripe from 'stripe';
 import { config } from '../config.js';
 import { readJsonBody } from '../utils/body.js';
 import { signLicense, type Plan } from '../services/license.js';
-import { lookupProEntitlement } from '../services/stripeRestore.js';
+import { lookupProEntitlement, planFromStripeSubscription } from '../services/stripeRestore.js';
 import { logger } from '../utils/logger.js';
 
 export const billingRouter = Router();
@@ -21,8 +21,7 @@ billingRouter.get('/billing/config', (_req, res) => {
     enabled: Boolean(config.stripeSecret),
     publishableKey: config.stripePublishableKey || null,
     plans: {
-      monthly: { cents: config.priceMonthlyCents, label: 'Monthly', interval: 'month' },
-      lifetime: { cents: config.priceLifetimeCents, label: 'Lifetime', interval: null },
+      yearly: { cents: config.priceYearlyCents, label: 'Yearly', interval: 'year' },
     },
     freeMaxHeight: config.freeMaxHeight,
   });
@@ -33,32 +32,26 @@ billingRouter.post('/billing/checkout', async (req, res) => {
   const s = getStripe();
   if (!s) return res.status(503).json({ error: 'Payments are not configured yet.' });
 
-  const plan = String(req.body?.plan ?? '') as Plan;
-  if (plan !== 'monthly' && plan !== 'lifetime') {
+  const plan = String(readJsonBody(req).plan ?? '') as Plan;
+  if (plan !== 'yearly') {
     return res.status(400).json({ error: 'Please choose a valid plan.' });
   }
 
-  const isSub = plan === 'monthly';
-  const amount = isSub ? config.priceMonthlyCents : config.priceLifetimeCents;
-
   try {
     const session = await s.checkout.sessions.create({
-      mode: isSub ? 'subscription' : 'payment',
-      customer_creation: isSub ? undefined : 'always',
+      mode: 'subscription',
       metadata: { vidcliply_plan: plan },
-      ...(isSub
-        ? { subscription_data: { metadata: { vidcliply_plan: plan } } }
-        : { payment_intent_data: { metadata: { vidcliply_plan: plan } } }),
+      subscription_data: { metadata: { vidcliply_plan: plan } },
       line_items: [
         {
           quantity: 1,
           price_data: {
             currency: 'usd',
-            unit_amount: amount,
-            ...(isSub ? { recurring: { interval: 'month' as const } } : {}),
+            unit_amount: config.priceYearlyCents,
+            recurring: { interval: 'year' },
             product_data: {
-              name: isSub ? 'VidCliply Pro — Monthly' : 'VidCliply Pro — Lifetime',
-              description: 'Unlocks HD, 2K and 4K downloads with sound.',
+              name: 'VidCliply Pro — Yearly',
+              description: 'Unlocks HD, 2K and 4K downloads with sound for one year.',
             },
           },
         },
@@ -115,7 +108,7 @@ billingRouter.post('/billing/redeem', async (req, res) => {
   const s = getStripe();
   if (!s) return res.status(503).json({ error: 'Payments are not configured yet.' });
 
-  const sessionId = String(req.body?.session_id ?? '');
+  const sessionId = String(readJsonBody(req).session_id ?? '');
   if (!sessionId) return res.status(400).json({ error: 'Missing session.' });
 
   try {
@@ -125,12 +118,16 @@ billingRouter.post('/billing/redeem', async (req, res) => {
     }
 
     const email = session.customer_details?.email ?? session.customer_email ?? 'unknown';
-    const plan: Plan = session.mode === 'subscription' ? 'monthly' : 'lifetime';
 
+    let plan: Plan = 'yearly';
     let exp: number | null = null;
-    if (plan === 'monthly' && session.subscription) {
+
+    if (session.mode === 'subscription' && session.subscription) {
       const sub = await s.subscriptions.retrieve(String(session.subscription));
+      plan = planFromStripeSubscription(sub);
       exp = sub.current_period_end * 1000;
+    } else if (session.mode === 'payment') {
+      plan = 'lifetime';
     }
 
     const token = signLicense({ email, plan, exp });

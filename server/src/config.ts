@@ -108,9 +108,8 @@ export const config = {
   stripeSecret: process.env.STRIPE_SECRET_KEY ?? '',
   stripePublishableKey: process.env.STRIPE_PUBLISHABLE_KEY ?? '',
   stripeWebhookSecret: process.env.STRIPE_WEBHOOK_SECRET ?? '',
-  // Default $1.00 for live checkout testing — override in production when ready.
-  priceMonthlyCents: Number(process.env.PRICE_MONTHLY_CENTS ?? 100),
-  priceLifetimeCents: Number(process.env.PRICE_LIFETIME_CENTS ?? 100),
+  // Default $1.00/year for live checkout testing — override in production when ready.
+  priceYearlyCents: Number(process.env.PRICE_YEARLY_CENTS ?? process.env.PRICE_LIFETIME_CENTS ?? 100),
 
   // Secret used to HMAC-sign stateless Pro license tokens. CHANGE IN PRODUCTION.
   licenseSecret: process.env.LICENSE_SECRET ?? 'dev-insecure-license-secret-change-me',

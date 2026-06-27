@@ -50,7 +50,7 @@ export function PlanComparison() {
         Simple pricing, <span className="gradient-text">serious quality</span>
       </h1>
       <p className="mx-auto mt-3 max-w-md text-center text-slate-600">
-        Start free at 1080p. Upgrade once you need 2K, 4K, or MP3 — cancel anytime.
+        Start free at 1080p. Upgrade to Pro yearly when you need 2K, 4K, or MP3 — cancel anytime.
       </p>
 
       <div className="glass mt-10 overflow-hidden rounded-3xl shadow-card">
