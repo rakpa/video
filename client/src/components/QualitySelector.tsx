@@ -29,8 +29,6 @@ interface Props {
  * Quality cards (720p · 1080p · 2K · 4K) with a codec-mode toggle. Resolutions
  * above the free tier show a PRO lock until the user upgrades. Controlled by the
  * parent so the URL-bar Download button stays in sync.
- *
- * TEMP: 2K/4K no longer show as Pro for testing.
  */
 export function QualitySelector({ formats, selected, onSelect, mode, onModeChange, pro, refining = false, downloadReady = true, saving = false, showDownloadButton = true, onDownload, onUpgrade }: Props) {
   // In compatible mode, only resolutions up to 1080p are offered (H.264 ceiling).
@@ -56,9 +54,7 @@ export function QualitySelector({ formats, selected, onSelect, mode, onModeChang
   };
 
   const selectedFmt = visibleFormats.find((f) => f.id === selected);
-  // TEMP: treat 2K/4K as free for testing (no PRO lock or upgrade prompt)
-  const isHighResTest = selectedFmt?.id === '1440' || selectedFmt?.id === '2160';
-  const needsUpgrade = Boolean(selectedFmt?.premium && !pro && !isHighResTest);
+  const needsUpgrade = Boolean(selectedFmt?.premium && !pro);
 
   return (
     <motion.div
@@ -76,8 +72,7 @@ export function QualitySelector({ formats, selected, onSelect, mode, onModeChang
         {visibleFormats.map((f) => {
           const active = selected === f.id;
           const disabled = !f.available;
-          // TEMP: no PRO badge on 2K/4K
-          const locked = f.premium && !pro && f.id !== '1440' && f.id !== '2160';
+          const locked = f.premium && !pro;
           return (
             <motion.button
               key={f.id}
