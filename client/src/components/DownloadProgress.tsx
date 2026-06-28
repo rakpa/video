@@ -21,10 +21,11 @@ function stageLabel(p: ProgressUpdate): string {
 
 export function DownloadProgress({ progress, qualityLabel, processingOnly, mobileSave }: Props) {
   const pct = Math.max(0, Math.min(100, progress.percent));
-  const showPercent = !processingOnly && pct >= 1;
-  const display = useCountUp(showPercent ? pct : 0);
+  const showPercent = !processingOnly && !mobileSave && pct > 0;
+  const displayPct = pct > 0 && pct < 1 ? 1 : Math.round(pct);
+  const display = useCountUp(showPercent ? displayPct : 0);
 
-  if (processingOnly || mobileSave) {
+  if ((processingOnly || mobileSave) && pct < 1) {
     return (
       <motion.div
         initial={{ opacity: 0, y: 14 }}

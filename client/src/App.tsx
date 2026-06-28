@@ -653,7 +653,6 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
                     <DownloadProgress
                       progress={progress}
                       qualityLabel={qualityLabel}
-                      processingOnly
                     />
                   ) : info && view === 'success' ? (
                     <SuccessState outputHeight={outputHeight} requestedLabel={qualityLabel || undefined} />
