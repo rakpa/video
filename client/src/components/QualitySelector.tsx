@@ -23,6 +23,8 @@ interface Props {
   onDownload: () => void;
   /** Scroll/focus the inline Pro upgrade panel. */
   onUpgrade?: () => void;
+  /** Switch back to the highest free quality without upgrading. */
+  onUseFree?: () => void;
   /** Native max height from yt-dlp — drives honest availability for 2K/4K. */
   sourceMaxHeight?: number | null;
 }
@@ -32,7 +34,7 @@ interface Props {
  * above the free tier show a PRO lock until the user upgrades. Controlled by the
  * parent so the URL-bar Download button stays in sync.
  */
-export function QualitySelector({ formats, selected, onSelect, mode, onModeChange, pro, refining = false, downloadReady = true, saving = false, showDownloadButton = true, onDownload, onUpgrade, sourceMaxHeight }: Props) {
+export function QualitySelector({ formats, selected, onSelect, mode, onModeChange, pro, refining = false, downloadReady = true, saving = false, showDownloadButton = true, onDownload, onUpgrade, onUseFree, sourceMaxHeight }: Props) {
   // In compatible mode, only resolutions up to 1080p are offered (H.264 ceiling).
   const visibleFormats = useMemo(
     () =>
@@ -153,6 +155,7 @@ export function QualitySelector({ formats, selected, onSelect, mode, onModeChang
       </div>
 
       {showDownloadButton && (
+      <>
       <RippleButton
         onClick={needsUpgrade ? (onUpgrade ?? onDownload) : onDownload}
         upgrade={needsUpgrade}
@@ -179,6 +182,16 @@ export function QualitySelector({ formats, selected, onSelect, mode, onModeChang
           </>
         )}
       </RippleButton>
+      {needsUpgrade && onUseFree && (
+        <button
+          type="button"
+          onClick={onUseFree}
+          className="w-full text-center text-sm font-medium text-slate-500 transition hover:text-slate-700"
+        >
+          Or download 1080p free instead
+        </button>
+      )}
+      </>
       )}
     </motion.div>
   );

@@ -544,6 +544,15 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
   const qualityLabel = info?.formats.find((f) => f.id === activeQuality)?.label ?? '';
   const selectedFmt = info?.formats.find((f) => f.id === selected);
   const showProUpgrade = !pro && Boolean(selectedFmt?.premium);
+
+  const dismissProUpgrade = useCallback(() => {
+    if (!info) return;
+    const freeFmt =
+      info.formats.find((f) => !f.premium && f.available) ??
+      info.formats.find((f) => f.id === '1080') ??
+      info.formats.find((f) => !f.premium);
+    if (freeFmt) setSelected(freeFmt.id);
+  }, [info]);
   const isBusy = phase === 'fetching' || phase === 'preview' || phase === 'downloading';
   const isSocialPreview = info?.platform === 'instagram' || info?.platform === 'facebook';
   const previewCardReady = isSocialPreview
@@ -672,6 +681,7 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
                         saving={mobileSaving}
                         onDownload={() => void handleDownload(selected, codecMode)}
                         onUpgrade={() => proPanelRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })}
+                        onUseFree={() => dismissProUpgrade()}
                       />
                       <AnimatePresence>
                         {showProUpgrade && (
@@ -684,7 +694,7 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
                             exit={{ opacity: 0, y: 8 }}
                             transition={{ duration: 0.35 }}
                           >
-                            <ProUpgradePanel inline selectedQuality={selectedFmt?.label} />
+                            <ProUpgradePanel inline selectedQuality={selectedFmt?.label} onDismiss={dismissProUpgrade} />
                           </motion.div>
                         )}
                       </AnimatePresence>
