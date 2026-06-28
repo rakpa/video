@@ -7,7 +7,7 @@ import { RestoreProPanel } from '../components/RestoreProPanel';
 import { Confetti } from '../components/Confetti';
 import { SiteHeader } from '../components/SiteHeader';
 import { Button } from '../components/Button';
-import { PlanComparison } from '../components/PlanComparison';
+import { PlanComparisonTable, PricingHero } from '../components/PlanComparison';
 import { Faq } from '../components/Faq';
 import { Footer } from '../components/Footer';
 import { COMPANY } from '../config/company';
@@ -60,15 +60,18 @@ export function PricingPage({ theme, onToggleTheme }: Props) {
     <div className="app-bg min-h-screen text-slate-600">
       <SiteHeader theme={theme} onToggleTheme={onToggleTheme} maxWidth="max-w-5xl" />
 
-      <main className="mx-auto max-w-3xl px-5 pb-20">
+      <main className="mx-auto max-w-5xl px-5 pb-20">
         {license ? (
           <ProStatus license={license} justUpgraded={justUpgraded} onSignOut={() => { clearLicense(); setLic(null); }} />
         ) : (
           <>
-            <PlanComparison />
-            <div className="mx-auto mt-12 max-w-xl">
-              <ProUpgradePanel />
-              <RestoreProPanel onRestored={(lic) => setLic(lic)} />
+            <PricingHero />
+            <div className="mt-10 grid items-start gap-8 lg:grid-cols-2 lg:gap-10">
+              <PlanComparisonTable />
+              <div className="space-y-8">
+                <ProUpgradePanel />
+                <RestoreProPanel onRestored={(lic) => setLic(lic)} />
+              </div>
             </div>
             <Faq items={PRICING_FAQ} />
           </>

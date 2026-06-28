@@ -134,7 +134,12 @@ body {
   animation: pro-pulse-ring 2.4s ease-out infinite;
 }
 
-/* Pro pricing hero — keep headline on one line at all breakpoints */
+/* Pro pricing headline — readable size, wraps naturally on narrow screens */
+.pro-pricing-headline {
+  font-size: clamp(1.5rem, 2.5vw + 0.75rem, 2.25rem);
+}
+
+/* Legacy inline downloader headline — keep on one line in tight panels */
 .pro-headline-one-line {
   white-space: nowrap;
   font-size: clamp(0.78rem, 2.35vw + 0.28rem, 2.75rem);

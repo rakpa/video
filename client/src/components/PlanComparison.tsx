@@ -37,23 +37,29 @@ function renderCell(c: Cell) {
   return c ? <Check /> : <Cross />;
 }
 
-/** Free vs Pro feature matrix — the value story for the pricing page. */
-export function PlanComparison() {
+/** Page hero — full-width headline above the pricing grid. */
+export function PricingHero() {
   return (
-    <motion.section
+    <motion.div
       initial={{ opacity: 0, y: 16 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.4 }}
-      className="mx-auto mt-6 max-w-2xl"
+      className="mt-6 text-center"
     >
-      <h1 className="text-center text-3xl font-bold tracking-tight text-slate-900 sm:text-4xl">
+      <h1 className="text-3xl font-bold tracking-tight text-slate-900 sm:text-4xl lg:text-5xl">
         <span className="gradient-text">$19.99/year</span> — serious quality, fair price
       </h1>
-      <p className="mx-auto mt-3 max-w-md text-center text-slate-600">
+      <p className="mx-auto mt-3 max-w-2xl text-base text-slate-600 sm:text-lg">
         Start free at 1080p. One yearly payment unlocks 2K, 4K &amp; MP3 — about $1.67 a month.
       </p>
+    </motion.div>
+  );
+}
 
-      <div className="glass mt-10 overflow-hidden rounded-3xl shadow-card">
+/** Free vs Pro feature matrix — the value story for the pricing page. */
+export function PlanComparisonTable() {
+  return (
+    <div className="glass overflow-hidden rounded-3xl shadow-card">
         {/* Column headers */}
         <div className="grid grid-cols-[1.4fr_1fr_1fr] items-end gap-2 border-b border-slate-200 px-5 py-4 sm:px-6">
           <span className="text-xs font-medium uppercase tracking-wider text-slate-400">Features</span>
@@ -73,7 +79,18 @@ export function PlanComparison() {
             <span className="text-center">{renderCell(row.pro)}</span>
           </div>
         ))}
+    </div>
+  );
+}
+
+/** Stacked hero + table — used where a single column is enough. */
+export function PlanComparison() {
+  return (
+    <section className="mx-auto mt-6 max-w-2xl">
+      <PricingHero />
+      <div className="mt-10">
+        <PlanComparisonTable />
       </div>
-    </motion.section>
+    </section>
   );
 }

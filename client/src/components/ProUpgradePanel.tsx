@@ -59,15 +59,15 @@ export function ProUpgradePanel({ selectedQuality, inline = false, onDismiss }: 
       initial={inline ? { opacity: 0, y: 12 } : false}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.35 }}
-      className={inline ? '' : 'mt-8'}
+      className={inline ? '' : ''}
     >
       {!inline && (
-        <div className="text-center">
+        <div className="text-center lg:text-left">
           <p className="text-sm font-semibold uppercase tracking-[0.2em] text-violet-600">Pro · Yearly only</p>
-          <h2 className="pro-headline-one-line mt-2 font-extrabold leading-none tracking-tight text-slate-900">
+          <h2 className="pro-pricing-headline mt-2 font-extrabold leading-tight tracking-tight text-slate-900">
             One tiny price. <span className="gradient-text">A full year</span> of Pro.
           </h2>
-          <p className="mx-auto mt-3 max-w-lg text-slate-600">
+          <p className="mt-3 text-slate-600 lg:max-w-none">
             {selectedQuality
               ? `${selectedQuality} needs Pro — unlock every quality for less than a coffee per month.`
               : 'Skip the monthly trap. Pay once a year and download in HD, 2K & 4K with sound.'}
@@ -77,7 +77,7 @@ export function ProUpgradePanel({ selectedQuality, inline = false, onDismiss }: 
 
       <div
         className={`relative overflow-hidden rounded-[1.75rem] border border-violet-200/80 bg-white shadow-[0_24px_60px_-24px_rgba(79,70,229,0.35)] ${
-          inline ? 'mt-4' : 'mx-auto mt-8 max-w-lg'
+          inline ? 'mt-4' : 'mt-6 w-full'
         }`}
       >
         {/* Ambient graphics */}
