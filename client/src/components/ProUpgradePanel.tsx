@@ -62,12 +62,12 @@ export function ProUpgradePanel({ selectedQuality, inline = false, onDismiss }: 
       className={inline ? '' : ''}
     >
       {!inline && (
-        <div className="text-center lg:text-left">
+        <div className="text-center">
           <p className="text-sm font-semibold uppercase tracking-[0.2em] text-violet-600">Pro · Yearly only</p>
           <h2 className="pro-pricing-headline mt-2 font-extrabold leading-tight tracking-tight text-slate-900">
             One tiny price. <span className="gradient-text">A full year</span> of Pro.
           </h2>
-          <p className="mt-3 text-slate-600 lg:max-w-none">
+          <p className="mx-auto mt-3 max-w-2xl text-slate-600">
             {selectedQuality
               ? `${selectedQuality} needs Pro — unlock every quality for less than a coffee per month.`
               : 'Skip the monthly trap. Pay once a year and download in HD, 2K & 4K with sound.'}

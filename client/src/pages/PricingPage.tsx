@@ -66,12 +66,10 @@ export function PricingPage({ theme, onToggleTheme }: Props) {
         ) : (
           <>
             <PricingHero />
-            <div className="mt-10 grid items-start gap-8 lg:grid-cols-2 lg:gap-10">
+            <div className="mt-10 space-y-10">
               <PlanComparisonTable />
-              <div className="space-y-8">
-                <ProUpgradePanel />
-                <RestoreProPanel onRestored={(lic) => setLic(lic)} />
-              </div>
+              <ProUpgradePanel />
+              <RestoreProPanel onRestored={(lic) => setLic(lic)} />
             </div>
             <Faq items={PRICING_FAQ} />
           </>
