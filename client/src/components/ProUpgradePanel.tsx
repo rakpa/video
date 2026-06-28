@@ -136,8 +136,6 @@ export function ProUpgradePanel({ selectedQuality, inline = false, onDismiss }: 
               <p className="mt-1 text-sm font-medium text-violet-100">
                 That&apos;s only <span className="font-bold text-white">${perMonth}/mo</span> — billed once yearly
               </p>
-
-              <YearCalendarGraphic className="mt-4" />
             </div>
           </div>
 
@@ -277,29 +275,6 @@ function FloatingBadge({ label, className, tone = 'violet' }: { label: string; c
       aria-hidden="true"
     >
       {label}
-    </div>
-  );
-}
-
-/** 12-month strip — visual “full year” anchor. */
-function YearCalendarGraphic({ className }: { className?: string }) {
-  const months = ['J', 'F', 'M', 'A', 'M', 'J', 'J', 'A', 'S', 'O', 'N', 'D'];
-  return (
-    <div className={className}>
-      <p className="mb-2 text-[10px] font-bold uppercase tracking-[0.2em] text-violet-200">12 months included</p>
-      <div className="flex flex-wrap justify-center gap-1">
-        {months.map((m, i) => (
-          <motion.span
-            key={`${m}-${i}`}
-            initial={{ opacity: 0, scale: 0.6 }}
-            animate={{ opacity: 1, scale: 1 }}
-            transition={{ delay: 0.2 + i * 0.03 }}
-            className="grid h-7 w-7 place-items-center rounded-lg bg-white/15 text-[10px] font-bold text-white ring-1 ring-white/25 backdrop-blur-sm"
-          >
-            {m}
-          </motion.span>
-        ))}
-      </div>
     </div>
   );
 }
