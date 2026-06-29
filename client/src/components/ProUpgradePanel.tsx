@@ -59,7 +59,7 @@ export function ProUpgradePanel({ selectedQuality, inline = false, onDismiss }: 
       initial={inline ? { opacity: 0, y: 12 } : false}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.35 }}
-      className={inline ? '' : ''}
+      className={inline ? '' : 'mx-auto max-w-lg'}
     >
       {!inline && (
         <div className="text-center">
@@ -77,7 +77,7 @@ export function ProUpgradePanel({ selectedQuality, inline = false, onDismiss }: 
 
       <div
         className={`relative overflow-hidden rounded-[1.75rem] border border-violet-200/80 bg-white shadow-[0_24px_60px_-24px_rgba(79,70,229,0.35)] ${
-          inline ? 'mt-4' : 'mt-6 w-full'
+          inline ? 'mt-4' : 'mt-6'
         }`}
       >
         {/* Ambient graphics */}
@@ -170,28 +170,34 @@ export function ProUpgradePanel({ selectedQuality, inline = false, onDismiss }: 
             </p>
           )}
 
-          <motion.button
-            type="button"
-            onClick={startCheckout}
-            disabled={busy || !agree || (cfg ? !cfg.enabled : false)}
-            whileHover={{ scale: busy ? 1 : 1.02 }}
-            whileTap={{ scale: 0.98 }}
-            className="btn-gradient relative mt-5 flex w-full items-center justify-center gap-2 overflow-hidden rounded-2xl px-8 py-4 text-lg font-bold text-white shadow-glow transition-shadow hover:shadow-[0_0_40px_rgba(124,58,237,0.45)] disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            {busy ? (
-              <>
-                <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/40 border-t-white" />
-                Redirecting to checkout…
-              </>
-            ) : (
-              <>
-                <svg viewBox="0 0 24 24" className="h-5 w-5" fill="currentColor" aria-hidden="true">
-                  <path d="m12 2 2.4 7.4H22l-6 4.4 2.3 7.2-6.3-4.6L5.7 21 8 13.8 2 9.4h7.6L12 2Z" />
-                </svg>
-                Yes — {formatYearlyPrice(yearlyCents)} for the full year
-              </>
-            )}
-          </motion.button>
+          <div className={inline ? undefined : 'flex justify-center'}>
+            <motion.button
+              type="button"
+              onClick={startCheckout}
+              disabled={busy || !agree || (cfg ? !cfg.enabled : false)}
+              whileHover={{ scale: busy ? 1 : 1.02 }}
+              whileTap={{ scale: 0.98 }}
+              className={`btn-gradient relative mt-5 flex items-center justify-center gap-2 overflow-hidden font-bold text-white shadow-glow transition-shadow hover:shadow-[0_0_40px_rgba(124,58,237,0.45)] disabled:cursor-not-allowed disabled:opacity-60 ${
+                inline
+                  ? 'w-full rounded-2xl px-8 py-4 text-lg'
+                  : 'rounded-full px-7 py-3 text-base'
+              }`}
+            >
+              {busy ? (
+                <>
+                  <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/40 border-t-white" />
+                  Redirecting to checkout…
+                </>
+              ) : (
+                <>
+                  <svg viewBox="0 0 24 24" className="h-5 w-5" fill="currentColor" aria-hidden="true">
+                    <path d="m12 2 2.4 7.4H22l-6 4.4 2.3 7.2-6.3-4.6L5.7 21 8 13.8 2 9.4h7.6L12 2Z" />
+                  </svg>
+                  Yes — {formatYearlyPrice(yearlyCents)} for the full year
+                </>
+              )}
+            </motion.button>
+          </div>
 
           <p className="mt-2 text-center text-xs text-slate-400">One payment · 12 months · no hidden fees</p>
 
