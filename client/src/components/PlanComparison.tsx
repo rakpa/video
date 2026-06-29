@@ -82,8 +82,8 @@ export function PricingHero() {
         <span className="gradient-text">$19.99/year</span> — serious quality, fair price
       </h1>
       <p className="mx-auto mt-3 max-w-2xl text-base text-slate-600 sm:text-lg">
-        Lightning-fast URL loading and downloads — paste a link and save in seconds. Start free at 1080p; one yearly
-        payment unlocks 2K, 4K &amp; MP3 for about $1.67 a month.
+        Paste a URL — your thumbnail loads in a flash. Pick a quality, hit download, and save straight to your gallery.
+        Start free at 1080p; one yearly payment unlocks 2K, 4K &amp; MP3 for about $1.67 a month.
       </p>
     </motion.div>
   );
