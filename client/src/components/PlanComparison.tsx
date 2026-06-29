@@ -1,5 +1,8 @@
+import { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
+import { ApiError, createCheckout, fetchBillingConfig, type BillingConfig } from '../api/client';
 import { navigate } from '../hooks/useRoute';
+import { PaymentBadges } from './PaymentBadges';
 
 interface Feature {
   label: string;
@@ -98,8 +101,38 @@ export function PlanComparisonTable() {
         </div>
       </div>
 
-      {/* Pro column */}
-      <div className="relative flex flex-col overflow-hidden rounded-3xl border border-violet-200/80 bg-gradient-to-b from-indigo-600 via-violet-600 to-purple-700 text-white shadow-[0_24px_60px_-24px_rgba(79,70,229,0.45)]">
+      <ProPlanColumn />
+    </div>
+  );
+}
+
+function ProPlanColumn() {
+  const [cfg, setCfg] = useState<BillingConfig | null>(null);
+  const [agree, setAgree] = useState(true);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    fetchBillingConfig().then(setCfg).catch(() => setError('Could not load pricing.'));
+  }, []);
+
+  const yearlyCents = cfg?.plans.yearly.cents ?? 1999;
+  const yearlyPrice = `$${(yearlyCents / 100).toFixed(2)}`;
+
+  const startCheckout = async () => {
+    setError(null);
+    setBusy(true);
+    try {
+      const url = await createCheckout('yearly');
+      window.location.href = url;
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : 'Could not start checkout.');
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="relative flex flex-col overflow-hidden rounded-3xl border border-violet-200/80 bg-gradient-to-b from-indigo-600 via-violet-600 to-purple-700 text-white shadow-[0_24px_60px_-24px_rgba(79,70,229,0.45)]">
         <div className="pointer-events-none absolute -right-10 -top-10 h-40 w-40 rounded-full bg-white/10 blur-3xl" aria-hidden="true" />
         <div className="relative border-b border-white/15 px-5 py-5 sm:px-6">
           <div className="flex items-center gap-2">
@@ -109,9 +142,9 @@ export function PlanComparisonTable() {
             </span>
           </div>
           <p className="mt-1 text-3xl font-black tracking-tight">
-            $19.99<span className="text-lg font-bold text-violet-200">/year</span>
+            {yearlyPrice}<span className="text-lg font-bold text-violet-200">/year</span>
           </p>
-          <p className="mt-1 text-sm text-violet-100">Only $1.67/mo — billed once yearly</p>
+          <p className="mt-1 text-sm text-violet-100">Only ${(yearlyCents / 12 / 100).toFixed(2)}/mo — billed once yearly</p>
         </div>
         <ul className="relative flex flex-1 flex-col gap-3 px-5 py-5 sm:px-6">
           {FEATURES.map((f) => (
@@ -125,17 +158,54 @@ export function PlanComparisonTable() {
             <span className="text-sm font-medium text-violet-100">365 days access · cancel anytime</span>
           </li>
         </ul>
-        <div className="relative border-t border-white/15 px-5 py-4 sm:px-6">
+        <div className="relative space-y-3 border-t border-white/15 px-5 py-4 sm:px-6">
           <button
             type="button"
-            onClick={() => document.getElementById('pro-checkout')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
-            className="w-full rounded-2xl border border-white/40 bg-white px-4 py-3 text-sm font-semibold text-violet-700 transition hover:border-white hover:bg-violet-50"
+            onClick={startCheckout}
+            disabled={busy || !agree || (cfg ? !cfg.enabled : false)}
+            className="flex w-full items-center justify-center gap-2 rounded-2xl border border-white/40 bg-white px-4 py-3 text-sm font-semibold text-violet-700 transition hover:border-white hover:bg-violet-50 disabled:cursor-not-allowed disabled:opacity-60"
           >
-            Buy Pro — $19.99/year
+            {busy ? (
+              <>
+                <span className="h-4 w-4 animate-spin rounded-full border-2 border-violet-300 border-t-violet-700" />
+                Redirecting to checkout…
+              </>
+            ) : (
+              <>Buy Pro — {yearlyPrice}/year</>
+            )}
           </button>
+
+          <p className="text-center text-xs text-violet-200">One payment · 12 months · no hidden fees</p>
+
+          {error && (
+            <p className="rounded-xl border border-rose-200/50 bg-rose-50/95 p-2.5 text-center text-xs text-rose-700">{error}</p>
+          )}
+
+          <div className="rounded-2xl bg-white/95 px-3 py-4 sm:px-4">
+            <PaymentBadges />
+
+            <label className="mt-3 flex items-start gap-2 text-xs text-slate-500">
+              <input
+                type="checkbox"
+                checked={agree}
+                onChange={(e) => setAgree(e.target.checked)}
+                className="mt-0.5 accent-accent"
+              />
+              <span>
+                I agree to the{' '}
+                <button type="button" onClick={() => navigate('/terms')} className="font-medium text-indigo-600 hover:underline">
+                  Terms of Service
+                </button>{' '}
+                and{' '}
+                <button type="button" onClick={() => navigate('/refunds')} className="font-medium text-indigo-600 hover:underline">
+                  Refund Policy
+                </button>
+                . Prices exclude VAT where applicable.
+              </span>
+            </label>
+          </div>
         </div>
       </div>
-    </div>
   );
 }
 
