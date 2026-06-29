@@ -30,6 +30,10 @@ services:
         value: 30
       - key: MAX_DURATION_MINUTES
         value: 180
+      - key: FREE_MAX_HEIGHT
+        value: '720'
+      - key: ADMIN_EMAILS
+        value: rakpa8@gmail.com
       - key: LICENSE_SECRET
         generateValue: true
       # YouTube blocks datacenter IPs ("Sign in to confirm you're not a bot").

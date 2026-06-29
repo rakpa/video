@@ -1,12 +1,14 @@
 export type PlanId = 'hd' | '2k' | '4k' | 'yearly' | 'monthly' | 'lifetime';
 
+export const FREE_TIER_MAX_HEIGHT = 720;
+
 const ADMIN_EMAILS = ['rakpa8@gmail.com'];
 
 export function planLabel(plan: PlanId | string): string {
   if (plan === 'hd') return 'HD';
   if (plan === '2k') return '2K';
   if (plan === '4k') return '4K';
-  if (plan === 'yearly') return '4K';
+  if (plan === 'yearly') return '2K';
   if (plan === 'monthly') return '2K';
   if (plan === 'lifetime') return 'Lifetime';
   return 'Pro';
@@ -15,8 +17,9 @@ export function planLabel(plan: PlanId | string): string {
 export function maxHeightForPlan(plan: PlanId | string): number {
   if (plan === 'hd') return 1080;
   if (plan === '2k' || plan === 'monthly') return 1440;
-  if (plan === '4k' || plan === 'yearly' || plan === 'lifetime') return 2160;
-  return 720;
+  if (plan === '4k') return 2160;
+  if (plan === 'yearly' || plan === 'lifetime') return 1440;
+  return FREE_TIER_MAX_HEIGHT;
 }
 
 export function isAdminEmail(email: string | undefined | null): boolean {

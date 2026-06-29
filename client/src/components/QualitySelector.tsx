@@ -46,7 +46,7 @@ export function QualitySelector({ formats, selected, onSelect, mode, onModeChang
   );
 
   const pickDefault = (list: AvailableFormat[]): QualityId =>
-    (list.find((f) => f.id === '1080' && f.available) ?? list.find((f) => f.available) ?? list[0]).id;
+    (list.find((f) => f.id === '720' && f.available) ?? list.find((f) => f.available && f.height <= maxHeight) ?? list[0]).id;
 
   const handleModeChange = (next: CodecMode) => {
     onModeChange(next);

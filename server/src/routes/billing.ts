@@ -2,7 +2,7 @@ import { Router } from 'express';
 import Stripe from 'stripe';
 import { config } from '../config.js';
 import { readJsonBody } from '../utils/body.js';
-import { isAdminEmail, signLicense, type PaidPlan, type Plan } from '../services/license.js';
+import { isAdminEmail, signLicense, FREE_TIER_MAX_HEIGHT, type PaidPlan, type Plan } from '../services/license.js';
 import { lookupProEntitlement, planFromStripeSubscription } from '../services/stripeRestore.js';
 import { logger } from '../utils/logger.js';
 
@@ -53,7 +53,7 @@ billingRouter.get('/billing/config', (_req, res) => {
       '2k': { cents: config.price2kYearlyCents, label: '2K', interval: 'year', maxHeight: 1440 },
       '4k': { cents: config.price4kYearlyCents, label: '4K', interval: 'year', maxHeight: 2160 },
     },
-    freeMaxHeight: config.freeMaxHeight,
+    freeMaxHeight: FREE_TIER_MAX_HEIGHT,
   });
 });
 

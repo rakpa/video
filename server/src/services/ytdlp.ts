@@ -2,6 +2,7 @@ import { spawn } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { config, currentProxy, rotateProxy } from '../config.js';
+import { FREE_TIER_MAX_HEIGHT } from './license.js';
 import { saveInfoJson, getFreshInfoJson, invalidateInfoJson } from './infoJsonCache.js';
 import { getCookiesStatus, getUsableCookiesPath } from '../utils/cookies.js';
 import { QUALITIES, buildSelector, type CodecMode, type QualityDef, type QualityId } from './formats.js';
@@ -360,7 +361,7 @@ function parseInfoDump(stdout: string): VideoInfo {
     height: q.height,
     estimatedBytes: estimateSize(raw, q.height, duration),
     available: maxHeight === 0 ? true : maxHeight >= q.height,
-    premium: q.height > config.freeMaxHeight,
+    premium: q.height > FREE_TIER_MAX_HEIGHT,
   }));
 
   return {

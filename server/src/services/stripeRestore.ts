@@ -14,7 +14,7 @@ const MAX_SESSION_PAGES = 5;
 export function planFromStripeSubscription(sub: Stripe.Subscription): Plan {
   const meta = sub.metadata?.vidcliply_plan;
   if (meta === 'hd' || meta === '2k' || meta === '4k') return meta;
-  if (meta === 'yearly') return '4k';
+  if (meta === 'yearly') return '2k';
   if (meta === 'monthly') return '2k';
   if (meta === 'lifetime') return 'lifetime';
 

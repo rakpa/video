@@ -2,7 +2,9 @@
  * Client-side Pro license storage. The signed token comes from the backend
  * after a successful Stripe checkout and is sent with premium download requests.
  */
-import { isAdminEmail, maxHeightForPlan, type PlanId } from './plan';
+import { isAdminEmail, maxHeightForPlan, type PlanId, FREE_TIER_MAX_HEIGHT } from './plan';
+
+export { FREE_TIER_MAX_HEIGHT };
 
 export interface StoredLicense {
   token: string;
@@ -36,10 +38,10 @@ export function clearLicense(): void {
   localStorage.removeItem(KEY);
 }
 
-/** Max video height the user may download (px). */
-export function maxAllowedHeight(freeMaxHeight = 720): number {
+/** Max video height the user may download (px). Without a license: 720p only. */
+export function maxAllowedHeight(): number {
   const lic = getLicense();
-  if (!lic) return freeMaxHeight;
+  if (!lic) return FREE_TIER_MAX_HEIGHT;
   if (isAdminEmail(lic.email)) return 2160;
   return maxHeightForPlan(lic.plan);
 }

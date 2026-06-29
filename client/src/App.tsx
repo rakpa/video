@@ -9,7 +9,6 @@ import { fetchClientInstagramPreview } from './utils/instagram';
 import { fetchClientYoutubePreview } from './utils/youtube';
 import { preloadThumbnail, warmThumbnailFetch, type PreloadedThumb } from './utils/preloadThumb';
 import { licenseToken, maxAllowedHeight } from './lib/license';
-import { fetchBillingConfig } from './api/client';
 import { useStripeReturn } from './hooks/useStripeReturn';
 import {
   ApiError,
@@ -116,8 +115,7 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
 
   const [selected, setSelected] = useState<QualityId>('1080');
   const [codecMode, setCodecMode] = useState<CodecMode>('best');
-  const [freeMaxHeight, setFreeMaxHeight] = useState(720);
-  const [maxHeight, setMaxHeight] = useState(() => maxAllowedHeight(720));
+  const [maxHeight, setMaxHeight] = useState(() => maxAllowedHeight());
   // True while the slow full /api/info (real sizes/availability) is still loading
   // in the background, after the fast preview has already shown the cards.
   const [refining, setRefining] = useState(false);
@@ -235,22 +233,17 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
   }, []);
 
   const refreshEntitlement = useCallback(() => {
-    setMaxHeight(maxAllowedHeight(freeMaxHeight));
-  }, [freeMaxHeight]);
+    setMaxHeight(maxAllowedHeight());
+  }, []);
 
   useEffect(() => {
-    fetchBillingConfig()
-      .then((c) => {
-        setFreeMaxHeight(c.freeMaxHeight);
-        setMaxHeight(maxAllowedHeight(c.freeMaxHeight));
-      })
-      .catch(() => undefined);
+    setMaxHeight(maxAllowedHeight());
   }, []);
 
   useStripeReturn(useCallback(() => refreshEntitlement(), [refreshEntitlement]));
 
   const pickDefault = (formats: AvailableFormat[]): QualityId =>
-    (formats.find((f) => f.id === '1080' && f.available) ?? formats.find((f) => f.available) ?? formats[0]).id;
+    (formats.find((f) => f.id === '720' && f.available) ?? formats.find((f) => f.available && f.height <= maxHeight) ?? formats[0]).id;
 
   const handleFetch = useCallback(async (target: string) => {
     const normalized = normalizeUrl(target);

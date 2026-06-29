@@ -54,19 +54,22 @@ export function isAdminEmail(email: string | undefined | null): boolean {
   return config.adminEmails.includes(email.trim().toLowerCase());
 }
 
-/** Max video height (px) unlocked by a paid plan. */
+export const FREE_TIER_MAX_HEIGHT = 720;
+
+/** Max video height (px) unlocked by a paid plan. Only admin + 4k plan get full 4K. */
 export function maxHeightForPlan(plan: Plan | string): number {
   if (plan === 'hd') return 1080;
   if (plan === '2k' || plan === 'monthly') return 1440;
-  if (plan === '4k' || plan === 'yearly') return 2160;
-  if (plan === 'lifetime') return 2160;
-  return config.freeMaxHeight;
+  if (plan === '4k') return 2160;
+  // Legacy plans from the old single-tier checkout — cap at 2K, not 4K.
+  if (plan === 'yearly' || plan === 'lifetime') return 1440;
+  return FREE_TIER_MAX_HEIGHT;
 }
 
 /** Highest height the caller may download for the given license token. */
 export function maxAllowedHeight(token: string | undefined | null): number {
   const license = verifyLicense(token);
-  if (!license) return config.freeMaxHeight;
+  if (!license) return FREE_TIER_MAX_HEIGHT;
   if (isAdminEmail(license.email)) return 2160;
   return maxHeightForPlan(license.plan);
 }
@@ -78,8 +81,8 @@ export function isPro(token: string | undefined | null): boolean {
 
 export function tierRank(plan: Plan): number {
   if (plan === 'lifetime') return 100;
-  if (plan === '4k' || plan === 'yearly') return 40;
-  if (plan === '2k' || plan === 'monthly') return 30;
+  if (plan === '4k') return 40;
+  if (plan === '2k' || plan === 'monthly' || plan === 'yearly') return 30;
   if (plan === 'hd') return 20;
   return 0;
 }

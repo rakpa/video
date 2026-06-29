@@ -101,7 +101,7 @@ export const config = {
 
   // --- Monetisation ---
   // Resolutions at or below this height are free without a license (720p default).
-  freeMaxHeight: Number(process.env.FREE_MAX_HEIGHT ?? 720),
+  freeMaxHeight: Number(process.env.FREE_MAX_HEIGHT ?? 720) || 720,
 
   /** Comma-separated emails with unlimited quality access (owner/testing). */
   adminEmails: (process.env.ADMIN_EMAILS ?? 'rakpa8@gmail.com')
