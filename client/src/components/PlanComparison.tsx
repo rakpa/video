@@ -74,7 +74,7 @@ export function PricingHero() {
 /** Free vs Pro — two plan columns with feature lists. */
 export function PlanComparisonTable() {
   return (
-    <div className="grid gap-4 sm:grid-cols-2 sm:gap-5">
+    <div className="grid items-start gap-4 sm:grid-cols-2 sm:gap-5">
       {/* Free column */}
       <div className="glass flex flex-col overflow-hidden rounded-3xl shadow-card">
         <div className="border-b border-slate-200 px-5 py-5 sm:px-6">
@@ -82,7 +82,7 @@ export function PlanComparisonTable() {
           <p className="mt-1 text-3xl font-black tracking-tight text-slate-900">$0</p>
           <p className="mt-1 text-sm text-slate-500">Forever — no card needed</p>
         </div>
-        <ul className="flex flex-1 flex-col gap-3 px-5 py-5 sm:px-6">
+        <ul className="flex flex-col gap-3 px-5 py-5 sm:px-6">
           {FEATURES.map((f) => (
             <li key={f.label} className="flex items-start gap-2.5">
               <FeatureIcon included={f.free} />
@@ -146,7 +146,7 @@ function ProPlanColumn() {
           </p>
           <p className="mt-1 text-sm text-violet-100">Only ${(yearlyCents / 12 / 100).toFixed(2)}/mo — billed once yearly</p>
         </div>
-        <ul className="relative flex flex-1 flex-col gap-3 px-5 py-5 sm:px-6">
+        <ul className="relative flex flex-col gap-3 px-5 py-5 sm:px-6">
           {FEATURES.map((f) => (
             <li key={f.label} className="flex items-start gap-2.5">
               <FeatureIcon included={f.pro} highlight />
