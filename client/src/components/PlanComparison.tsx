@@ -1,5 +1,5 @@
-import { useEffect, useState, type ReactNode } from 'react';
-import { motion } from 'framer-motion';
+import { useEffect, useState } from 'react';
+import { AnimatePresence, motion } from 'framer-motion';
 import { ApiError, createCheckout, fetchBillingConfig, type BillingConfig } from '../api/client';
 import { navigate } from '../hooks/useRoute';
 import { PaymentBadges } from './PaymentBadges';
@@ -73,20 +73,14 @@ function ExtraProFeatureRow({ highlight = false, hidden = false }: { highlight?:
 function CheckoutTrustBlock({
   agree,
   onAgreeChange,
-  hidden = false,
-  tone = 'pro',
 }: {
   agree: boolean;
   onAgreeChange: (value: boolean) => void;
-  hidden?: boolean;
-  tone?: 'free' | 'pro';
 }) {
-  const subtextClass = tone === 'pro' ? 'text-violet-200' : 'text-slate-400';
-
   return (
-    <div className={hidden ? 'pointer-events-none invisible mt-3' : 'mt-3'} aria-hidden={hidden}>
-      <p className={`text-center text-xs ${subtextClass}`}>One payment · 12 months · no hidden fees</p>
-      <div className="mt-3 rounded-2xl bg-white/95 px-3 py-4 sm:px-4">
+    <div className="w-full">
+      <p className="text-center text-xs text-violet-200">One payment · 12 months · no hidden fees</p>
+      <div className="mt-3 w-full rounded-2xl bg-white px-4 py-4">
         <PaymentBadges />
         <label className="mt-3 flex items-start gap-2 text-xs text-slate-500">
           <input
@@ -94,7 +88,6 @@ function CheckoutTrustBlock({
             checked={agree}
             onChange={(e) => onAgreeChange(e.target.checked)}
             className="mt-0.5 accent-accent"
-            tabIndex={hidden ? -1 : 0}
           />
           <span>
             I agree to the{' '}
@@ -109,34 +102,6 @@ function CheckoutTrustBlock({
           </span>
         </label>
       </div>
-    </div>
-  );
-}
-
-function PlanCtaFooter({
-  tone,
-  error,
-  button,
-  agree,
-  onAgreeChange,
-  hideTrust = false,
-}: {
-  tone: 'free' | 'pro';
-  error?: string | null;
-  button: ReactNode;
-  agree: boolean;
-  onAgreeChange: (value: boolean) => void;
-  hideTrust?: boolean;
-}) {
-  const borderClass = tone === 'pro' ? 'border-white/15' : 'border-slate-200';
-
-  return (
-    <div className={`mt-auto shrink-0 border-t ${borderClass} px-5 py-4 sm:px-6`}>
-      {error && (
-        <p className="mb-3 rounded-xl border border-rose-200/50 bg-rose-50/95 p-2.5 text-center text-xs text-rose-700">{error}</p>
-      )}
-      {button}
-      <CheckoutTrustBlock agree={agree} onAgreeChange={onAgreeChange} hidden={hideTrust} tone={tone} />
     </div>
   );
 }
@@ -171,8 +136,6 @@ export function PlanComparisonTable() {
 }
 
 function FreePlanColumn() {
-  const [agree, setAgree] = useState(true);
-
   return (
     <div className="flex min-w-0 flex-1">
       <div className="glass flex h-full w-full flex-col overflow-hidden rounded-3xl shadow-card">
@@ -182,7 +145,7 @@ function FreePlanColumn() {
           <p className="mt-1 text-sm text-slate-500">Forever — no card needed</p>
         </div>
 
-        <ul className="shrink-0 flex flex-col gap-3 px-5 py-5 sm:px-6">
+        <ul className="flex shrink-0 flex-col gap-3 px-5 py-5 sm:px-6">
           {FEATURES.map((f) => (
             <li key={f.label} className="flex items-start gap-2.5">
               <FeatureIcon included={f.free} />
@@ -192,21 +155,15 @@ function FreePlanColumn() {
           <ExtraProFeatureRow hidden />
         </ul>
 
-        <PlanCtaFooter
-          tone="free"
-          agree={agree}
-          onAgreeChange={setAgree}
-          hideTrust
-          button={
-            <button
-              type="button"
-              onClick={() => navigate('/')}
-              className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700 transition hover:border-slate-300 hover:bg-slate-50"
-            >
-              Start downloading free
-            </button>
-          }
-        />
+        <div className="mt-auto shrink-0 border-t border-slate-200 px-5 py-4 sm:px-6">
+          <button
+            type="button"
+            onClick={() => navigate('/')}
+            className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700 transition hover:border-slate-300 hover:bg-slate-50"
+          >
+            Start downloading free
+          </button>
+        </div>
       </div>
     </div>
   );
@@ -214,7 +171,8 @@ function FreePlanColumn() {
 
 function ProPlanColumn() {
   const [cfg, setCfg] = useState<BillingConfig | null>(null);
-  const [agree, setAgree] = useState(true);
+  const [agree, setAgree] = useState(false);
+  const [paymentStarted, setPaymentStarted] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -237,6 +195,15 @@ function ProPlanColumn() {
     }
   };
 
+  const handleBuyClick = () => {
+    if (!paymentStarted) {
+      setPaymentStarted(true);
+      return;
+    }
+    if (!agree || busy || (cfg && !cfg.enabled)) return;
+    void startCheckout();
+  };
+
   return (
     <div className="flex min-w-0 flex-1">
       <div className="relative flex h-full w-full flex-col overflow-hidden rounded-3xl border border-violet-200/80 bg-gradient-to-b from-indigo-600 via-violet-600 to-purple-700 text-white shadow-[0_24px_60px_-24px_rgba(79,70,229,0.45)]">
@@ -254,7 +221,7 @@ function ProPlanColumn() {
           <p className="mt-1 text-sm text-violet-100">Only ${(yearlyCents / 12 / 100).toFixed(2)}/mo — billed once yearly</p>
         </div>
 
-        <ul className="relative shrink-0 flex flex-col gap-3 px-5 py-5 sm:px-6">
+        <ul className="relative flex shrink-0 flex-col gap-3 px-5 py-5 sm:px-6">
           {FEATURES.map((f) => (
             <li key={f.label} className="flex items-start gap-2.5">
               <FeatureIcon included={f.pro} highlight />
@@ -264,29 +231,43 @@ function ProPlanColumn() {
           <ExtraProFeatureRow highlight />
         </ul>
 
-        <PlanCtaFooter
-          tone="pro"
-          error={error}
-          agree={agree}
-          onAgreeChange={setAgree}
-          button={
-            <button
-              type="button"
-              onClick={startCheckout}
-              disabled={busy || !agree || (cfg ? !cfg.enabled : false)}
-              className="flex w-full items-center justify-center gap-2 rounded-2xl border border-white/40 bg-white px-4 py-3 text-sm font-semibold text-violet-700 transition hover:border-white hover:bg-violet-50 disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              {busy ? (
-                <>
-                  <span className="h-4 w-4 animate-spin rounded-full border-2 border-violet-300 border-t-violet-700" />
-                  Redirecting to checkout…
-                </>
-              ) : (
-                <>Buy Pro — {yearlyPrice}/year</>
-              )}
-            </button>
-          }
-        />
+        <div className="mt-auto shrink-0 border-t border-white/15 px-5 py-4 sm:px-6">
+          {error && (
+            <p className="mb-3 rounded-xl border border-rose-200/50 bg-rose-50/95 p-2.5 text-center text-xs text-rose-700">{error}</p>
+          )}
+
+          <AnimatePresence>
+            {paymentStarted && (
+              <motion.div
+                initial={{ opacity: 0, height: 0 }}
+                animate={{ opacity: 1, height: 'auto' }}
+                exit={{ opacity: 0, height: 0 }}
+                transition={{ duration: 0.25 }}
+                className="mb-3 overflow-hidden"
+              >
+                <CheckoutTrustBlock agree={agree} onAgreeChange={setAgree} />
+              </motion.div>
+            )}
+          </AnimatePresence>
+
+          <button
+            type="button"
+            onClick={handleBuyClick}
+            disabled={busy || (paymentStarted && !agree) || (cfg ? !cfg.enabled : false)}
+            className="flex w-full items-center justify-center gap-2 rounded-2xl border border-white/40 bg-white px-4 py-3 text-sm font-semibold text-violet-700 transition hover:border-white hover:bg-violet-50 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {busy ? (
+              <>
+                <span className="h-4 w-4 animate-spin rounded-full border-2 border-violet-300 border-t-violet-700" />
+                Redirecting to checkout…
+              </>
+            ) : paymentStarted ? (
+              <>Continue to secure checkout</>
+            ) : (
+              <>Buy Pro — {yearlyPrice}/year</>
+            )}
+          </button>
+        </div>
       </div>
     </div>
   );

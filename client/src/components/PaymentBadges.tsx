@@ -3,9 +3,9 @@
  * "VISA / MC / AMEX" boxes, which read as placeholders and eroded trust on the
  * checkout panel.
  */
-export function PaymentBadges() {
+export function PaymentBadges({ className = '' }: { className?: string }) {
   return (
-    <div className="mt-5 flex flex-col items-center gap-3">
+    <div className={`flex flex-col items-center gap-3 ${className}`}>
       <div className="flex items-center gap-2">
         <CardChip label="Visa">
           <span className="font-extrabold italic tracking-tight text-[#1a1f71]">VISA</span>
