@@ -126,7 +126,13 @@ export function PlanComparisonTable() {
           </li>
         </ul>
         <div className="relative border-t border-white/15 px-5 py-4 sm:px-6">
-          <p className="text-center text-xs text-violet-200">Scroll down to upgrade — one payment, no hidden fees</p>
+          <button
+            type="button"
+            onClick={() => document.getElementById('pro-checkout')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
+            className="w-full rounded-2xl border border-white/40 bg-white px-4 py-3 text-sm font-semibold text-violet-700 transition hover:border-white hover:bg-violet-50"
+          >
+            Buy Pro — $19.99/year
+          </button>
         </div>
       </div>
     </div>

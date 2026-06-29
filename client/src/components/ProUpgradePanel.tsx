@@ -56,6 +56,7 @@ export function ProUpgradePanel({ selectedQuality, inline = false, onDismiss }: 
 
   return (
     <motion.div
+      id={inline ? undefined : 'pro-checkout'}
       initial={inline ? { opacity: 0, y: 12 } : false}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.35 }}
