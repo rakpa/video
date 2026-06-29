@@ -2,7 +2,6 @@ import { useCallback, useState } from 'react';
 import { navigate } from '../hooks/useRoute';
 import { clearLicense, getLicense, type StoredLicense } from '../lib/license';
 import { useStripeReturn } from '../hooks/useStripeReturn';
-import { ProUpgradePanel } from '../components/ProUpgradePanel';
 import { RestoreProPanel } from '../components/RestoreProPanel';
 import { Confetti } from '../components/Confetti';
 import { SiteHeader } from '../components/SiteHeader';
@@ -68,7 +67,6 @@ export function PricingPage({ theme, onToggleTheme }: Props) {
             <PricingHero />
             <div className="mt-10 space-y-10">
               <PlanComparisonTable />
-              <ProUpgradePanel />
               <RestoreProPanel onRestored={(lic) => setLic(lic)} />
             </div>
             <Faq items={PRICING_FAQ} />

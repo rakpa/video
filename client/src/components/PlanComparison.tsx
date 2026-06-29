@@ -1,8 +1,7 @@
 import { useEffect, useState } from 'react';
-import { AnimatePresence, motion } from 'framer-motion';
+import { motion } from 'framer-motion';
 import { ApiError, createCheckout, fetchBillingConfig, type BillingConfig } from '../api/client';
 import { navigate } from '../hooks/useRoute';
-import { PaymentBadges } from './PaymentBadges';
 
 interface Feature {
   label: string;
@@ -67,42 +66,6 @@ function ExtraProFeatureRow({ highlight = false, hidden = false }: { highlight?:
         {EXTRA_PRO_FEATURE}
       </span>
     </li>
-  );
-}
-
-function CheckoutTrustBlock({
-  agree,
-  onAgreeChange,
-}: {
-  agree: boolean;
-  onAgreeChange: (value: boolean) => void;
-}) {
-  return (
-    <div className="w-full">
-      <p className="text-center text-xs text-violet-200">One payment · 12 months · no hidden fees</p>
-      <div className="mt-3 w-full rounded-2xl bg-white px-4 py-4">
-        <PaymentBadges />
-        <label className="mt-3 flex items-start gap-2 text-xs text-slate-500">
-          <input
-            type="checkbox"
-            checked={agree}
-            onChange={(e) => onAgreeChange(e.target.checked)}
-            className="mt-0.5 accent-accent"
-          />
-          <span>
-            I agree to the{' '}
-            <button type="button" onClick={() => navigate('/terms')} className="font-medium text-indigo-600 hover:underline">
-              Terms of Service
-            </button>{' '}
-            and{' '}
-            <button type="button" onClick={() => navigate('/refunds')} className="font-medium text-indigo-600 hover:underline">
-              Refund Policy
-            </button>
-            . Prices exclude VAT where applicable.
-          </span>
-        </label>
-      </div>
-    </div>
   );
 }
 
@@ -171,8 +134,6 @@ function FreePlanColumn() {
 
 function ProPlanColumn() {
   const [cfg, setCfg] = useState<BillingConfig | null>(null);
-  const [agree, setAgree] = useState(false);
-  const [paymentStarted, setPaymentStarted] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -193,15 +154,6 @@ function ProPlanColumn() {
       setError(e instanceof ApiError ? e.message : 'Could not start checkout.');
       setBusy(false);
     }
-  };
-
-  const handleBuyClick = () => {
-    if (!paymentStarted) {
-      setPaymentStarted(true);
-      return;
-    }
-    if (!agree || busy || (cfg && !cfg.enabled)) return;
-    void startCheckout();
   };
 
   return (
@@ -236,24 +188,10 @@ function ProPlanColumn() {
             <p className="mb-3 rounded-xl border border-rose-200/50 bg-rose-50/95 p-2.5 text-center text-xs text-rose-700">{error}</p>
           )}
 
-          <AnimatePresence>
-            {paymentStarted && (
-              <motion.div
-                initial={{ opacity: 0, height: 0 }}
-                animate={{ opacity: 1, height: 'auto' }}
-                exit={{ opacity: 0, height: 0 }}
-                transition={{ duration: 0.25 }}
-                className="mb-3 overflow-hidden"
-              >
-                <CheckoutTrustBlock agree={agree} onAgreeChange={setAgree} />
-              </motion.div>
-            )}
-          </AnimatePresence>
-
           <button
             type="button"
-            onClick={handleBuyClick}
-            disabled={busy || (paymentStarted && !agree) || (cfg ? !cfg.enabled : false)}
+            onClick={() => void startCheckout()}
+            disabled={busy || (cfg ? !cfg.enabled : false)}
             className="flex w-full items-center justify-center gap-2 rounded-2xl border border-white/40 bg-white px-4 py-3 text-sm font-semibold text-violet-700 transition hover:border-white hover:bg-violet-50 disabled:cursor-not-allowed disabled:opacity-60"
           >
             {busy ? (
@@ -261,12 +199,14 @@ function ProPlanColumn() {
                 <span className="h-4 w-4 animate-spin rounded-full border-2 border-violet-300 border-t-violet-700" />
                 Redirecting to checkout…
               </>
-            ) : paymentStarted ? (
-              <>Continue to secure checkout</>
             ) : (
               <>Buy Pro — {yearlyPrice}/year</>
             )}
           </button>
+
+          <p className="mt-2 text-center text-xs text-violet-200">
+            One payment · 12 months · secured by Stripe
+          </p>
         </div>
       </div>
     </div>
