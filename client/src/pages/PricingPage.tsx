@@ -15,8 +15,8 @@ import type { Theme } from '../hooks/useTheme';
 
 const PRICING_FAQ = [
   {
-    q: 'What’s the difference between Free and Pro?',
-    a: 'Free downloads go up to 1080p with sound. Pro unlocks 2K and 4K, MP3 audio extraction, unlimited downloads, and priority processing.',
+    q: 'What’s the difference between Free and paid plans?',
+    a: 'Free downloads go up to 720p with sound. HD ($10/year) unlocks 1080p, 2K ($19.99/year) unlocks 1440p, and 4K ($29.99/year) unlocks the highest quality plus MP3 extraction and priority processing.',
   },
   {
     q: 'Can I cancel anytime?',
@@ -57,9 +57,9 @@ export function PricingPage({ theme, onToggleTheme }: Props) {
 
   return (
     <div className="app-bg min-h-screen text-slate-600">
-      <SiteHeader theme={theme} onToggleTheme={onToggleTheme} maxWidth="max-w-5xl" />
+      <SiteHeader theme={theme} onToggleTheme={onToggleTheme} maxWidth="max-w-6xl" />
 
-      <main className="mx-auto max-w-5xl px-5 pb-20">
+      <main className="mx-auto max-w-6xl px-5 pb-20">
         {license ? (
           <ProStatus license={license} justUpgraded={justUpgraded} onSignOut={() => { clearLicense(); setLic(null); }} />
         ) : (
@@ -114,7 +114,7 @@ function ProStatus({
       </p>
 
       <p className="mt-5 text-xs text-slate-400">
-        {license.plan === 'yearly' || license.plan === 'monthly'
+        {['hd', '2k', '4k', 'yearly', 'monthly'].includes(license.plan)
           ? 'Need to update billing or cancel? '
           : 'Questions about your purchase? '}
         <a href={`mailto:${COMPANY.contactEmail}`} className="font-medium text-indigo-600 transition hover:text-indigo-700 hover:underline">

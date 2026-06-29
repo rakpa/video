@@ -8,7 +8,8 @@ import { PLACEHOLDER_FORMATS } from './utils/formats';
 import { fetchClientInstagramPreview } from './utils/instagram';
 import { fetchClientYoutubePreview } from './utils/youtube';
 import { preloadThumbnail, warmThumbnailFetch, type PreloadedThumb } from './utils/preloadThumb';
-import { isPro, licenseToken } from './lib/license';
+import { licenseToken, maxAllowedHeight } from './lib/license';
+import { fetchBillingConfig } from './api/client';
 import { useStripeReturn } from './hooks/useStripeReturn';
 import {
   ApiError,
@@ -115,7 +116,8 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
 
   const [selected, setSelected] = useState<QualityId>('1080');
   const [codecMode, setCodecMode] = useState<CodecMode>('best');
-  const [pro, setPro] = useState(isPro);
+  const [freeMaxHeight, setFreeMaxHeight] = useState(720);
+  const [maxHeight, setMaxHeight] = useState(() => maxAllowedHeight(720));
   // True while the slow full /api/info (real sizes/availability) is still loading
   // in the background, after the fast preview has already shown the cards.
   const [refining, setRefining] = useState(false);
@@ -232,7 +234,20 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }, []);
 
-  useStripeReturn(useCallback(() => setPro(true), []));
+  const refreshEntitlement = useCallback(() => {
+    setMaxHeight(maxAllowedHeight(freeMaxHeight));
+  }, [freeMaxHeight]);
+
+  useEffect(() => {
+    fetchBillingConfig()
+      .then((c) => {
+        setFreeMaxHeight(c.freeMaxHeight);
+        setMaxHeight(maxAllowedHeight(c.freeMaxHeight));
+      })
+      .catch(() => undefined);
+  }, []);
+
+  useStripeReturn(useCallback(() => refreshEntitlement(), [refreshEntitlement]));
 
   const pickDefault = (formats: AvailableFormat[]): QualityId =>
     (formats.find((f) => f.id === '1080' && f.available) ?? formats.find((f) => f.available) ?? formats[0]).id;
@@ -466,7 +481,7 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
     async (quality: QualityId, mode: CodecMode) => {
       if (!info) return;
       const fmt = info.formats.find((f) => f.id === quality);
-      if (fmt?.premium && !pro) {
+      if (fmt && fmt.height > maxHeight) {
         proPanelRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
         return;
       }
@@ -538,21 +553,23 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
         setPhase('error');
       }
     },
-    [info, url, pro, ensureMobilePayload],
+    [info, url, maxHeight, ensureMobilePayload],
   );
 
   const qualityLabel = info?.formats.find((f) => f.id === activeQuality)?.label ?? '';
   const selectedFmt = info?.formats.find((f) => f.id === selected);
-  const showProUpgrade = !pro && Boolean(selectedFmt?.premium);
+  const showProUpgrade = Boolean(selectedFmt && selectedFmt.height > maxHeight);
 
   const dismissProUpgrade = useCallback(() => {
     if (!info) return;
     const freeFmt =
-      info.formats.find((f) => !f.premium && f.available) ??
-      info.formats.find((f) => f.id === '1080') ??
-      info.formats.find((f) => !f.premium);
+      info.formats
+        .filter((f) => f.height <= maxHeight && f.available)
+        .sort((a, b) => b.height - a.height)[0] ??
+      info.formats.find((f) => f.id === '720') ??
+      info.formats.find((f) => f.height <= maxHeight);
     if (freeFmt) setSelected(freeFmt.id);
-  }, [info]);
+  }, [info, maxHeight]);
   const isBusy = phase === 'fetching' || phase === 'preview' || phase === 'downloading';
   const isSocialPreview = info?.platform === 'instagram' || info?.platform === 'facebook';
   const previewCardReady = isSocialPreview
@@ -671,7 +688,7 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
                         onSelect={setSelected}
                         mode={codecMode}
                         onModeChange={setCodecMode}
-                        pro={pro}
+                        maxHeight={maxHeight}
                         refining={refining}
                         sourceMaxHeight={info!.sourceMaxHeight}
                         downloadReady={

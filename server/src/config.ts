@@ -100,15 +100,23 @@ export const config = {
   maxDurationSeconds: Number(process.env.MAX_DURATION_MINUTES ?? 180) * 60,
 
   // --- Monetisation ---
-  // Resolutions at or below this height are free; above requires a Pro license.
-  // 1080 → 720p & 1080p free; 2K (1440p) & 4K (2160p) are Pro.
-  // Set to 1080 when Pro gating for 2K/4K is enabled. 2160 = all qualities open for testing.
-  freeMaxHeight: Number(process.env.FREE_MAX_HEIGHT ?? 2160),
+  // Resolutions at or below this height are free without a license (720p default).
+  freeMaxHeight: Number(process.env.FREE_MAX_HEIGHT ?? 720),
+
+  /** Comma-separated emails with unlimited quality access (owner/testing). */
+  adminEmails: (process.env.ADMIN_EMAILS ?? 'rakpa8@gmail.com')
+    .split(',')
+    .map((e) => e.trim().toLowerCase())
+    .filter(Boolean),
 
   // Stripe. Leave keys empty to run without billing (pricing page shows a notice).
   stripeSecret: process.env.STRIPE_SECRET_KEY ?? '',
   stripePublishableKey: process.env.STRIPE_PUBLISHABLE_KEY ?? '',
   stripeWebhookSecret: process.env.STRIPE_WEBHOOK_SECRET ?? '',
+  priceHdYearlyCents: Number(process.env.PRICE_HD_YEARLY_CENTS ?? 1000),
+  price2kYearlyCents: Number(process.env.PRICE_2K_YEARLY_CENTS ?? process.env.PRICE_YEARLY_CENTS ?? 1999),
+  price4kYearlyCents: Number(process.env.PRICE_4K_YEARLY_CENTS ?? 2999),
+  /** @deprecated Use price2kYearlyCents */
   priceYearlyCents: Number(process.env.PRICE_YEARLY_CENTS ?? process.env.PRICE_LIFETIME_CENTS ?? 1999),
 
   // Secret used to HMAC-sign stateless Pro license tokens. CHANGE IN PRODUCTION.

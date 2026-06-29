@@ -5,7 +5,7 @@ import { getQuality, isCodecMode } from '../services/formats.js';
 import { createJob } from '../jobManager.js';
 import { YtDlpError } from '../services/ytdlp.js';
 import { detectPlatform } from '../services/platform.js';
-import { isPro } from '../services/license.js';
+import { maxAllowedHeight } from '../services/license.js';
 import { config } from '../config.js';
 
 export const downloadRouter = Router();
@@ -24,10 +24,12 @@ downloadRouter.post('/download', async (req, res) => {
   const q = getQuality(String(quality ?? ''));
   if (!q) return res.status(400).json({ error: 'Please choose a valid quality.' });
 
-  if (q.height > config.freeMaxHeight && !isPro(license)) {
+  const allowedHeight = maxAllowedHeight(license);
+  if (q.height > allowedHeight) {
     return res.status(402).json({
-      error: `${q.label} is a Pro quality. Upgrade to download HD, 2K and 4K.`,
+      error: `${q.label} requires a higher plan. Upgrade to download HD, 2K or 4K.`,
       upgrade: true,
+      requiredHeight: q.height,
     });
   }
 

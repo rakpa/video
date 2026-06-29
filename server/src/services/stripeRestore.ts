@@ -1,5 +1,6 @@
 import type Stripe from 'stripe';
-import type { Plan } from './license.js';
+import { config } from '../config.js';
+import { isAdminEmail, tierRank, type Plan } from './license.js';
 
 export interface ProEntitlement {
   email: string;
@@ -12,12 +13,15 @@ const MAX_SESSION_PAGES = 5;
 
 export function planFromStripeSubscription(sub: Stripe.Subscription): Plan {
   const meta = sub.metadata?.vidcliply_plan;
-  if (meta === 'yearly' || meta === 'monthly' || meta === 'lifetime') return meta;
+  if (meta === 'hd' || meta === '2k' || meta === '4k') return meta;
+  if (meta === 'yearly') return '4k';
+  if (meta === 'monthly') return '2k';
+  if (meta === 'lifetime') return 'lifetime';
 
   const interval = sub.items.data[0]?.price?.recurring?.interval;
-  if (interval === 'year') return 'yearly';
-  if (interval === 'month') return 'monthly';
-  return 'yearly';
+  if (interval === 'year') return '4k';
+  if (interval === 'month') return '2k';
+  return '4k';
 }
 
 function activeSubEntitlement(email: string, sub: Stripe.Subscription): ProEntitlement | null {
@@ -42,7 +46,7 @@ async function entitlementFromSession(
   }
 
   if (session.mode === 'payment') {
-    return { email, plan: 'lifetime', exp: null };
+    return { email, plan: '4k', exp: null };
   }
 
   return null;
@@ -50,8 +54,8 @@ async function entitlementFromSession(
 
 function preferEntitlement(current: ProEntitlement | null, next: ProEntitlement): ProEntitlement {
   if (!current) return next;
-  if (current.plan === 'lifetime') return next.plan === 'lifetime' ? current : next;
-  if (next.plan === 'lifetime') return current;
+  if (tierRank(next.plan) > tierRank(current.plan)) return next;
+  if (tierRank(next.plan) < tierRank(current.plan)) return current;
   return (next.exp ?? 0) > (current.exp ?? 0) ? next : current;
 }
 
@@ -72,7 +76,7 @@ async function lookupViaCheckoutSessions(stripe: Stripe, email: string): Promise
       const entitlement = await entitlementFromSession(stripe, email, session);
       if (!entitlement) continue;
       best = preferEntitlement(best, entitlement);
-      if (best.plan !== 'lifetime') return best;
+      if (tierRank(best.plan) >= tierRank('4k')) return best;
     }
 
     if (!sessions.has_more) break;
@@ -86,6 +90,10 @@ async function lookupViaCheckoutSessions(stripe: Stripe, email: string): Promise
 export async function lookupProEntitlement(stripe: Stripe, rawEmail: string): Promise<ProEntitlement | null> {
   const email = rawEmail.trim().toLowerCase();
   if (!EMAIL_RE.test(email)) return null;
+
+  if (isAdminEmail(email)) {
+    return { email, plan: '4k', exp: Date.now() + 365 * 24 * 60 * 60 * 1000 };
+  }
 
   const customers = await stripe.customers.list({ email, limit: 10 });
   let best: ProEntitlement | null = null;
@@ -104,7 +112,7 @@ export async function lookupProEntitlement(stripe: Stripe, rawEmail: string): Pr
     }
   }
 
-  if (best && best.plan !== 'lifetime') return best;
+  if (best && tierRank(best.plan) >= tierRank('4k')) return best;
 
   const fromSessions = await lookupViaCheckoutSessions(stripe, email);
   return fromSessions ? preferEntitlement(best, fromSessions) : best;

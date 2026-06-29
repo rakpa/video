@@ -3,10 +3,11 @@ import { config } from '../config.js';
 
 /**
  * Stateless Pro entitlement. A license is a small JSON payload signed with an
- * HMAC so the server can verify it without a database. Good enough for a paid
- * unlock; swap for DB-backed sessions when you add real accounts.
+ * HMAC so the server can verify it without a database.
  */
-export type Plan = 'yearly' | 'monthly' | 'lifetime';
+export type Plan = 'hd' | '2k' | '4k' | 'yearly' | 'monthly' | 'lifetime';
+
+export type PaidPlan = 'hd' | '2k' | '4k';
 
 export interface License {
   email: string;
@@ -35,7 +36,6 @@ export function verifyLicense(token: string | undefined | null): License | null 
   if (!payloadB64 || !sig) return null;
 
   const expected = sign(payloadB64);
-  // Constant-time compare to avoid timing leaks.
   if (sig.length !== expected.length || !crypto.timingSafeEqual(Buffer.from(sig), Buffer.from(expected))) {
     return null;
   }
@@ -49,7 +49,37 @@ export function verifyLicense(token: string | undefined | null): License | null 
   }
 }
 
-/** True if the token grants active Pro access. */
+export function isAdminEmail(email: string | undefined | null): boolean {
+  if (!email) return false;
+  return config.adminEmails.includes(email.trim().toLowerCase());
+}
+
+/** Max video height (px) unlocked by a paid plan. */
+export function maxHeightForPlan(plan: Plan | string): number {
+  if (plan === 'hd') return 1080;
+  if (plan === '2k' || plan === 'monthly') return 1440;
+  if (plan === '4k' || plan === 'yearly') return 2160;
+  if (plan === 'lifetime') return 2160;
+  return config.freeMaxHeight;
+}
+
+/** Highest height the caller may download for the given license token. */
+export function maxAllowedHeight(token: string | undefined | null): number {
+  const license = verifyLicense(token);
+  if (!license) return config.freeMaxHeight;
+  if (isAdminEmail(license.email)) return 2160;
+  return maxHeightForPlan(license.plan);
+}
+
+/** True if the token grants any paid plan (non-admin). */
 export function isPro(token: string | undefined | null): boolean {
   return verifyLicense(token) !== null;
+}
+
+export function tierRank(plan: Plan): number {
+  if (plan === 'lifetime') return 100;
+  if (plan === '4k' || plan === 'yearly') return 40;
+  if (plan === '2k' || plan === 'monthly') return 30;
+  if (plan === 'hd') return 20;
+  return 0;
 }

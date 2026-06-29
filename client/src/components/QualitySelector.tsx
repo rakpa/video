@@ -9,8 +9,8 @@ interface Props {
   onSelect: (q: QualityId) => void;
   mode: CodecMode;
   onModeChange: (m: CodecMode) => void;
-  /** Whether the user currently holds a Pro license (unlocks premium qualities). */
-  pro: boolean;
+  /** Max resolution height (px) the user may download. */
+  maxHeight: number;
   /** True while real file sizes / availability are still loading. */
   refining?: boolean;
   /** False until yt-dlp info-json is warm — prevents a duplicate slow extraction on download. */
@@ -34,7 +34,7 @@ interface Props {
  * above the free tier show a PRO lock until the user upgrades. Controlled by the
  * parent so the URL-bar Download button stays in sync.
  */
-export function QualitySelector({ formats, selected, onSelect, mode, onModeChange, pro, refining = false, downloadReady = true, saving = false, showDownloadButton = true, onDownload, onUpgrade, onUseFree, sourceMaxHeight }: Props) {
+export function QualitySelector({ formats, selected, onSelect, mode, onModeChange, maxHeight, refining = false, downloadReady = true, saving = false, showDownloadButton = true, onDownload, onUpgrade, onUseFree, sourceMaxHeight }: Props) {
   // In compatible mode, only resolutions up to 1080p are offered (H.264 ceiling).
   const visibleFormats = useMemo(
     () =>
@@ -58,7 +58,8 @@ export function QualitySelector({ formats, selected, onSelect, mode, onModeChang
   };
 
   const selectedFmt = visibleFormats.find((f) => f.id === selected);
-  const needsUpgrade = Boolean(selectedFmt?.premium && !pro);
+  const needsUpgrade = Boolean(selectedFmt && selectedFmt.height > maxHeight);
+  const highestFreeFmt = visibleFormats.filter((f) => f.available && f.height <= maxHeight).sort((a, b) => b.height - a.height)[0];
 
   return (
     <motion.div
@@ -84,7 +85,7 @@ export function QualitySelector({ formats, selected, onSelect, mode, onModeChang
         {visibleFormats.map((f) => {
           const active = selected === f.id;
           const disabled = !f.available;
-          const locked = f.premium && !pro;
+          const locked = f.height > maxHeight;
           return (
             <motion.button
               key={f.id}
@@ -182,13 +183,13 @@ export function QualitySelector({ formats, selected, onSelect, mode, onModeChang
           </>
         )}
       </RippleButton>
-      {needsUpgrade && onUseFree && (
+      {needsUpgrade && onUseFree && highestFreeFmt && (
         <button
           type="button"
           onClick={onUseFree}
           className="w-full text-center text-sm font-medium text-slate-500 transition hover:text-slate-700"
         >
-          Or download 1080p free instead
+          Or download {highestFreeFmt.label} free instead
         </button>
       )}
       </>

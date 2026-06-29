@@ -4,6 +4,7 @@ import { ApiError, createCheckout, fetchBillingConfig, type BillingConfig } from
 import { navigate } from '../hooks/useRoute';
 import { PaymentBadges } from './PaymentBadges';
 import { Confetti } from './Confetti';
+import { checkoutPlanForLabel, planLabel } from '../lib/plan';
 
 const formatYearlyPrice = (cents: number) => `$${(cents / 100).toFixed(2)}`;
 
@@ -38,21 +39,22 @@ export function ProUpgradePanel({ selectedQuality, inline = false, onDismiss }: 
     fetchBillingConfig().then(setCfg).catch(() => setError('Could not load pricing.'));
   }, []);
 
+  const tier = checkoutPlanForLabel(selectedQuality);
+  const tierCents = cfg?.plans[tier]?.cents ?? (tier === 'hd' ? 1000 : tier === '2k' ? 1999 : 2999);
+  const perMonth = (tierCents / 12 / 100).toFixed(2);
+  const { whole: priceWhole, frac: priceFrac } = splitYearlyPrice(tierCents);
+
   const startCheckout = async () => {
     setError(null);
     setBusy(true);
     try {
-      const url = await createCheckout('yearly');
+      const url = await createCheckout(tier);
       window.location.href = url;
     } catch (e) {
       setError(e instanceof ApiError ? e.message : 'Could not start checkout.');
       setBusy(false);
     }
   };
-
-  const yearlyCents = cfg?.plans.yearly.cents ?? 1999;
-  const perMonth = (yearlyCents / 12 / 100).toFixed(2);
-  const { whole: priceWhole, frac: priceFrac } = splitYearlyPrice(yearlyCents);
 
   return (
     <motion.div
@@ -70,7 +72,7 @@ export function ProUpgradePanel({ selectedQuality, inline = false, onDismiss }: 
           </h2>
           <p className="mx-auto mt-3 max-w-2xl text-slate-600">
             {selectedQuality
-              ? `${selectedQuality} needs Pro — unlock every quality for less than a coffee per month.`
+              ? `${selectedQuality} needs ${planLabel(tier)} — unlock it for less than a coffee per month.`
               : 'Skip the monthly trap. Pay once a year and download in HD, 2K & 4K with sound.'}
           </p>
         </div>
@@ -194,7 +196,7 @@ export function ProUpgradePanel({ selectedQuality, inline = false, onDismiss }: 
                   <svg viewBox="0 0 24 24" className="h-5 w-5" fill="currentColor" aria-hidden="true">
                     <path d="m12 2 2.4 7.4H22l-6 4.4 2.3 7.2-6.3-4.6L5.7 21 8 13.8 2 9.4h7.6L12 2Z" />
                   </svg>
-                  Yes — {formatYearlyPrice(yearlyCents)} for the full year
+                  Yes — {formatYearlyPrice(tierCents)} for {planLabel(tier)} / year
                 </>
               )}
             </motion.button>
