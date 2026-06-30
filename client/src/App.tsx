@@ -43,7 +43,7 @@ import { SeoContent } from './components/SeoContent';
 import { UrlInput } from './components/UrlInput';
 import { VideoPreview, VideoPreviewSkeleton } from './components/VideoPreview';
 import { QualitySelector } from './components/QualitySelector';
-import { ProUpgradePanel } from './components/ProUpgradePanel';
+import { ProUpgradeCard } from './components/ProUpgradeCard';
 import { DownloadProgress } from './components/DownloadProgress';
 import { MobileSavePrompt } from './components/MobileSavePrompt';
 import { SuccessState } from './components/SuccessState';
@@ -714,7 +714,7 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
                             exit={{ opacity: 0, y: 8 }}
                             transition={{ duration: 0.35 }}
                           >
-                            <ProUpgradePanel inline selectedQuality={selectedFmt?.label} onDismiss={dismissProUpgrade} />
+                            <ProUpgradeCard onDismiss={dismissProUpgrade} />
                           </motion.div>
                         )}
                       </AnimatePresence>
