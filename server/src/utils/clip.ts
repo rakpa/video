@@ -45,3 +45,8 @@ export function parseClipRange(
 
   return { ok: true, clip: { startTime, endTime: cappedEnd } };
 }
+
+/** yt-dlp --download-sections time spec (seconds, e.g. *30-105). */
+export function ytdlpSectionSpec(clip: ClipRange): string {
+  return `*${clip.startTime}-${clip.endTime}`;
+}

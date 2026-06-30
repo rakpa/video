@@ -8,6 +8,8 @@ import { getCookiesStatus, getUsableCookiesPath } from '../utils/cookies.js';
 import { QUALITIES, buildSelector, type CodecMode, type QualityDef, type QualityId, isQualityAvailable, displaySourceMaxHeight } from './formats.js';
 import { detectPlatform } from './platform.js';
 import { logger } from '../utils/logger.js';
+import type { ClipRange } from '../utils/clip.js';
+import { ytdlpSectionSpec } from '../utils/clip.js';
 
 /** Shape of the metadata we return to the client. */
 export interface VideoInfo {
@@ -505,6 +507,8 @@ export interface DownloadHandle {
   cancel: () => void;
   /** Resolves with the produced file path; rejects on error. */
   done: Promise<string>;
+  /** True when yt-dlp fetched only the clip range (YouTube) — skips post-trim. */
+  sectionDownload: boolean;
 }
 
 export interface ProgressUpdate {
@@ -585,7 +589,7 @@ export function startDownload(
   mode: CodecMode,
   outputDir: string,
   onProgress: (p: ProgressUpdate) => void,
-  options?: { fast?: boolean },
+  options?: { fast?: boolean; clip?: ClipRange },
 ): DownloadHandle {
   const outTemplate = path.join(outputDir, '%(title).80s.%(ext)s');
   const cookies = getCookiesStatus();
@@ -599,6 +603,8 @@ export function startDownload(
 
   const platformId = detectPlatform(url)?.id;
   const fast = options?.fast ?? false;
+  const clip = options?.clip;
+  const sectionDownload = Boolean(clip && platformId === 'youtube');
   const tuning = downloadTuning(url, fast);
   const igFbMaxHeight =
     platformId === 'instagram' || platformId === 'facebook' ? quality.height : undefined;
@@ -620,6 +626,9 @@ export function startDownload(
   const args = [
     '-f',
     formatArg,
+    ...(sectionDownload && clip
+      ? ['--download-sections', ytdlpSectionSpec(clip), '--force-keyframes-at-cuts']
+      : []),
     ...(skipMergePost ? [] : ['--merge-output-format', 'mp4']),
     // Only pass --ffmpeg-location for a real path. A bare name like "ffmpeg"
     // is rejected by yt-dlp ("ffmpeg-location ffmpeg does not exist") and makes
@@ -792,9 +801,14 @@ export function startDownload(
     armIdle();
   });
 
+  if (sectionDownload && clip) {
+    logger.info(`YouTube clip section download: ${ytdlpSectionSpec(clip)}`);
+  }
+
   return {
     outputDir,
     cancel: () => child.kill('SIGKILL'),
     done,
+    sectionDownload,
   };
 }

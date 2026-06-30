@@ -458,7 +458,7 @@ export function normalizeForGallery(inputPath: string, jobDir: string, fast = fa
   });
 }
 
-/** Cut a segment from a downloaded MP4 (stream copy first, re-encode fallback). */
+/** Cut a segment from a downloaded MP4 — stream copy preserves original quality. */
 export async function trimVideo(
   inputPath: string,
   jobDir: string,
@@ -469,17 +469,29 @@ export async function trimVideo(
   const outputPath = path.join(jobDir, 'clip.mp4');
   const tempPath = path.join(jobDir, 'clip.tmp.mp4');
 
+  // Stream copy only — no re-encode unless both copy strategies fail (quality preserved).
   const strategies: { label: string; args: string[] }[] = [
     {
-      label: 'stream copy',
-      args: ['-ss', String(startSec), '-i', inputPath, '-t', String(duration), '-c', 'copy'],
-    },
-    {
       label: 'accurate copy',
-      args: ['-i', inputPath, '-ss', String(startSec), '-to', String(endSec), '-c', 'copy'],
+      args: [
+        '-i',
+        inputPath,
+        '-ss',
+        String(startSec),
+        '-to',
+        String(endSec),
+        '-map',
+        '0:v:0?',
+        '-map',
+        '0:a:0?',
+        '-c',
+        'copy',
+        '-avoid_negative_ts',
+        'make_zero',
+      ],
     },
     {
-      label: 're-encode',
+      label: 'fast copy',
       args: [
         '-ss',
         String(startSec),
@@ -487,16 +499,39 @@ export async function trimVideo(
         inputPath,
         '-t',
         String(duration),
+        '-map',
+        '0:v:0?',
+        '-map',
+        '0:a:0?',
+        '-c',
+        'copy',
+        '-avoid_negative_ts',
+        'make_zero',
+      ],
+    },
+    {
+      label: 're-encode fallback',
+      args: [
+        '-ss',
+        String(startSec),
+        '-i',
+        inputPath,
+        '-t',
+        String(duration),
+        '-map',
+        '0:v:0?',
+        '-map',
+        '0:a:0?',
         '-c:v',
         'libx264',
         '-preset',
-        'fast',
+        'veryfast',
         '-crf',
-        '23',
+        '18',
         '-c:a',
         'aac',
         '-b:a',
-        '128k',
+        '192k',
       ],
     },
   ];
@@ -507,7 +542,7 @@ export async function trimVideo(
     await fsp.unlink(outputPath).catch(() => undefined);
     try {
       logger.info(`Clip trim (${strategy.label}): ${startSec}s–${endSec}s`);
-      await runFfmpeg([...strategy.args, '-movflags', '+faststart', '-y', tempPath], 8 * 60_000);
+      await runFfmpeg([...strategy.args, '-movflags', '+faststart', '-y', tempPath], 5 * 60_000);
       await fsp.rename(tempPath, outputPath);
       return outputPath;
     } catch (err) {

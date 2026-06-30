@@ -227,7 +227,7 @@ async function runWithRetry(job: Job, url: string, quality: QualityDef, mode: Co
       if (!j) return;
       j.progress = p;
       emit(j, p);
-    }, { fast: job.fast });
+    }, { fast: job.fast, clip: job.clip ?? undefined });
     job.cancel = handle.cancel;
 
     try {
@@ -235,7 +235,7 @@ async function runWithRetry(job: Job, url: string, quality: QualityDef, mode: Co
       job.status = 'ready';
       job.filePath = filePath;
 
-      if (job.clip) {
+      if (job.clip && !handle.sectionDownload) {
         job.progress = {
           percent: 93,
           speed: null,
@@ -262,9 +262,11 @@ async function runWithRetry(job: Job, url: string, quality: QualityDef, mode: Co
 
       job.progress = { ...job.progress, percent: 100, speed: null, eta: null, stage: 'done' };
 
+      const servePath = job.filePath!;
+
       if (needsGalleryNormalize(job.platformId)) {
-        if (await canServeDirectToGallery(filePath)) {
-          job.galleryPath = filePath;
+        if (await canServeDirectToGallery(servePath)) {
+          job.galleryPath = servePath;
           logger.info('Gallery skip remux — H.264 + faststart already present');
         } else {
           warmGalleryNormalize(job);
