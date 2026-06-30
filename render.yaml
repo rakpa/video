@@ -31,7 +31,7 @@ services:
       - key: MAX_DURATION_MINUTES
         value: 180
       - key: FREE_MAX_HEIGHT
-        value: '720'
+        value: '1080'
       - key: ADMIN_EMAILS
         value: rakpa8@gmail.com
       - key: LICENSE_SECRET

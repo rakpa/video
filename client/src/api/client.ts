@@ -169,9 +169,7 @@ export interface BillingConfig {
   enabled: boolean;
   publishableKey?: string | null;
   plans: {
-    hd: { cents: number; label: string; interval: string | null; maxHeight: number };
-    '2k': { cents: number; label: string; interval: string | null; maxHeight: number };
-    '4k': { cents: number; label: string; interval: string | null; maxHeight: number };
+    pro: { cents: number; label: string; interval: string | null; maxHeight: number };
   };
   freeMaxHeight: number;
 }
@@ -182,7 +180,7 @@ export async function fetchBillingConfig(): Promise<BillingConfig> {
   return res.json();
 }
 
-export type CheckoutPlan = 'hd' | '2k' | '4k';
+export type CheckoutPlan = 'pro';
 
 /** Starts Stripe Checkout for a plan; returns the redirect URL. */
 export async function createCheckout(plan: CheckoutPlan): Promise<string> {
@@ -193,7 +191,7 @@ export async function createCheckout(plan: CheckoutPlan): Promise<string> {
 export interface RedeemResult {
   token: string;
   email: string;
-  plan: 'hd' | '2k' | '4k' | 'yearly' | 'monthly' | 'lifetime';
+  plan: 'pro' | 'hd' | '2k' | '4k' | 'yearly' | 'monthly' | 'lifetime';
   expiresAt: number | null;
 }
 

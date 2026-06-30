@@ -4,7 +4,7 @@ import { ApiError, createCheckout, fetchBillingConfig, type BillingConfig } from
 import { navigate } from '../hooks/useRoute';
 import { PaymentBadges } from './PaymentBadges';
 import { Confetti } from './Confetti';
-import { checkoutPlanForLabel, planLabel } from '../lib/plan';
+import { checkoutPlanForLabel } from '../lib/plan';
 
 const formatYearlyPrice = (cents: number) => `$${(cents / 100).toFixed(2)}`;
 
@@ -40,7 +40,7 @@ export function ProUpgradePanel({ selectedQuality, inline = false, onDismiss }: 
   }, []);
 
   const tier = checkoutPlanForLabel(selectedQuality);
-  const tierCents = cfg?.plans[tier]?.cents ?? (tier === 'hd' ? 1000 : tier === '2k' ? 1999 : 2999);
+  const tierCents = cfg?.plans.pro.cents ?? 1999;
   const perMonth = (tierCents / 12 / 100).toFixed(2);
   const { whole: priceWhole, frac: priceFrac } = splitYearlyPrice(tierCents);
 
@@ -72,8 +72,8 @@ export function ProUpgradePanel({ selectedQuality, inline = false, onDismiss }: 
           </h2>
           <p className="mx-auto mt-3 max-w-2xl text-slate-600">
             {selectedQuality
-              ? `${selectedQuality} needs ${planLabel(tier)} — unlock it for less than a coffee per month.`
-              : 'Skip the monthly trap. Pay once a year and download in HD, 2K & 4K with sound.'}
+              ? `${selectedQuality} needs Pro — unlock 2K & 4K for less than a coffee per month.`
+              : 'Skip the monthly trap. Pay once a year and download in 2K & 4K with sound.'}
           </p>
         </div>
       )}
@@ -196,7 +196,7 @@ export function ProUpgradePanel({ selectedQuality, inline = false, onDismiss }: 
                   <svg viewBox="0 0 24 24" className="h-5 w-5" fill="currentColor" aria-hidden="true">
                     <path d="m12 2 2.4 7.4H22l-6 4.4 2.3 7.2-6.3-4.6L5.7 21 8 13.8 2 9.4h7.6L12 2Z" />
                   </svg>
-                  Yes — {formatYearlyPrice(tierCents)} for {planLabel(tier)} / year
+                  Yes — {formatYearlyPrice(tierCents)} for Pro / year
                 </>
               )}
             </motion.button>
@@ -253,7 +253,7 @@ export function ProUpgradeSuccess({ selectedQuality, onDismiss }: { selectedQual
       </div>
       <h2 className="mt-4 text-xl font-bold text-slate-900">Welcome to Pro!</h2>
       <p className="mx-auto mt-2 max-w-sm text-sm text-slate-600">
-        {selectedQuality ? `${selectedQuality} and all Pro qualities` : 'HD, 2K and 4K'} are unlocked for a full year.
+        {selectedQuality ? `${selectedQuality} and all Pro qualities` : '2K and 4K'} are unlocked for a full year.
       </p>
       {onDismiss && (
         <button

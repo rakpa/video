@@ -15,8 +15,8 @@ import type { Theme } from '../hooks/useTheme';
 
 const PRICING_FAQ = [
   {
-    q: 'What’s the difference between Free and paid plans?',
-    a: 'Free downloads go up to 720p with sound. HD ($10/year) unlocks 1080p, 2K ($19.99/year) unlocks 1440p, and 4K ($29.99/year) unlocks the highest quality plus MP3 extraction and priority processing.',
+    q: 'What’s the difference between Free and Pro?',
+    a: 'Free downloads go up to 1080p Full HD with sound. Pro ($19.99/year) unlocks 2K & 4K, plus MP3 extraction and priority processing.',
   },
   {
     q: 'Can I cancel anytime?',
@@ -98,7 +98,7 @@ function ProStatus({
       </div>
       <h1 className="mt-5 text-2xl font-bold text-slate-900">{justUpgraded ? 'Welcome to Pro! 🎉' : 'You’re on Pro'}</h1>
       <p className="mx-auto mt-2 max-w-sm text-sm text-slate-600">
-        HD, 2K and 4K downloads are unlocked for <span className="font-medium text-slate-900">{license.email}</span>.
+        2K and 4K downloads are unlocked for <span className="font-medium text-slate-900">{license.email}</span>.
         Plan: <span className="capitalize">{planLabel(license.plan)}</span>
         {' · '}
         {planAccessLabel(license.plan, license.expiresAt)}.
@@ -114,7 +114,7 @@ function ProStatus({
       </p>
 
       <p className="mt-5 text-xs text-slate-400">
-        {['hd', '2k', '4k', 'yearly', 'monthly'].includes(license.plan)
+        {['pro', 'hd', '2k', '4k', 'yearly', 'monthly'].includes(license.plan)
           ? 'Need to update billing or cancel? '
           : 'Questions about your purchase? '}
         <a href={`mailto:${COMPANY.contactEmail}`} className="font-medium text-indigo-600 transition hover:text-indigo-700 hover:underline">

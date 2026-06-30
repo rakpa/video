@@ -243,7 +243,7 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
   useStripeReturn(useCallback(() => refreshEntitlement(), [refreshEntitlement]));
 
   const pickDefault = (formats: AvailableFormat[]): QualityId =>
-    (formats.find((f) => f.id === '720' && f.available) ?? formats.find((f) => f.available && f.height <= maxHeight) ?? formats[0]).id;
+    (formats.find((f) => f.id === '1080' && f.available) ?? formats.find((f) => f.available && f.height <= maxHeight) ?? formats[0]).id;
 
   const handleFetch = useCallback(async (target: string) => {
     const normalized = normalizeUrl(target);

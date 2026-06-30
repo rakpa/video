@@ -100,8 +100,8 @@ export const config = {
   maxDurationSeconds: Number(process.env.MAX_DURATION_MINUTES ?? 180) * 60,
 
   // --- Monetisation ---
-  // Resolutions at or below this height are free without a license (720p default).
-  freeMaxHeight: Number(process.env.FREE_MAX_HEIGHT ?? 720) || 720,
+  // Resolutions at or below this height are free without a license (1080p HD).
+  freeMaxHeight: Number(process.env.FREE_MAX_HEIGHT ?? 1080) || 1080,
 
   /** Comma-separated emails with unlimited quality access (owner/testing). */
   adminEmails: (process.env.ADMIN_EMAILS ?? 'rakpa8@gmail.com')
@@ -113,8 +113,10 @@ export const config = {
   stripeSecret: process.env.STRIPE_SECRET_KEY ?? '',
   stripePublishableKey: process.env.STRIPE_PUBLISHABLE_KEY ?? '',
   stripeWebhookSecret: process.env.STRIPE_WEBHOOK_SECRET ?? '',
+  priceProYearlyCents: Number(process.env.PRICE_PRO_YEARLY_CENTS ?? process.env.PRICE_YEARLY_CENTS ?? 1999),
+  /** @deprecated Legacy tier pricing — new checkouts use priceProYearlyCents */
   priceHdYearlyCents: Number(process.env.PRICE_HD_YEARLY_CENTS ?? 1000),
-  price2kYearlyCents: Number(process.env.PRICE_2K_YEARLY_CENTS ?? process.env.PRICE_YEARLY_CENTS ?? 1999),
+  price2kYearlyCents: Number(process.env.PRICE_2K_YEARLY_CENTS ?? 1999),
   price4kYearlyCents: Number(process.env.PRICE_4K_YEARLY_CENTS ?? 2999),
   /** @deprecated Use price2kYearlyCents */
   priceYearlyCents: Number(process.env.PRICE_YEARLY_CENTS ?? process.env.PRICE_LIFETIME_CENTS ?? 1999),

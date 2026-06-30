@@ -38,7 +38,7 @@ export function clearLicense(): void {
   localStorage.removeItem(KEY);
 }
 
-/** Max video height the user may download (px). Without a license: 720p only. */
+/** Max video height the user may download (px). Without a license: 1080p HD only. */
 export function maxAllowedHeight(): number {
   const lic = getLicense();
   if (!lic) return FREE_TIER_MAX_HEIGHT;

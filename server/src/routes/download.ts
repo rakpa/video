@@ -27,7 +27,7 @@ downloadRouter.post('/download', async (req, res) => {
   const allowedHeight = maxAllowedHeight(license);
   if (q.height > allowedHeight) {
     return res.status(402).json({
-      error: `${q.label} requires a higher plan. Upgrade to download HD, 2K or 4K.`,
+      error: `${q.label} requires Pro. Upgrade to download 2K or 4K.`,
       upgrade: true,
       requiredHeight: q.height,
     });
