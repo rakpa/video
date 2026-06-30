@@ -5,7 +5,7 @@ import { config, currentProxy, rotateProxy } from '../config.js';
 import { FREE_TIER_MAX_HEIGHT } from './license.js';
 import { saveInfoJson, getFreshInfoJson, invalidateInfoJson } from './infoJsonCache.js';
 import { getCookiesStatus, getUsableCookiesPath } from '../utils/cookies.js';
-import { QUALITIES, buildSelector, type CodecMode, type QualityDef, type QualityId } from './formats.js';
+import { QUALITIES, buildSelector, type CodecMode, type QualityDef, type QualityId, isQualityAvailable, displaySourceMaxHeight } from './formats.js';
 import { detectPlatform } from './platform.js';
 import { logger } from '../utils/logger.js';
 
@@ -352,7 +352,7 @@ function parseInfoDump(stdout: string): VideoInfo {
     );
   }
 
-  const maxHeight = Math.max(0, ...(raw.formats ?? []).map((f) => f.height ?? 0));
+  const rawSourceMax = Math.max(0, ...(raw.formats ?? []).map((f) => f.height ?? 0));
 
   const formats: AvailableFormat[] = (Object.values(QUALITIES) as QualityDef[]).map((q) => ({
     id: q.id,
@@ -360,7 +360,7 @@ function parseInfoDump(stdout: string): VideoInfo {
     tag: q.tag,
     height: q.height,
     estimatedBytes: estimateSize(raw, q.height, duration),
-    available: maxHeight === 0 ? true : maxHeight >= q.height,
+    available: isQualityAvailable(rawSourceMax, q.height),
     premium: q.height > FREE_TIER_MAX_HEIGHT,
   }));
 
@@ -370,7 +370,7 @@ function parseInfoDump(stdout: string): VideoInfo {
     author: raw.uploader ?? raw.channel ?? 'Unknown',
     durationSeconds: duration,
     thumbnail: pickThumbnail(raw),
-    sourceMaxHeight: maxHeight > 0 ? maxHeight : null,
+    sourceMaxHeight: displaySourceMaxHeight(rawSourceMax),
     formats,
   };
 }

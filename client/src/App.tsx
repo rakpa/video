@@ -9,6 +9,7 @@ import { fetchClientInstagramPreview } from './utils/instagram';
 import { fetchClientYoutubePreview } from './utils/youtube';
 import { preloadThumbnail, warmThumbnailFetch, type PreloadedThumb } from './utils/preloadThumb';
 import { licenseToken, maxAllowedHeight } from './lib/license';
+import { resolveFormatAvailability } from './utils/qualityAvailability';
 import { useStripeReturn } from './hooks/useStripeReturn';
 import {
   ApiError,
@@ -242,8 +243,14 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
 
   useStripeReturn(useCallback(() => refreshEntitlement(), [refreshEntitlement]));
 
-  const pickDefault = (formats: AvailableFormat[]): QualityId =>
-    (formats.find((f) => f.id === '1080' && f.available) ?? formats.find((f) => f.available && f.height <= maxHeight) ?? formats[0]).id;
+  const pickDefault = (formats: AvailableFormat[], sourceMaxHeight?: number | null): QualityId => {
+    const resolved = resolveFormatAvailability(formats, sourceMaxHeight);
+    return (
+      resolved.find((f) => f.id === '1080' && f.available) ??
+      resolved.find((f) => f.available && f.height <= maxHeight) ??
+      resolved[0]
+    ).id;
+  };
 
   const handleFetch = useCallback(async (target: string) => {
     const normalized = normalizeUrl(target);
@@ -392,8 +399,9 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
           }
         }
         setSelected((current) => {
-          const chosen = data.formats.find((f) => f.id === current);
-          return chosen?.available ? current : pickDefault(data.formats);
+          const resolved = resolveFormatAvailability(data.formats, data.sourceMaxHeight);
+          const chosen = resolved.find((f) => f.id === current);
+          return chosen?.available ? current : pickDefault(data.formats, data.sourceMaxHeight);
         });
       } else {
         const data = await infoPromise;
@@ -405,8 +413,9 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
           thumbnail: data.thumbnail ?? prev?.thumbnail ?? null,
         }));
         setSelected((current) => {
-          const chosen = data.formats.find((f) => f.id === current);
-          return chosen?.available ? current : pickDefault(data.formats);
+          const resolved = resolveFormatAvailability(data.formats, data.sourceMaxHeight);
+          const chosen = resolved.find((f) => f.id === current);
+          return chosen?.available ? current : pickDefault(data.formats, data.sourceMaxHeight);
         });
         setPhase((p) => (p === 'preview' || p === 'fetching' ? 'ready' : p));
       }
@@ -555,12 +564,14 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
 
   const dismissProUpgrade = useCallback(() => {
     if (!info) return;
+    const formats = resolveFormatAvailability(info.formats, info.sourceMaxHeight);
     const freeFmt =
-      info.formats
+      formats
         .filter((f) => f.height <= maxHeight && f.available)
         .sort((a, b) => b.height - a.height)[0] ??
-      info.formats.find((f) => f.id === '720') ??
-      info.formats.find((f) => f.height <= maxHeight);
+      formats.find((f) => f.id === '1080') ??
+      formats.find((f) => f.id === '720') ??
+      formats.find((f) => f.height <= maxHeight);
     if (freeFmt) setSelected(freeFmt.id);
   }, [info, maxHeight]);
   const isBusy = phase === 'fetching' || phase === 'preview' || phase === 'downloading';

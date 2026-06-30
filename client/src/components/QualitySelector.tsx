@@ -2,6 +2,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useMemo, useState } from 'react';
 import { COMPATIBLE_MAX_HEIGHT, type AvailableFormat, type CodecMode, type QualityId } from '../types';
 import { formatBytes } from '../utils/format';
+import { displaySourceMaxHeight, isQualityAvailable } from '../utils/qualityAvailability';
 
 interface Props {
   formats: AvailableFormat[];
@@ -35,14 +36,31 @@ interface Props {
  * parent so the URL-bar Download button stays in sync.
  */
 export function QualitySelector({ formats, selected, onSelect, mode, onModeChange, maxHeight, refining = false, downloadReady = true, saving = false, showDownloadButton = true, onDownload, onUpgrade, onUseFree, sourceMaxHeight }: Props) {
-  // In compatible mode, only resolutions up to 1080p are offered (H.264 ceiling).
-  const visibleFormats = useMemo(
+  const resolvedFormats = useMemo(
     () =>
       formats.map((f) => ({
         ...f,
+        available:
+          typeof sourceMaxHeight === 'number' && sourceMaxHeight > 0
+            ? isQualityAvailable(sourceMaxHeight, f.height)
+            : f.available,
+      })),
+    [formats, sourceMaxHeight],
+  );
+
+  const sourceLabel =
+    typeof sourceMaxHeight === 'number' && sourceMaxHeight > 0
+      ? displaySourceMaxHeight(sourceMaxHeight)
+      : null;
+
+  // In compatible mode, only resolutions up to 1080p are offered (H.264 ceiling).
+  const visibleFormats = useMemo(
+    () =>
+      resolvedFormats.map((f) => ({
+        ...f,
         available: f.available && (mode === 'best' || f.height <= COMPATIBLE_MAX_HEIGHT),
       })),
-    [formats, mode],
+    [resolvedFormats, mode],
   );
 
   const pickDefault = (list: AvailableFormat[]): QualityId =>
@@ -50,7 +68,7 @@ export function QualitySelector({ formats, selected, onSelect, mode, onModeChang
 
   const handleModeChange = (next: CodecMode) => {
     onModeChange(next);
-    const updated = formats.map((f) => ({
+    const updated = resolvedFormats.map((f) => ({
       ...f,
       available: f.available && (next === 'best' || f.height <= COMPATIBLE_MAX_HEIGHT),
     }));
@@ -71,10 +89,10 @@ export function QualitySelector({ formats, selected, onSelect, mode, onModeChang
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h3 className="text-sm font-medium uppercase tracking-wider text-slate-400">Choose quality</h3>
-          {typeof sourceMaxHeight === 'number' && sourceMaxHeight > 0 && (
+          {sourceLabel != null && (
             <p className="mt-1 text-xs text-slate-500">
-              Source video is up to <span className="font-semibold text-slate-700">{sourceMaxHeight}p</span>
-              {sourceMaxHeight < 2160 ? ' — 2K/4K only appear when the source supports them' : ''}
+              Source video is up to <span className="font-semibold text-slate-700">{sourceLabel}p</span>
+              {sourceLabel < 2160 ? ' — 2K/4K only appear when the source supports them' : ''}
             </p>
           )}
         </div>

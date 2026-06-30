@@ -166,3 +166,29 @@ function youtubeBestSelector(h: number): string {
   );
   return tiers.join('/');
 }
+
+const QUALITY_TIERS = [720, 1080, 1440, 2160] as const;
+
+/**
+ * Whether a quality tier can be satisfied from the source. yt-dlp picks the best
+ * stream at-or-below the requested height, so e.g. an 804p source can still fill
+ * a 1080p request (delivers ~804p). Each tier only needs the previous tier's
+ * minimum source height — not the full target resolution.
+ */
+export function isQualityAvailable(sourceMaxHeight: number, qualityHeight: number): boolean {
+  if (sourceMaxHeight === 0) return true;
+  const idx = QUALITY_TIERS.indexOf(qualityHeight as (typeof QUALITY_TIERS)[number]);
+  if (idx < 0) return sourceMaxHeight >= qualityHeight;
+  const minSource = idx === 0 ? 1 : QUALITY_TIERS[idx - 1];
+  return sourceMaxHeight >= minSource;
+}
+
+/** Highest meaningful quality label for UI ("Source video is up to Xp"). */
+export function displaySourceMaxHeight(sourceMaxHeight: number): number | null {
+  if (sourceMaxHeight <= 0) return null;
+  let display = sourceMaxHeight;
+  for (const q of QUALITY_TIERS) {
+    if (isQualityAvailable(sourceMaxHeight, q)) display = Math.max(display, q);
+  }
+  return display;
+}
