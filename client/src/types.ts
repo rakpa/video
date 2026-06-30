@@ -21,6 +21,11 @@ export interface AvailableFormat {
   premium: boolean;
 }
 
+export interface ClipRange {
+  startTime: number;
+  endTime: number;
+}
+
 export interface VideoInfo {
   platform: PlatformId;
   id: string;
@@ -37,7 +42,7 @@ export interface ProgressUpdate {
   percent: number;
   speed: string | null;
   eta: string | null;
-  stage: 'downloading' | 'merging' | 'done';
+  stage: 'downloading' | 'merging' | 'trimming' | 'done';
   /** 1-based index of the stream currently downloading (video=1, audio=2…). */
   streamIndex: number;
   /** Total streams to download (1 = progressive, 2 = video+audio). */

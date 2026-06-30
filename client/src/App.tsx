@@ -10,6 +10,12 @@ import { fetchClientYoutubePreview } from './utils/youtube';
 import { preloadThumbnail, warmThumbnailFetch, type PreloadedThumb } from './utils/preloadThumb';
 import { licenseToken, maxAllowedHeight } from './lib/license';
 import { resolveFormatAvailability } from './utils/qualityAvailability';
+import {
+  clipRangeFromInputs,
+  formatClipRangeLabel,
+  formatTimeInput,
+  type ClipMode,
+} from './utils/clipTime';
 import { useStripeReturn } from './hooks/useStripeReturn';
 import {
   ApiError,
@@ -44,6 +50,7 @@ import { UrlInput } from './components/UrlInput';
 import { VideoPreview, VideoPreviewSkeleton } from './components/VideoPreview';
 import { QualitySelector } from './components/QualitySelector';
 import { ProUpgradeCard } from './components/ProUpgradeCard';
+import { ClipSelector, isClipReady } from './components/ClipSelector';
 import { DownloadProgress } from './components/DownloadProgress';
 import { MobileSavePrompt } from './components/MobileSavePrompt';
 import { SuccessState } from './components/SuccessState';
@@ -128,6 +135,9 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
   const [mobileSaving, setMobileSaving] = useState(false);
   /** Mobile: gallery-ready file after user confirms quality + Download. */
   const [mobileSavePayload, setMobileSavePayload] = useState<VideoFilePayload | null>(null);
+  const [clipMode, setClipMode] = useState<ClipMode>('full');
+  const [clipStart, setClipStart] = useState('0:00');
+  const [clipEnd, setClipEnd] = useState('');
 
   const lastJobId = useRef<string | null>(null);
   // The pre-fetched, gallery-ready video so the Save tap can open the share
@@ -147,15 +157,25 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
   const proPanelRef = useRef<HTMLDivElement>(null);
 
   const mobilePrefetchKey = useCallback(
-    (normalized: string, quality: QualityId, isIgFb: boolean) =>
-      `${normalized}:${quality}${isIgFb ? ':igfb' : ''}`,
+    (normalized: string, quality: QualityId, isIgFb: boolean, clipKey: string) =>
+      `${normalized}:${quality}${isIgFb ? ':igfb' : ''}${clipKey}`,
     [],
   );
+
+  const activeClip = useCallback(() => {
+    if (clipMode !== 'clip') return null;
+    return clipRangeFromInputs(clipStart, clipEnd, info?.durationSeconds ?? null);
+  }, [clipMode, clipStart, clipEnd, info?.durationSeconds]);
+
+  const clipKeySuffix = useCallback(() => {
+    const clip = activeClip();
+    return clip ? `:clip:${clip.startTime}-${clip.endTime}` : '';
+  }, [activeClip]);
 
   /** Mobile: prepare file after user picks quality and taps Download. */
   const ensureMobilePayload = useCallback(
     async (normalized: string, quality: QualityId, isIgFb: boolean): Promise<VideoFilePayload> => {
-      const key = mobilePrefetchKey(normalized, quality, isIgFb);
+      const key = mobilePrefetchKey(normalized, quality, isIgFb, clipKeySuffix());
       if (prefetchKeyRef.current === key && galleryPayload.current) {
         return galleryPayload.current;
       }
@@ -182,6 +202,7 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
       const run = startDownloadJob(normalized, quality, 'compatible', licenseToken(), {
         fast: true,
         reuse: false,
+        clip: activeClip(),
       })
         .then((jobId) => {
           if (prefetchKeyRef.current !== key) return null;
@@ -200,7 +221,7 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
       if (!payload) throw new Error('Could not prepare this video. Try again.');
       return payload;
     },
-    [mobilePrefetchKey],
+    [mobilePrefetchKey, activeClip, clipKeySuffix],
   );
 
   const handleMobileSaved = useCallback(
@@ -209,10 +230,10 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
       setError(null);
       if (result === 'shared' && fetchedUrl.current && info) {
         const isIgFb = info.platform === 'instagram' || info.platform === 'facebook';
-        autoShareKeyRef.current = mobilePrefetchKey(fetchedUrl.current, selected, isIgFb);
+        autoShareKeyRef.current = mobilePrefetchKey(fetchedUrl.current, selected, isIgFb, clipKeySuffix());
       }
     },
-    [info, selected, mobilePrefetchKey],
+    [info, selected, mobilePrefetchKey, clipKeySuffix],
   );
 
   const handleMobileDownloadAnother = useCallback(() => {
@@ -240,6 +261,12 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
   useEffect(() => {
     setMaxHeight(maxAllowedHeight());
   }, []);
+
+  useEffect(() => {
+    if (info?.durationSeconds != null && info.durationSeconds > 0) {
+      setClipEnd(formatTimeInput(info.durationSeconds));
+    }
+  }, [info?.durationSeconds, info?.id]);
 
   useStripeReturn(useCallback(() => refreshEntitlement(), [refreshEntitlement]));
 
@@ -277,6 +304,9 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
     setMobileSaving(false);
     setMobileSavePayload(null);
     setPreloadedThumb(null);
+    setClipMode('full');
+    setClipStart('0:00');
+    setClipEnd('');
     fetchedUrl.current = normalized;
 
     pingApiWarmup();
@@ -487,6 +517,13 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
         proPanelRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
         return;
       }
+
+      const clip = activeClip();
+      if (clipMode === 'clip' && !clip) {
+        setError('Please enter a valid start and end time for your clip.');
+        return;
+      }
+
       setError(null);
       setActiveQuality(quality);
 
@@ -547,7 +584,7 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
           quality,
           effectiveMode,
           licenseToken(),
-          { fast: isIgFb, reuse: true },
+          { fast: isIgFb, reuse: !clip, clip },
         );
         attachDesktopJob(jobId);
       } catch (e) {
@@ -555,8 +592,14 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
         setPhase('error');
       }
     },
-    [info, url, maxHeight, ensureMobilePayload],
+    [info, url, maxHeight, ensureMobilePayload, clipMode, activeClip],
   );
+
+  const clipReady = isClipReady(clipMode, clipStart, clipEnd, info?.durationSeconds ?? null);
+  const downloadButtonLabel =
+    clipMode === 'clip' && clipReady
+      ? `Clip ${formatClipRangeLabel(clipStart, clipEnd)}`
+      : undefined;
 
   const qualityLabel = info?.formats.find((f) => f.id === activeQuality)?.label ?? '';
   const selectedFmt = info?.formats.find((f) => f.id === selected);
@@ -686,6 +729,16 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
                     />
                   ) : showQualityPanel ? (
                     <>
+                      <ClipSelector
+                        durationSeconds={info!.durationSeconds}
+                        mode={clipMode}
+                        onModeChange={setClipMode}
+                        startTime={clipStart}
+                        endTime={clipEnd}
+                        onStartTimeChange={setClipStart}
+                        onEndTimeChange={setClipEnd}
+                      />
+                      <div className="mt-4">
                       <QualitySelector
                         formats={info!.formats}
                         selected={selected}
@@ -702,7 +755,10 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
                         onDownload={() => void handleDownload(selected, codecMode)}
                         onUpgrade={() => proPanelRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })}
                         onUseFree={() => dismissProUpgrade()}
+                        downloadLabel={downloadButtonLabel}
+                        downloadDisabled={clipMode === 'clip' && !clipReady}
                       />
+                      </div>
                       <AnimatePresence>
                         {showProUpgrade && (
                           <motion.div

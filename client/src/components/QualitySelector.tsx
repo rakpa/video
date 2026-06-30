@@ -26,6 +26,10 @@ interface Props {
   onUpgrade?: () => void;
   /** Switch back to the highest free quality without upgrading. */
   onUseFree?: () => void;
+  /** Override download button label (e.g. clip range). */
+  downloadLabel?: string;
+  /** Disable download when clip inputs are invalid. */
+  downloadDisabled?: boolean;
   /** Native max height from yt-dlp — drives honest availability for 2K/4K. */
   sourceMaxHeight?: number | null;
 }
@@ -35,7 +39,7 @@ interface Props {
  * above the free tier show a PRO lock until the user upgrades. Controlled by the
  * parent so the URL-bar Download button stays in sync.
  */
-export function QualitySelector({ formats, selected, onSelect, mode, onModeChange, maxHeight, refining = false, downloadReady = true, saving = false, showDownloadButton = true, onDownload, onUpgrade, onUseFree, sourceMaxHeight }: Props) {
+export function QualitySelector({ formats, selected, onSelect, mode, onModeChange, maxHeight, refining = false, downloadReady = true, saving = false, showDownloadButton = true, onDownload, onUpgrade, onUseFree, downloadLabel, downloadDisabled = false, sourceMaxHeight }: Props) {
   const resolvedFormats = useMemo(
     () =>
       formats.map((f) => ({
@@ -178,7 +182,7 @@ export function QualitySelector({ formats, selected, onSelect, mode, onModeChang
       <RippleButton
         onClick={needsUpgrade ? (onUpgrade ?? onDownload) : onDownload}
         upgrade={needsUpgrade}
-        disabled={(!downloadReady && !needsUpgrade) || saving}
+        disabled={(!downloadReady && !needsUpgrade) || saving || downloadDisabled}
       >
         {needsUpgrade ? (
           <>
@@ -196,8 +200,17 @@ export function QualitySelector({ formats, selected, onSelect, mode, onModeChang
             <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2.5" aria-hidden="true">
               <path strokeLinecap="round" strokeLinejoin="round" d="M12 3v12m0 0 4-4m-4 4-4-4M5 21h14" />
             </svg>
-            Download {selectedFmt?.label}
-            <span className="text-sm font-normal text-white/75">· {mode === 'compatible' ? 'H.264' : 'best'}</span>
+            {downloadLabel ? (
+              <>
+                Download {downloadLabel}
+                <span className="text-sm font-normal text-white/75">· {selectedFmt?.label}</span>
+              </>
+            ) : (
+              <>
+                Download {selectedFmt?.label}
+                <span className="text-sm font-normal text-white/75">· {mode === 'compatible' ? 'H.264' : 'best'}</span>
+              </>
+            )}
           </>
         )}
       </RippleButton>

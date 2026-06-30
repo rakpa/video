@@ -13,6 +13,7 @@ interface Props {
 
 function stageLabel(p: ProgressUpdate): string {
   if (p.percent < 1) return 'Connecting';
+  if (p.stage === 'trimming') return 'Trimming clip';
   if (p.stage === 'done' || p.percent >= 99) return 'Finishing up';
   if (p.stage === 'merging') return 'Finishing up';
   if (p.percent < 3) return 'Starting';

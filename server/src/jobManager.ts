@@ -6,7 +6,8 @@ import { config, currentProxy } from './config.js';
 import { startDownload, ensureInfoJsonCache, YtDlpError, type ProgressUpdate } from './services/ytdlp.js';
 import { getQuality, type CodecMode, type QualityDef } from './services/formats.js';
 import { detectPlatform, type PlatformId } from './services/platform.js';
-import { needsGalleryNormalize, normalizeForGallery, canServeDirectToGallery, probeVideoHeight } from './services/normalizeVideo.js';
+import { needsGalleryNormalize, normalizeForGallery, canServeDirectToGallery, probeVideoHeight, trimVideo } from './services/normalizeVideo.js';
+import type { ClipRange } from './utils/clip.js';
 import { getFreshInfoJson } from './services/infoJsonCache.js';
 import { logger } from './utils/logger.js';
 
@@ -35,6 +36,8 @@ export interface Job {
   cacheKey?: string;
   /** Verified output height (ffprobe) after download completes. */
   outputHeight?: number | null;
+  /** Optional clip range applied after the full download. */
+  clip?: ClipRange | null;
   /** SSE listeners subscribed to this job's progress. */
   listeners: Set<(p: ProgressUpdate | { done: true; outputHeight?: number | null } | { error: string }) => void>;
 }
@@ -42,8 +45,15 @@ export interface Job {
 const jobs = new Map<string, Job>();
 const jobsByKey = new Map<string, string>();
 
-function jobCacheKey(url: string, quality: QualityDef, mode: CodecMode, fast?: boolean): string {
-  return `${url.trim()}|${quality.id}|${mode}|${fast ? 'fast' : 'normal'}`;
+function jobCacheKey(
+  url: string,
+  quality: QualityDef,
+  mode: CodecMode,
+  fast?: boolean,
+  clip?: ClipRange | null,
+): string {
+  const clipPart = clip ? `clip:${clip.startTime}-${clip.endTime}` : 'full';
+  return `${url.trim()}|${quality.id}|${mode}|${fast ? 'fast' : 'normal'}|${clipPart}`;
 }
 
 /** Return an in-flight or finished prefetch job for the same url/settings. */
@@ -52,12 +62,13 @@ export function findReusableJob(
   quality: QualityDef,
   mode: CodecMode,
   fast?: boolean,
+  clip?: ClipRange | null,
 ): Job | undefined {
-  const id = jobsByKey.get(jobCacheKey(url, quality, mode, fast));
+  const id = jobsByKey.get(jobCacheKey(url, quality, mode, fast, clip));
   if (!id) return undefined;
   const job = jobs.get(id);
   if (!job || job.status === 'error') {
-    jobsByKey.delete(jobCacheKey(url, quality, mode, fast));
+    jobsByKey.delete(jobCacheKey(url, quality, mode, fast, clip));
     return undefined;
   }
   return job;
@@ -122,13 +133,14 @@ export async function createJob(
   url: string,
   quality: QualityDef,
   mode: CodecMode,
-  options?: { fast?: boolean; reuse?: boolean },
+  options?: { fast?: boolean; reuse?: boolean; clip?: ClipRange | null },
 ): Promise<Job> {
   const q = effectiveQuality(url, quality, options?.fast);
-  const cacheKey = jobCacheKey(url, q, mode, options?.fast);
+  const clip = options?.clip ?? null;
+  const cacheKey = jobCacheKey(url, q, mode, options?.fast, clip);
 
   if (options?.reuse) {
-    const existing = findReusableJob(url, q, mode, options.fast);
+    const existing = findReusableJob(url, q, mode, options.fast, clip);
     if (existing) {
       logger.info(`Reusing download job ${existing.id} (${existing.status})`);
       return existing;
@@ -136,7 +148,7 @@ export async function createJob(
   }
 
   if (countRunningJobs() >= config.maxConcurrentJobs) {
-    const existing = findReusableJob(url, q, mode, options?.fast);
+    const existing = findReusableJob(url, q, mode, options?.fast, clip);
     if (existing) return existing;
     throw new YtDlpError(
       'The server is busy with another download. Wait a moment and try again.',
@@ -161,6 +173,7 @@ export async function createJob(
     createdAt: Date.now(),
     platformId: detectPlatform(url)?.id,
     fast: options?.fast ?? false,
+    clip,
     cacheKey,
     cancel: () => undefined, // replaced per attempt
     listeners: new Set(),
@@ -221,6 +234,32 @@ async function runWithRetry(job: Job, url: string, quality: QualityDef, mode: Co
       const filePath = await handle.done;
       job.status = 'ready';
       job.filePath = filePath;
+
+      if (job.clip) {
+        job.progress = {
+          percent: 93,
+          speed: null,
+          eta: null,
+          stage: 'trimming',
+          streamIndex: 1,
+          streamTotal: 1,
+        };
+        emit(job, job.progress);
+        try {
+          const clipped = await trimVideo(filePath, job.dir, job.clip.startTime, job.clip.endTime);
+          job.filePath = clipped;
+          job.galleryPath = undefined;
+          job.galleryNormalize = undefined;
+          job.galleryNormalizeFailed = false;
+        } catch (err) {
+          job.status = 'error';
+          job.errorMessage = (err as Error).message;
+          emit(job, { error: job.errorMessage });
+          scheduleDestroyJob(job.id);
+          return;
+        }
+      }
+
       job.progress = { ...job.progress, percent: 100, speed: null, eta: null, stage: 'done' };
 
       if (needsGalleryNormalize(job.platformId)) {

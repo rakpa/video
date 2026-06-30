@@ -457,3 +457,63 @@ export function normalizeForGallery(inputPath: string, jobDir: string, fast = fa
     return transcodeForGallery(inputPath, jobDir, fast);
   });
 }
+
+/** Cut a segment from a downloaded MP4 (stream copy first, re-encode fallback). */
+export async function trimVideo(
+  inputPath: string,
+  jobDir: string,
+  startSec: number,
+  endSec: number,
+): Promise<string> {
+  const duration = Math.max(0.1, endSec - startSec);
+  const outputPath = path.join(jobDir, 'clip.mp4');
+  const tempPath = path.join(jobDir, 'clip.tmp.mp4');
+
+  const strategies: { label: string; args: string[] }[] = [
+    {
+      label: 'stream copy',
+      args: ['-ss', String(startSec), '-i', inputPath, '-t', String(duration), '-c', 'copy'],
+    },
+    {
+      label: 'accurate copy',
+      args: ['-i', inputPath, '-ss', String(startSec), '-to', String(endSec), '-c', 'copy'],
+    },
+    {
+      label: 're-encode',
+      args: [
+        '-ss',
+        String(startSec),
+        '-i',
+        inputPath,
+        '-t',
+        String(duration),
+        '-c:v',
+        'libx264',
+        '-preset',
+        'fast',
+        '-crf',
+        '23',
+        '-c:a',
+        'aac',
+        '-b:a',
+        '128k',
+      ],
+    },
+  ];
+
+  const errors: string[] = [];
+  for (const strategy of strategies) {
+    await fsp.unlink(tempPath).catch(() => undefined);
+    await fsp.unlink(outputPath).catch(() => undefined);
+    try {
+      logger.info(`Clip trim (${strategy.label}): ${startSec}s–${endSec}s`);
+      await runFfmpeg([...strategy.args, '-movflags', '+faststart', '-y', tempPath], 8 * 60_000);
+      await fsp.rename(tempPath, outputPath);
+      return outputPath;
+    } catch (err) {
+      errors.push(`${strategy.label}: ${(err as Error).message}`);
+    }
+  }
+
+  throw new Error(`Could not trim this clip — ${errors.join('; ')}`);
+}

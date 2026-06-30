@@ -3,10 +3,10 @@ import { validateUrl } from '../utils/validate.js';
 import { readJsonBody } from '../utils/body.js';
 import { getQuality, isCodecMode } from '../services/formats.js';
 import { createJob } from '../jobManager.js';
-import { YtDlpError } from '../services/ytdlp.js';
+import { YtDlpError, readCachedVideoInfo } from '../services/ytdlp.js';
 import { detectPlatform } from '../services/platform.js';
 import { maxAllowedHeight } from '../services/license.js';
-import { config } from '../config.js';
+import { parseClipRange } from '../utils/clip.js';
 
 export const downloadRouter = Router();
 
@@ -16,7 +16,8 @@ export const downloadRouter = Router();
  * subscribes to /api/progress/:jobId and finally GETs /api/file/:jobId.
  */
 downloadRouter.post('/download', async (req, res) => {
-  const { url, quality, mode, license, fast, reuse } = readJsonBody(req);
+  const body = readJsonBody(req);
+  const { url, quality, mode, license, fast, reuse } = body;
 
   const v = validateUrl(url);
   if (!v.ok) return res.status(400).json({ error: v.message });
@@ -32,6 +33,10 @@ downloadRouter.post('/download', async (req, res) => {
       requiredHeight: q.height,
     });
   }
+
+  const cached = readCachedVideoInfo(String(url ?? '').trim());
+  const clipResult = parseClipRange(body, cached?.durationSeconds ?? null);
+  if (!clipResult.ok) return res.status(400).json({ error: clipResult.error });
 
   // Default to 'best' when the client omits a codec mode.
   const platform = detectPlatform(url.trim());
@@ -50,6 +55,7 @@ downloadRouter.post('/download', async (req, res) => {
     const job = await createJob(url.trim(), q, codecMode, {
       fast: Boolean(fast),
       reuse: Boolean(reuse),
+      clip: clipResult.clip,
     });
     return res.status(202).json({ jobId: job.id });
   } catch (err) {

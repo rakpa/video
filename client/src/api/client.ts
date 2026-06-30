@@ -1,4 +1,4 @@
-import type { CodecMode, ProgressUpdate, QualityId, VideoInfo } from '../types';
+import type { ClipRange, CodecMode, ProgressUpdate, QualityId, VideoInfo } from '../types';
 import { API_NOT_CONFIGURED_MSG, API_UNREACHABLE_MSG, apiUrl, isApiConfigured } from '../config/api';
 import { classicFileDownload, isMobileDevice, saveMobileVideoToGallery } from '../utils/saveVideo';
 import { detectPlatform } from '../utils/platform';
@@ -150,7 +150,7 @@ export async function startDownloadJob(
   quality: QualityId,
   mode: CodecMode,
   license?: string,
-  options?: { fast?: boolean; reuse?: boolean },
+  options?: { fast?: boolean; reuse?: boolean; clip?: ClipRange | null },
 ): Promise<string> {
   const { jobId } = await postJson<{ jobId: string }>('/api/download', {
     url,
@@ -159,6 +159,9 @@ export async function startDownloadJob(
     license,
     fast: options?.fast ?? false,
     reuse: options?.reuse ?? false,
+    ...(options?.clip
+      ? { startTime: options.clip.startTime, endTime: options.clip.endTime }
+      : {}),
   });
   return jobId;
 }
