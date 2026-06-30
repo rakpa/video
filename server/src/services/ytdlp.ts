@@ -595,16 +595,20 @@ export function startDownload(
   const cookies = getCookiesStatus();
   const [youtubeClient] = youtubeClientsToTry(cookies.exists);
 
-  // Reuse the extraction from /api/info (same proxy, still fresh) so the download
-  // skips a second ~20s extraction and starts transferring almost immediately.
-  const cachedInfoJson = getFreshInfoJson(url, currentProxy() ?? '');
-  const usedCache = Boolean(cachedInfoJson);
-  if (usedCache) logger.info('Download reusing cached info (skipping re-extraction)');
-
   const platformId = detectPlatform(url)?.id;
   const fast = options?.fast ?? false;
   const clip = options?.clip;
   const sectionDownload = Boolean(clip && platformId === 'youtube');
+
+  // Reuse the extraction from /api/info (same proxy, still fresh) so the download
+  // skips a second ~20s extraction and starts transferring almost immediately.
+  // EXCEPT for section/clip downloads: combining --load-info-json with
+  // --download-sections makes yt-dlp emit a video-less file (video:0KiB, audio
+  // only) or fail outright, because the pre-resolved DASH ranges in the cached
+  // JSON don't support keyframe-accurate time cuts. Re-extract fresh for clips.
+  const cachedInfoJson = sectionDownload ? null : getFreshInfoJson(url, currentProxy() ?? '');
+  const usedCache = Boolean(cachedInfoJson);
+  if (usedCache) logger.info('Download reusing cached info (skipping re-extraction)');
   const tuning = downloadTuning(url, fast);
   const igFbMaxHeight =
     platformId === 'instagram' || platformId === 'facebook' ? quality.height : undefined;
