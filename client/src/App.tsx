@@ -42,7 +42,7 @@ import { LegalPage, LEGAL_ROUTES } from './pages/LegalPages';
 import { ContentPage, CONTENT_ROUTES } from './pages/ContentPages';
 import { PricingPage } from './pages/PricingPage';
 import { SiteHeader } from './components/SiteHeader';
-import { Hero } from './components/Hero';
+import { HeroFeatures, HeroTitle } from './components/Hero';
 import { HowItWorks } from './components/HowItWorks';
 import { FeatureGrid } from './components/FeatureGrid';
 import { Faq } from './components/Faq';
@@ -602,9 +602,9 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
       <SiteHeader theme={theme} onToggleTheme={onToggleTheme} />
 
       <main className="mx-auto max-w-5xl px-5">
-        <section className="pt-14 sm:pt-24">
-          <Hero />
-          <div className="mx-auto mt-14 max-w-3xl">
+        <section className="flex flex-col pt-14 sm:pt-24">
+          <HeroTitle />
+          <div className="order-2 mx-auto mt-6 w-full max-w-3xl sm:order-3 sm:mt-14">
             <UrlInput value={url} onChange={setUrl} />
             <div className="mt-7 flex flex-col items-center gap-4">
               <p className="flex flex-wrap items-center justify-center gap-x-2 gap-y-1 text-center text-xs font-medium text-slate-500">
@@ -641,6 +641,9 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
                 Secure & malware-free · SSL encrypted
               </span>
             </div>
+          </div>
+          <div className="order-3 mt-8 sm:order-2 sm:mt-9">
+            <HeroFeatures />
           </div>
         </section>
 

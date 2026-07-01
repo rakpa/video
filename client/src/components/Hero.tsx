@@ -32,24 +32,29 @@ const CORE_FEATURES = [
   },
 ] as const;
 
-/** Headline + value props above the URL input. */
-export function Hero() {
+/** Main headline — URL input is inserted after this on mobile (see App.tsx). */
+export function HeroTitle() {
+  return (
+    <motion.h1
+      initial={{ opacity: 0, y: 16 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.6, delay: 0.05 }}
+      className="mx-auto max-w-5xl text-center text-[clamp(1.9rem,6.3vw,3.6rem)] font-bold leading-[1.15] tracking-tight text-slate-900"
+    >
+      Best <span className="gradient-text">Free Online</span> Video Downloader
+    </motion.h1>
+  );
+}
+
+/** Feature cards + supported platforms. */
+export function HeroFeatures() {
   return (
     <div className="mx-auto max-w-5xl text-center">
-      <motion.h1
-        initial={{ opacity: 0, y: 16 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.6, delay: 0.05 }}
-        className="text-[clamp(1.9rem,6.3vw,3.6rem)] font-bold leading-[1.15] tracking-tight text-slate-900"
-      >
-        Best <span className="gradient-text">Free Online</span> Video Downloader
-      </motion.h1>
-
       <motion.div
         initial={{ opacity: 0, y: 14 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.6, delay: 0.12 }}
-        className="mx-auto mt-9 grid max-w-3xl gap-3 sm:grid-cols-2 sm:gap-4"
+        className="mx-auto grid max-w-3xl gap-3 sm:grid-cols-2 sm:gap-4"
       >
         {CORE_FEATURES.map((feature) => (
           <div
