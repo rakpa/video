@@ -30,16 +30,6 @@ const CORE_FEATURES = [
       </svg>
     ),
   },
-  {
-    title: 'Snip section',
-    body: 'Cut a short moment from anywhere in the video — grab just the seconds you need, fast.',
-    icon: (
-      <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
-        <path strokeLinecap="round" strokeLinejoin="round" d="M9.5 5.5 5 10l4.5 4.5M14.5 5.5 19 10l-4.5 4.5" />
-        <path strokeLinecap="round" strokeLinejoin="round" d="M5 10h14" />
-      </svg>
-    ),
-  },
 ] as const;
 
 /** Headline + value props above the URL input. */
@@ -59,7 +49,7 @@ export function Hero() {
         initial={{ opacity: 0, y: 14 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.6, delay: 0.12 }}
-        className="mx-auto mt-9 grid max-w-4xl gap-3 sm:grid-cols-2 lg:grid-cols-3 sm:gap-4"
+        className="mx-auto mt-9 grid max-w-3xl gap-3 sm:grid-cols-2 sm:gap-4"
       >
         {CORE_FEATURES.map((feature) => (
           <div
