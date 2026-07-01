@@ -10,7 +10,7 @@
     "ios:sync": "cap sync ios",
     "ios:build": "npm run build && cap sync ios",
     "ios:open": "cap open ios",
-    "ios:assets": "capacitor-assets generate --ios --iconBackgroundColor #4f46e5 --splashBackgroundColor #f8fafc"
+    "ios:assets": "capacitor-assets generate --ios --iconBackgroundColor '#4f46e5' --splashBackgroundColor '#f8fafc'"
   },
   "dependencies": {
     "@capacitor/app": "^6.0.3",
