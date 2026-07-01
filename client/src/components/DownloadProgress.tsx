@@ -5,6 +5,8 @@ import type { ProgressUpdate } from '../types';
 interface Props {
   progress: ProgressUpdate;
   qualityLabel: string;
+  /** True while the finished file is being delivered to the browser download manager. */
+  delivering?: boolean;
   /** Mobile: hide 0–100% bar — show a simple processing message until share opens. */
   processingOnly?: boolean;
   /** Mobile gallery save flow — different copy from desktop download. */
@@ -20,11 +22,43 @@ function stageLabel(p: ProgressUpdate): string {
   return 'Downloading';
 }
 
-export function DownloadProgress({ progress, qualityLabel, processingOnly, mobileSave }: Props) {
+export function DownloadProgress({ progress, qualityLabel, delivering, processingOnly, mobileSave }: Props) {
   const pct = Math.max(0, Math.min(100, progress.percent));
   const showPercent = !processingOnly && !mobileSave && pct > 0;
-  const displayPct = pct > 0 && pct < 1 ? 1 : Math.round(pct);
+  const displayPct = delivering ? 100 : pct > 0 && pct < 1 ? 1 : Math.round(pct);
   const display = useCountUp(showPercent ? displayPct : 0);
+
+  if (delivering) {
+    return (
+      <motion.div
+        initial={{ opacity: 0, y: 14 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="glass relative overflow-hidden rounded-3xl p-6 shadow-card"
+      >
+        <div className="flex items-center gap-2.5">
+          <motion.span
+            className="h-2.5 w-2.5 rounded-full bg-accent"
+            animate={{ opacity: [1, 0.3, 1] }}
+            transition={{ duration: 1.2, repeat: Infinity }}
+          />
+          <span className="font-semibold text-slate-900">Saving to your device…</span>
+          {qualityLabel && (
+            <span className="rounded-md bg-slate-100 px-1.5 py-0.5 text-xs font-medium text-slate-600">{qualityLabel}</span>
+          )}
+        </div>
+        <p className="mt-3 text-sm text-slate-500">
+          Your file should appear in your browser&apos;s downloads any moment now.
+        </p>
+        <div className="relative mt-5 h-2.5 w-full overflow-hidden rounded-full bg-slate-100">
+          <motion.div
+            className="btn-gradient absolute inset-y-0 left-0 rounded-full"
+            animate={{ width: '100%' }}
+            transition={{ ease: 'easeOut', duration: 0.4 }}
+          />
+        </div>
+      </motion.div>
+    );
+  }
 
   if ((processingOnly || mobileSave) && pct < 1) {
     return (

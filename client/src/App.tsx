@@ -31,6 +31,7 @@ import {
   cancelMobileGalleryGestureFallback,
   downloadFileToDevice,
   fetchReadyVideoFile,
+  formatDownloadError,
   type ShareResult,
   type VideoFilePayload,
 } from './utils/saveVideo';
@@ -167,6 +168,8 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
   const [preloadedThumb, setPreloadedThumb] = useState<PreloadedThumb | null>(null);
   /** Mobile: gallery-ready file after download completes. */
   const [mobileSavePayload, setMobileSavePayload] = useState<VideoFilePayload | null>(null);
+  /** Desktop: finished file is being handed off to the browser download manager. */
+  const [delivering, setDelivering] = useState(false);
   const [clipMode, setClipMode] = useState<ClipMode>('full');
   const [clipStart, setClipStart] = useState('0:00');
   const [clipEnd, setClipEnd] = useState('');
@@ -196,6 +199,7 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
   const handleMobileDownloadAnother = useCallback(() => {
     cancelMobileGalleryGestureFallback();
     setMobileSavePayload(null);
+    setDelivering(false);
     setUrl('');
     setPhase('idle');
     setInfo(null);
@@ -248,6 +252,7 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
     socialRevealedRef.current = false;
     cancelMobileGalleryGestureFallback();
     setMobileSavePayload(null);
+    setDelivering(false);
     setPreloadedThumb(null);
     setClipMode('full');
     setClipStart('0:00');
@@ -478,6 +483,7 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
       const currentUrl = fetchedUrl.current || url;
 
       setMobileSavePayload(null);
+      setDelivering(false);
       setProgress(INITIAL_PROGRESS);
       setOutputHeight(null);
       setPhase('downloading');
@@ -508,22 +514,20 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
             if (typeof height === 'number') setOutputHeight(height);
             void (async () => {
               try {
+                setProgress((p) => ({ ...p, percent: 100, stage: 'done', speed: null, eta: null }));
                 if (mobile) {
                   const payload = await fetchReadyVideoFile(jobId);
                   setMobileSavePayload(payload);
                   setPhase('ready');
                 } else {
+                  setDelivering(true);
                   await downloadFileToDevice(jobId);
+                  setDelivering(false);
                   setPhase('success');
                 }
               } catch (e) {
-                setError(
-                  e instanceof ApiError
-                    ? e.message
-                    : e instanceof Error
-                      ? e.message
-                      : 'Could not save the video.',
-                );
+                setDelivering(false);
+                setError(formatDownloadError(e));
                 setPhase('error');
               }
             })();
@@ -663,6 +667,7 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
                     <DownloadProgress
                       progress={progress}
                       qualityLabel={qualityLabel}
+                      delivering={delivering}
                     />
                   ) : info && view === 'success' ? (
                     <SuccessState outputHeight={outputHeight} requestedLabel={qualityLabel || undefined} />

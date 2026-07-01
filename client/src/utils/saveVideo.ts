@@ -403,9 +403,15 @@ export async function fetchReadyVideoFile(jobId: string): Promise<VideoFilePaylo
   return fetchVideoBytes(jobId);
 }
 
-/** Download via blob URL so the page stays put — no cross-origin tab navigation. */
-export async function downloadFileToDevice(jobId: string): Promise<void> {
-  const payload = await fetchDesktopVideoBytes(jobId);
+function isCrossOriginApiUrl(url: string): boolean {
+  try {
+    return new URL(url, window.location.href).origin !== window.location.origin;
+  } catch {
+    return true;
+  }
+}
+
+function triggerBlobDownload(payload: VideoFilePayload): void {
   const objectUrl = URL.createObjectURL(payload.blob);
   try {
     const a = document.createElement('a');
@@ -417,6 +423,63 @@ export async function downloadFileToDevice(jobId: string): Promise<void> {
     a.remove();
   } finally {
     URL.revokeObjectURL(objectUrl);
+  }
+}
+
+/**
+ * Cross-origin file delivery without reading the full MP4 into JS memory.
+ * A hidden iframe receives the attachment response so the main page stays put.
+ */
+function triggerCrossOriginDownload(url: string): void {
+  const frameName = `vidcliply-dl-${Date.now()}`;
+  const iframe = document.createElement('iframe');
+  iframe.name = frameName;
+  iframe.style.cssText = 'position:fixed;width:0;height:0;border:0;visibility:hidden';
+  iframe.setAttribute('aria-hidden', 'true');
+  document.body.appendChild(iframe);
+
+  const a = document.createElement('a');
+  a.href = url;
+  a.target = frameName;
+  a.rel = 'noopener';
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+
+  window.setTimeout(() => iframe.remove(), 120_000);
+}
+
+/** Map low-level fetch/network errors to user-friendly copy. */
+export function formatDownloadError(err: unknown): string {
+  if (err instanceof Error && err.message === API_NOT_CONFIGURED_MSG) return err.message;
+  if (err instanceof Error) {
+    if (err.message === 'Failed to fetch' || err.name === 'TypeError') {
+      return 'Could not save the video to your device. Your connection may have dropped while transferring the file — please try again.';
+    }
+    return err.message;
+  }
+  return 'Could not save the video.';
+}
+
+/**
+ * Deliver a finished job to the user's downloads folder.
+ * Cross-origin APIs use a hidden iframe (no full-file blob read).
+ * Same-origin deploys still use blob download when possible.
+ */
+export async function downloadFileToDevice(jobId: string): Promise<void> {
+  const url = apiUrl(`/api/file/${jobId}`);
+  if (!isApiConfigured()) throw new Error(API_NOT_CONFIGURED_MSG);
+
+  if (isCrossOriginApiUrl(url)) {
+    triggerCrossOriginDownload(url);
+    return;
+  }
+
+  try {
+    const payload = await fetchDesktopVideoBytes(jobId);
+    triggerBlobDownload(payload);
+  } catch {
+    triggerCrossOriginDownload(url);
   }
 }
 
