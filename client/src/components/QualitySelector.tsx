@@ -3,6 +3,7 @@ import { useMemo, useState } from 'react';
 import { COMPATIBLE_MAX_HEIGHT, type AvailableFormat, type CodecMode, type QualityId } from '../types';
 import { formatBytes } from '../utils/format';
 import { displaySourceMaxHeight, isQualityAvailable } from '../utils/qualityAvailability';
+import { HIDE_PRO } from '../config/build';
 
 interface Props {
   formats: AvailableFormat[];
@@ -58,13 +59,17 @@ export function QualitySelector({ formats, selected, onSelect, mode, onModeChang
       : null;
 
   // In compatible mode, only resolutions up to 1080p are offered (H.264 ceiling).
+  // In the iOS build (HIDE_PRO) the paid tiers are removed entirely, so nothing
+  // above the free-tier maxHeight is even shown — no PRO locks, no upsell.
   const visibleFormats = useMemo(
     () =>
-      resolvedFormats.map((f) => ({
-        ...f,
-        available: f.available && (mode === 'best' || f.height <= COMPATIBLE_MAX_HEIGHT),
-      })),
-    [resolvedFormats, mode],
+      resolvedFormats
+        .filter((f) => !HIDE_PRO || f.height <= maxHeight)
+        .map((f) => ({
+          ...f,
+          available: f.available && (mode === 'best' || f.height <= COMPATIBLE_MAX_HEIGHT),
+        })),
+    [resolvedFormats, mode, maxHeight],
   );
 
   const pickDefault = (list: AvailableFormat[]): QualityId =>

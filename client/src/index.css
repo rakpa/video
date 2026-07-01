@@ -25,6 +25,34 @@ body {
   text-rendering: optimizeLegibility;
 }
 
+/* ---------------------------------------------------------------------------
+   Native iOS safe areas (Capacitor / WKWebView).
+   env(safe-area-inset-*) resolves to 0 in a normal browser, so these rules are
+   a no-op on the web and only take effect under the notch / Dynamic Island and
+   home-indicator on device. viewport-fit=cover (index.html) enables them.
+--------------------------------------------------------------------------- */
+header {
+  padding-top: env(safe-area-inset-top);
+  padding-left: env(safe-area-inset-left);
+  padding-right: env(safe-area-inset-right);
+}
+footer {
+  padding-bottom: env(safe-area-inset-bottom);
+  padding-left: env(safe-area-inset-left);
+  padding-right: env(safe-area-inset-right);
+}
+/* The mobile save prompt / bottom action bars sit above the home indicator. */
+.ios-safe-bottom {
+  padding-bottom: max(1rem, env(safe-area-inset-bottom));
+}
+
+/* Disable the WKWebView elastic rubber-band scroll so the app feels native. */
+@supports (-webkit-touch-callout: none) {
+  body {
+    overscroll-behavior-y: none;
+  }
+}
+
 /* App background — clean light slate with subtle indigo/violet radial tints. */
 .app-bg {
   background:

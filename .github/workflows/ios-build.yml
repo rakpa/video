@@ -1,0 +1,93 @@
+name: iOS Build (Simulator proof)
+
+# Builds the Capacitor iOS app on a real macOS runner, launches it in the
+# iOS Simulator, and uploads a screenshot as proof — no Apple account / signing
+# required (simulator builds are unsigned). This is "Level 1": verify it compiles
+# and runs. Signed TestFlight/App Store upload comes later via fastlane + secrets.
+
+on:
+  push:
+    branches: [ios-app]
+  workflow_dispatch: {}
+
+jobs:
+  ios-simulator:
+    runs-on: macos-14
+    timeout-minutes: 40
+    env:
+      VITE_HIDE_PRO: '1'
+      VITE_API_URL: https://clipvault-api-production.up.railway.app
+      BUNDLE_ID: com.vidcliply.app
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Select Xcode
+        run: sudo xcode-select -s /Applications/Xcode_15.4.app || sudo xcode-select -s /Applications/Xcode.app
+
+      - name: Install client dependencies
+        working-directory: client
+        run: npm install
+
+      - name: Build web app (iOS config — Pro hidden, Railway API)
+        working-directory: client
+        run: npm run build
+
+      - name: Add iOS platform
+        working-directory: client
+        run: npx cap add ios
+
+      - name: Generate app icon & splash
+        working-directory: client
+        run: npm run ios:assets
+
+      - name: Sync web build into iOS project
+        working-directory: client
+        run: npx cap sync ios
+
+      - name: Build app for the simulator (unsigned)
+        working-directory: client/ios/App
+        run: |
+          set -eo pipefail
+          xcodebuild \
+            -workspace App.xcworkspace \
+            -scheme App \
+            -configuration Debug \
+            -sdk iphonesimulator \
+            -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO \
+            build | xcpretty || xcodebuild \
+            -workspace App.xcworkspace -scheme App -configuration Debug \
+            -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath build CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO build
+
+      - name: Boot a simulator, install & launch the app
+        run: |
+          set -eo pipefail
+          UDID=$(xcrun simctl list devices available -j \
+            | jq -r '.devices | to_entries[] | .value[] | select(.name|test("iPhone")) | .udid' \
+            | head -1)
+          echo "Booting simulator $UDID"
+          xcrun simctl boot "$UDID"
+          xcrun simctl bootstatus "$UDID" -b
+          APP=$(find client/ios/App/build -name 'App.app' -path '*Debug-iphonesimulator*' | head -1)
+          echo "Installing $APP"
+          xcrun simctl install "$UDID" "$APP"
+          xcrun simctl launch "$UDID" "$BUNDLE_ID"
+          sleep 10
+          mkdir -p artifacts
+          xcrun simctl io "$UDID" screenshot artifacts/vidcliply-ios-simulator.png
+          echo "Screenshot captured."
+
+      - name: Upload simulator screenshot
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-simulator-screenshot
+          path: artifacts/*.png
+          if-no-files-found: warn
