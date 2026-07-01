@@ -460,9 +460,10 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
   }, [url]);
 
   useEffect(() => {
-    if (phase !== 'downloading') return;
+    if (phase !== 'downloading' && phase !== 'success') return;
+    const targetId = phase === 'success' ? 'download-success' : 'download-progress';
     const t = window.setTimeout(() => {
-      document.getElementById('download-progress')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      document.getElementById(targetId)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
     }, 80);
     return () => window.clearTimeout(t);
   }, [phase]);
@@ -671,103 +672,78 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
                   <VideoPreview info={info} preloadedThumb={preloadedThumb} />
                 )}
 
-                <AnimatePresence mode="wait">
-                  {info && view === 'downloading' ? (
-                    <motion.div
-                      key="downloading"
-                      id="download-progress"
-                      initial={{ opacity: 0, y: 10 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      exit={{ opacity: 0, y: -6 }}
-                      transition={{ duration: 0.2 }}
-                    >
-                      <DownloadProgress
-                        progress={progress}
-                        qualityLabel={qualityLabel}
-                        delivering={delivering}
+                {info && view === 'downloading' ? (
+                  <div id="download-progress">
+                    <DownloadProgress
+                      progress={progress}
+                      qualityLabel={qualityLabel}
+                      delivering={delivering}
+                      clipLabel={
+                        clipMode === 'clip' && clipReady
+                          ? formatClipRangeLabel(clipStart, clipEnd)
+                          : undefined
+                      }
+                    />
+                  </div>
+                ) : info && view === 'success' ? (
+                  <div id="download-success">
+                    <SuccessState outputHeight={outputHeight} requestedLabel={qualityLabel || undefined} />
+                  </div>
+                ) : info && isMobileDevice() && mobileSavePayload ? (
+                  <MobileSavePrompt
+                    payload={mobileSavePayload}
+                    author={info.author}
+                    onSaved={handleMobileSaved}
+                    onDownloadAnother={handleMobileDownloadAnother}
+                  />
+                ) : showQualityPanel ? (
+                  <div className="space-y-5">
+                    <ClipSelector
+                      durationSeconds={info!.durationSeconds}
+                      mode={clipMode}
+                      onModeChange={setClipMode}
+                      startTime={clipStart}
+                      endTime={clipEnd}
+                      onStartTimeChange={setClipStart}
+                      onEndTimeChange={setClipEnd}
+                    />
+                    <div className="mt-4">
+                      <QualitySelector
+                        formats={info!.formats}
+                        selected={selected}
+                        onSelect={setSelected}
+                        mode={codecMode}
+                        onModeChange={setCodecMode}
+                        maxHeight={maxHeight}
+                        refining={refining}
+                        sourceMaxHeight={info!.sourceMaxHeight}
+                        downloadReady={
+                          (info!.platform !== 'instagram' && info!.platform !== 'facebook') || infoWarm
+                        }
+                        onDownload={() => void handleDownload(selected, codecMode)}
+                        onUpgrade={() => proPanelRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })}
+                        onUseFree={() => dismissProUpgrade()}
+                        downloadLabel={downloadButtonLabel}
+                        downloadDisabled={clipMode === 'clip' && !clipReady}
                       />
-                    </motion.div>
-                  ) : info && view === 'success' ? (
-                    <motion.div
-                      key="success"
-                      initial={{ opacity: 0, y: 10 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      exit={{ opacity: 0, y: -6 }}
-                      transition={{ duration: 0.2 }}
-                    >
-                      <SuccessState outputHeight={outputHeight} requestedLabel={qualityLabel || undefined} />
-                    </motion.div>
-                  ) : info && isMobileDevice() && mobileSavePayload ? (
-                    <motion.div
-                      key="mobile-save"
-                      initial={{ opacity: 0, y: 10 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      exit={{ opacity: 0, y: -6 }}
-                      transition={{ duration: 0.2 }}
-                    >
-                      <MobileSavePrompt
-                        payload={mobileSavePayload}
-                        author={info.author}
-                        onSaved={handleMobileSaved}
-                        onDownloadAnother={handleMobileDownloadAnother}
-                      />
-                    </motion.div>
-                  ) : showQualityPanel ? (
-                    <motion.div
-                      key="quality"
-                      initial={{ opacity: 0, y: 10 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      exit={{ opacity: 0, y: -6 }}
-                      transition={{ duration: 0.2 }}
-                      className="space-y-5"
-                    >
-                      <ClipSelector
-                        durationSeconds={info!.durationSeconds}
-                        mode={clipMode}
-                        onModeChange={setClipMode}
-                        startTime={clipStart}
-                        endTime={clipEnd}
-                        onStartTimeChange={setClipStart}
-                        onEndTimeChange={setClipEnd}
-                      />
-                      <div className="mt-4">
-                        <QualitySelector
-                          formats={info!.formats}
-                          selected={selected}
-                          onSelect={setSelected}
-                          mode={codecMode}
-                          onModeChange={setCodecMode}
-                          maxHeight={maxHeight}
-                          refining={refining}
-                          sourceMaxHeight={info!.sourceMaxHeight}
-                          downloadReady={
-                            (info!.platform !== 'instagram' && info!.platform !== 'facebook') || infoWarm
-                          }
-                          onDownload={() => void handleDownload(selected, codecMode)}
-                          onUpgrade={() => proPanelRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })}
-                          onUseFree={() => dismissProUpgrade()}
-                          downloadLabel={downloadButtonLabel}
-                          downloadDisabled={clipMode === 'clip' && !clipReady}
-                        />
-                      </div>
-                      <AnimatePresence>
-                        {showProUpgrade && (
-                          <motion.div
-                            ref={proPanelRef}
-                            id="pro-upgrade"
-                            key="pro-panel"
-                            initial={{ opacity: 0, y: 16 }}
-                            animate={{ opacity: 1, y: 0 }}
-                            exit={{ opacity: 0, y: 8 }}
-                            transition={{ duration: 0.35 }}
-                          >
-                            <ProUpgradeCard onDismiss={dismissProUpgrade} />
-                          </motion.div>
-                        )}
-                      </AnimatePresence>
-                    </motion.div>
-                  ) : null}
-                </AnimatePresence>
+                    </div>
+                    <AnimatePresence>
+                      {showProUpgrade && (
+                        <motion.div
+                          ref={proPanelRef}
+                          id="pro-upgrade"
+                          key="pro-panel"
+                          initial={{ opacity: 0, y: 16 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          exit={{ opacity: 0, y: 8 }}
+                          transition={{ duration: 0.35 }}
+                        >
+                          <ProUpgradeCard onDismiss={dismissProUpgrade} />
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
+                  </div>
+                ) : null}
               </motion.div>
             )}
           </AnimatePresence>

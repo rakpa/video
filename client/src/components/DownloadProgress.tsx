@@ -5,6 +5,7 @@ import type { ProgressUpdate } from '../types';
 interface Props {
   progress: ProgressUpdate;
   qualityLabel: string;
+  clipLabel?: string;
   /** True while the finished file is being delivered to the browser download manager. */
   delivering?: boolean;
   /** Mobile: hide 0–100% bar — show a simple processing message until share opens. */
@@ -22,7 +23,7 @@ function stageLabel(p: ProgressUpdate): string {
   return 'Downloading';
 }
 
-export function DownloadProgress({ progress, qualityLabel, delivering, processingOnly, mobileSave }: Props) {
+export function DownloadProgress({ progress, qualityLabel, clipLabel, delivering, processingOnly, mobileSave }: Props) {
   const pct = Math.max(0, Math.min(100, progress.percent));
   const showPercent = !processingOnly && !mobileSave && pct > 0;
   const displayPct = delivering ? 100 : pct > 0 && pct < 1 ? 1 : Math.round(pct);
@@ -109,7 +110,13 @@ export function DownloadProgress({ progress, qualityLabel, delivering, processin
             transition={{ duration: 1.2, repeat: Infinity }}
           />
           <span className="font-semibold text-slate-900">
-            {showPercent ? 'Downloading your video' : 'Connecting to server…'}
+            {clipLabel
+              ? showPercent
+                ? `Clipping ${clipLabel}`
+                : 'Preparing your clip…'
+              : showPercent
+                ? 'Downloading your video'
+                : 'Connecting to server…'}
           </span>
           {qualityLabel && (
             <span className="rounded-md bg-slate-100 px-1.5 py-0.5 text-xs font-medium text-slate-600">{qualityLabel}</span>
