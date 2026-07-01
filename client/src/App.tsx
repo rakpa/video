@@ -42,7 +42,7 @@ import { LegalPage, LEGAL_ROUTES } from './pages/LegalPages';
 import { ContentPage, CONTENT_ROUTES } from './pages/ContentPages';
 import { PricingPage } from './pages/PricingPage';
 import { SiteHeader } from './components/SiteHeader';
-import { HeroFeatures, HeroTitle } from './components/Hero';
+import { HeroFeatures, HeroPlatforms, HeroTitle } from './components/Hero';
 import { HowItWorks } from './components/HowItWorks';
 import { FeatureGrid } from './components/FeatureGrid';
 import { Faq } from './components/Faq';
@@ -605,6 +605,7 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
         <section className="flex flex-col pt-14 sm:pt-24">
           <HeroTitle />
           <div className="order-2 mx-auto mt-6 w-full max-w-3xl sm:order-3 sm:mt-14">
+            <HeroPlatforms />
             <UrlInput value={url} onChange={setUrl} />
             <div className="mt-7 flex flex-col items-center gap-4">
               <p className="flex flex-wrap items-center justify-center gap-x-2 gap-y-1 text-center text-xs font-medium text-slate-500">

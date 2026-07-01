@@ -46,7 +46,32 @@ export function HeroTitle() {
   );
 }
 
-/** Feature cards + supported platforms. */
+/** Supported platforms — shown next to the URL input. */
+export function HeroPlatforms() {
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 10 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.5, delay: 0.1 }}
+      className="mb-4 flex flex-col items-center gap-2.5 sm:mb-5"
+    >
+      <span className="text-xs font-medium uppercase tracking-wide text-slate-400">Works with</span>
+      <div className="flex flex-wrap items-center justify-center gap-2">
+        {SOCIALS.map((s) => (
+          <span
+            key={s.id}
+            className="glass inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-sm font-medium text-slate-700"
+          >
+            <PlatformIcon platform={s.id} className="h-5 w-5" />
+            {s.label}
+          </span>
+        ))}
+      </div>
+    </motion.div>
+  );
+}
+
+/** Feature cards. */
 export function HeroFeatures() {
   return (
     <div className="mx-auto max-w-5xl text-center">
@@ -71,23 +96,6 @@ export function HeroFeatures() {
               </div>
             </div>
           </div>
-        ))}
-      </motion.div>
-
-      <motion.div
-        initial={{ opacity: 0, y: 12 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.6, delay: 0.2 }}
-        className="mt-9 flex flex-wrap items-center justify-center gap-2.5"
-      >
-        {SOCIALS.map((s) => (
-          <span
-            key={s.id}
-            className="glass inline-flex items-center gap-2 rounded-full px-3.5 py-1.5 text-sm font-medium text-slate-700"
-          >
-            <PlatformIcon platform={s.id} className="h-5 w-5" />
-            {s.label}
-          </span>
         ))}
       </motion.div>
     </div>
