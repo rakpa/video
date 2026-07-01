@@ -221,20 +221,39 @@ export interface ProgressHandlers {
 export function subscribeProgress(jobId: string, handlers: ProgressHandlers): () => void {
   const es = new EventSource(apiUrl(`/api/progress/${jobId}`));
   let settled = false;
-  let lastPercent = 0;
+  let polling = false;
   let pollTimer: ReturnType<typeof setTimeout> | undefined;
+  let reconnectTimer: ReturnType<typeof setTimeout> | undefined;
+
+  const clearTimers = () => {
+    if (pollTimer) clearTimeout(pollTimer);
+    if (reconnectTimer) clearTimeout(reconnectTimer);
+    pollTimer = undefined;
+    reconnectTimer = undefined;
+  };
 
   const settle = (fn: () => void) => {
     if (settled) return;
     settled = true;
-    if (pollTimer) clearTimeout(pollTimer);
+    clearTimers();
     fn();
     es.close();
   };
 
-  /** SSE can drop while ffmpeg prepares IG/FB files — poll until gallery-ready. */
-  const pollUntilReady = () => {
+  /**
+   * Resilient fallback when the SSE stream drops. Free-tier hosts (Render) and
+   * flaky mobile networks routinely break the event stream mid-download even
+   * though the job keeps running server-side. Rather than fail the whole
+   * download on a transient blip, we poll the job status — recovering progress,
+   * completion, AND errors at any percent (not just near the end). The server
+   * keeps finished/failed jobs around for a grace period for exactly this.
+   */
+  const startPolling = () => {
+    if (polling || settled) return;
+    polling = true;
+    es.close(); // stop EventSource's own reconnect loop; we own recovery now
     let attempts = 0;
+    let networkErrors = 0;
     const tick = async () => {
       if (settled) return;
       attempts += 1;
@@ -242,25 +261,38 @@ export function subscribeProgress(jobId: string, handlers: ProgressHandlers): ()
         const res = await fetch(apiUrl(`/api/file/${jobId}/status`));
         const data = (await res.json().catch(() => ({}))) as {
           status?: string;
+          progress?: ProgressUpdate;
           galleryReady?: boolean;
           galleryFailed?: boolean;
           message?: string;
         };
-        if (res.status === 500 || data.galleryFailed) {
-          settle(() =>
-            handlers.onError(data.message ?? 'Could not prepare this video for your gallery.'),
-          );
+        networkErrors = 0;
+        if (res.status === 404) {
+          settle(() => handlers.onError('That download session expired. Please try again.'));
+          return;
+        }
+        if (res.status === 500 || data.status === 'error' || data.galleryFailed) {
+          settle(() => handlers.onError(data.message ?? 'The download failed. Please try again.'));
           return;
         }
         if (res.ok && data.status === 'ready' && data.galleryReady !== false) {
           settle(() => handlers.onDone());
           return;
         }
+        // Still running — keep the progress bar moving from the polled state.
+        if (data.progress && typeof data.progress.percent === 'number') {
+          handlers.onProgress(data.progress);
+        }
       } catch {
-        /* retry */
+        // Server briefly unreachable (e.g. waking up) — tolerate a run of these.
+        networkErrors += 1;
+        if (networkErrors >= 15) {
+          settle(() => handlers.onError('Lost connection to the server. Please try again.'));
+          return;
+        }
       }
-      if (attempts >= 120) {
-        settle(() => handlers.onError('Lost connection to the server.'));
+      if (attempts >= 180) {
+        settle(() => handlers.onError('Lost connection to the server. Please try again.'));
         return;
       }
       pollTimer = setTimeout(() => void tick(), 2000);
@@ -268,10 +300,20 @@ export function subscribeProgress(jobId: string, handlers: ProgressHandlers): ()
     void tick();
   };
 
+  // A live message (open or progress) means the stream recovered — cancel any
+  // pending fallback so we stay on the real-time SSE path.
+  const cancelReconnectWatch = () => {
+    if (reconnectTimer) {
+      clearTimeout(reconnectTimer);
+      reconnectTimer = undefined;
+    }
+  };
+  es.addEventListener('open', cancelReconnectWatch);
+
   es.addEventListener('progress', (e) => {
+    cancelReconnectWatch();
     try {
       const p = JSON.parse((e as MessageEvent).data) as ProgressUpdate;
-      lastPercent = p.percent;
       handlers.onProgress(p);
     } catch {
       /* ignore malformed frame */
@@ -296,6 +338,7 @@ export function subscribeProgress(jobId: string, handlers: ProgressHandlers): ()
   es.addEventListener('error', (e) => {
     const data = (e as MessageEvent).data;
     if (data) {
+      // Server explicitly reported a job failure and gave us a message.
       try {
         settle(() => handlers.onError(JSON.parse(data).message ?? 'The download failed.'));
       } catch {
@@ -303,18 +346,22 @@ export function subscribeProgress(jobId: string, handlers: ProgressHandlers): ()
       }
       return;
     }
-    // Near 100% the connection often drops during gallery prep — recover via poll.
-    if (lastPercent >= 95) {
-      es.close();
-      pollUntilReady();
+    if (settled || polling) return;
+    // Transport-level drop (no payload). If the browser has stopped
+    // reconnecting, take over with polling now; if it's still retrying, give
+    // it a short grace window before we do — instead of failing outright.
+    if (es.readyState === EventSource.CLOSED) {
+      startPolling();
       return;
     }
-    settle(() => handlers.onError('Lost connection to the server.'));
+    if (!reconnectTimer) {
+      reconnectTimer = setTimeout(() => startPolling(), 8000);
+    }
   });
 
   return () => {
     settled = true;
-    if (pollTimer) clearTimeout(pollTimer);
+    clearTimers();
     es.close();
   };
 }

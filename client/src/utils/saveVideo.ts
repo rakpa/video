@@ -181,7 +181,19 @@ async function fetchVideoBytes(jobId: string): Promise<VideoFilePayload> {
   let lastError: Error | null = null;
 
   for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
-    const res = await fetch(apiUrl(`/api/file/${jobId}`));
+    let res: Response;
+    try {
+      res = await fetch(apiUrl(`/api/file/${jobId}`));
+    } catch {
+      // Network dropped while fetching the file — retry a few times before
+      // surfacing an error, so a brief blip doesn't fail a finished download.
+      lastError = new Error('Lost connection while downloading the file. Please try again.');
+      if (attempt < maxAttempts) {
+        await sleep(FILE_RETRY_MS);
+        continue;
+      }
+      throw lastError;
+    }
 
     if (res.status === 503 && attempt < maxAttempts) {
       await sleep(FILE_RETRY_MS);
@@ -216,7 +228,15 @@ export async function waitForGalleryReady(jobId: string, timeoutMs = 12 * 60_000
   let notFoundSince: number | null = null;
 
   while (Date.now() - started < timeoutMs) {
-    const res = await fetch(apiUrl(`/api/file/${jobId}/status`));
+    let res: Response;
+    try {
+      res = await fetch(apiUrl(`/api/file/${jobId}/status`));
+    } catch {
+      // Transient network blip (or the host briefly waking) — keep polling
+      // until the real timeout instead of failing the whole download.
+      await sleep(GALLERY_POLL_MS);
+      continue;
+    }
 
     if (res.status === 404) {
       if (Date.now() - started < STATUS_404_GRACE_MS) {
@@ -261,7 +281,15 @@ export async function waitForMobileGalleryPayload(
   let notFoundSince: number | null = null;
 
   while (Date.now() - started < timeoutMs) {
-    const res = await fetch(apiUrl(`/api/file/${jobId}/status`));
+    let res: Response;
+    try {
+      res = await fetch(apiUrl(`/api/file/${jobId}/status`));
+    } catch {
+      // Transient network blip (or the host briefly waking) — keep polling
+      // until the real timeout instead of failing the whole download.
+      await sleep(GALLERY_POLL_MS);
+      continue;
+    }
 
     if (res.status === 404) {
       if (Date.now() - started < STATUS_404_GRACE_MS) {
