@@ -144,3 +144,88 @@ body {
   white-space: nowrap;
   font-size: clamp(0.78rem, 2.35vw + 0.28rem, 2.75rem);
 }
+
+/* ==========================================================================
+ * DARK THEME
+ * The app is authored with light-mode Tailwind utilities (text-slate-900,
+ * bg-white, borders, etc.). Rather than sprinkle `dark:` variants across every
+ * component, we remap the small set of surface classes + color utilities that
+ * are actually used, scoped under the `.dark` class that useTheme toggles on
+ * <html>. `.dark .x` (specificity 0,2,0) cleanly overrides the base `.x`.
+ * Brand gradients (.gradient-text, .btn-gradient) and text-white are left
+ * untouched — they read correctly on dark.
+ * ======================================================================== */
+.dark {
+  color-scheme: dark;
+}
+.dark body {
+  color: #e2e8f0;
+  background: #0b1120;
+}
+
+/* Surfaces */
+.dark .app-bg {
+  background:
+    radial-gradient(1100px 600px at 12% -10%, rgba(99, 102, 241, 0.14), transparent 60%),
+    radial-gradient(900px 500px at 100% 0%, rgba(139, 92, 246, 0.1), transparent 55%),
+    #0b1120;
+}
+.dark .glass {
+  background: #111827;
+  border-color: #1f2937;
+  box-shadow:
+    0 1px 2px rgba(0, 0, 0, 0.4),
+    0 12px 32px -16px rgba(0, 0, 0, 0.6);
+}
+
+/* Text ramp (light-on-dark) */
+.dark .text-slate-900 { color: #f1f5f9; }
+.dark .text-slate-800 { color: #e2e8f0; }
+.dark .text-slate-700 { color: #cbd5e1; }
+.dark .text-slate-600 { color: #b8c2d0; }
+.dark .text-slate-500 { color: #94a3b8; }
+.dark .text-slate-400 { color: #7f8ea3; }
+.dark .text-slate-300 { color: #64748b; }
+
+/* Links / indigo accents — lightened for AA contrast on dark */
+.dark .text-indigo-600 { color: #a5b4fc; }
+.dark .text-indigo-700 { color: #c7d2fe; }
+.dark .text-indigo-500 { color: #a5b4fc; }
+
+/* Backgrounds */
+.dark .bg-white { background-color: #111827; }
+.dark .bg-slate-50 { background-color: #0f172a; }
+.dark .bg-slate-100 { background-color: #1f2937; }
+.dark .bg-slate-200 { background-color: #334155; }
+.dark .bg-indigo-50 { background-color: rgba(49, 46, 129, 0.35); }
+.dark .bg-indigo-50\/60 { background-color: rgba(49, 46, 129, 0.28); }
+
+/* Borders */
+.dark .border-slate-100 { border-color: #1f2937; }
+.dark .border-slate-200 { border-color: #1f2937; }
+.dark .border-slate-300 { border-color: #334155; }
+.dark .border-indigo-100 { border-color: rgba(67, 56, 202, 0.4); }
+
+/* Hover states (avoid white-on-white / dark-on-dark) */
+.dark .hover\:bg-slate-50:hover { background-color: #1f2937; }
+.dark .hover\:bg-slate-100:hover { background-color: #1f2937; }
+.dark .hover\:bg-slate-200:hover { background-color: #334155; }
+.dark .hover\:text-slate-900:hover { color: #f1f5f9; }
+
+/* Input placeholder */
+.dark .placeholder\:text-slate-400::placeholder { color: #64748b; }
+
+/* Error banner (rose) */
+.dark .bg-rose-50 { background-color: rgba(159, 18, 57, 0.18); }
+.dark .bg-rose-100 { background-color: rgba(190, 18, 60, 0.26); }
+.dark .hover\:bg-rose-200:hover { background-color: rgba(190, 18, 60, 0.38); }
+.dark .border-rose-200 { border-color: rgba(190, 18, 60, 0.45); }
+.dark .text-rose-700 { color: #fda4af; }
+.dark .text-rose-600 { color: #fb7185; }
+.dark .text-rose-500 { color: #fb7185; }
+.dark .text-rose-400 { color: #f43f5e; }
+
+/* Success banner (emerald) */
+.dark .bg-emerald-50 { background-color: rgba(6, 95, 70, 0.22); }
+.dark .text-emerald-700 { color: #6ee7b7; }
+.dark .text-emerald-600 { color: #34d399; }

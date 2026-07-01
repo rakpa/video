@@ -95,6 +95,9 @@ export default function App() {
   const { theme, toggle } = useTheme();
   const route = useRoute();
 
+  if (route === '/') {
+    return <DownloaderApp theme={theme} onToggleTheme={toggle} />;
+  }
   if (LEGAL_ROUTES[route]) {
     return <LegalPage path={route} theme={theme} onToggleTheme={toggle} />;
   }
@@ -104,7 +107,38 @@ export default function App() {
   if (route === '/pricing') {
     return <PricingPage theme={theme} onToggleTheme={toggle} />;
   }
-  return <DownloaderApp theme={theme} onToggleTheme={toggle} />;
+  // Unknown path: show a real not-found page instead of silently rendering the
+  // homepage (a soft-404 that hurts SEO and confuses users).
+  return <NotFoundPage theme={theme} onToggleTheme={toggle} />;
+}
+
+/** Client-side 404 for unrecognized routes. */
+function NotFoundPage({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: () => void }) {
+  useDocumentMeta({
+    title: `Page not found · ${COMPANY.brand}`,
+    description: 'The page you were looking for does not exist.',
+    robots: 'noindex, follow',
+  });
+  return (
+    <div className="app-bg min-h-screen text-slate-600">
+      <SiteHeader theme={theme} onToggleTheme={onToggleTheme} />
+      <main className="mx-auto grid max-w-3xl place-items-center px-5 py-24 text-center">
+        <p className="text-6xl font-extrabold tracking-tight text-slate-900">404</p>
+        <h1 className="mt-4 text-2xl font-bold text-slate-900">Page not found</h1>
+        <p className="mx-auto mt-3 max-w-md text-sm text-slate-500">
+          The page you were looking for doesn’t exist or may have moved. Let’s get you back to
+          downloading.
+        </p>
+        <button
+          onClick={() => navigate('/')}
+          className="btn-gradient mt-7 rounded-full px-5 py-2.5 text-sm font-semibold text-white shadow-glow-soft"
+        >
+          Back to {COMPANY.brand}
+        </button>
+      </main>
+      <Footer />
+    </div>
+  );
 }
 
 function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: () => void }) {

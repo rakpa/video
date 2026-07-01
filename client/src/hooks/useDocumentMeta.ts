@@ -4,6 +4,8 @@ import { COMPANY } from '../config/company';
 interface Meta {
   title: string;
   description: string;
+  /** Robots directive for this route. Defaults to indexable. */
+  robots?: string;
 }
 
 /** Ensures a <meta>/<link>-style tag exists, then sets one of its attributes. */
@@ -22,10 +24,23 @@ function setTag(selector: string, create: () => HTMLElement, attr: string, value
  * missing. Lets each SPA route present its own title/description to crawlers and
  * social-media link unfurlers without a separate static HTML file per page.
  */
-export function useDocumentMeta({ title, description }: Meta) {
+export function useDocumentMeta({ title, description, robots }: Meta) {
   useEffect(() => {
     const fullTitle = title.includes(COMPANY.brand) ? title : `${title} · ${COMPANY.brand}`;
     document.title = fullTitle;
+
+    // Reset to indexable by default so a `noindex` route (e.g. 404) never leaks
+    // its directive onto the next page after client-side navigation.
+    setTag(
+      'meta[name="robots"]',
+      () => {
+        const m = document.createElement('meta');
+        m.setAttribute('name', 'robots');
+        return m;
+      },
+      'content',
+      robots ?? 'index, follow',
+    );
 
     setTag(
       'meta[name="description"]',
@@ -69,5 +84,5 @@ export function useDocumentMeta({ title, description }: Meta) {
       'href',
       canonical,
     );
-  }, [title, description]);
+  }, [title, description, robots]);
 }

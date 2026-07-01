@@ -29,13 +29,16 @@ export async function retryFetch(
     try {
       const res = await fetch(url, init);
 
-      // If we get a response (even error status), return it
-      // Only retry on network-level failures
-      if (res.ok || res.status < 500) {
+      // Only retry the gateway codes that signal a sleeping/booting free-tier
+      // backend (Render cold start). A plain 500 is a real application error
+      // (e.g. the video is unavailable or has no formats) — surface it
+      // immediately instead of making the user wait through the full backoff.
+      const isColdStart = res.status === 502 || res.status === 503 || res.status === 504;
+      if (res.ok || !isColdStart) {
         return res;
       }
 
-      // For 5xx errors, we can retry
+      // For cold-start gateway errors, we can retry
       if (attempt < opts.retries) {
         const delay = Math.floor(opts.delayMs * Math.pow(opts.backoffFactor, attempt - 1));
         opts.onRetry(attempt, new Error(`Server error ${res.status}`));

@@ -9,8 +9,9 @@ import type { Theme } from '../hooks/useTheme';
 
 /* ----------------------------------------------------------------------------
  * NOTE: These documents are TEMPLATES tailored to a video-downloader product.
- * They are not legal advice. Replace the bracketed placeholders in
- * `config/company.ts` and have a qualified lawyer review them before launch.
+ * They are written in generic, entity-neutral language (no registered company
+ * name/address). Have a qualified lawyer review — and, if you operate under a
+ * registered entity, insert its name, jurisdiction, and address — before launch.
  * ------------------------------------------------------------------------- */
 
 /** All legal routes, used by the router and the footer. */
@@ -130,7 +131,7 @@ function TermsOfService() {
     <>
       <P>
         These Terms of Service (“Terms”) govern your access to and use of the {COMPANY.brand} website and tools at{' '}
-        {COMPANY.domain} (the “Service”), operated by {COMPANY.toolEntity} (“we”, “us”, “our”). By using the Service you
+        {COMPANY.domain} (the “Service”), operated by the team behind {COMPANY.brand} (“we”, “us”, “our”). By using the Service you
         agree to these Terms. If you do not agree, do not use the Service.
       </P>
 
@@ -179,7 +180,7 @@ function TermsOfService() {
       <H2>5. Paid features</H2>
       <P>
         Certain features (such as high-definition or audio-only downloads) may require a paid subscription, which is
-        provided and billed by {COMPANY.billingEntity} under the separate{' '}
+        provided and billed through our payment processor, Stripe, under the separate{' '}
         <LegalLink to="/refunds">Refund &amp; Subscription Policy</LegalLink>. That policy forms part of these Terms for
         paying users.
       </P>
@@ -193,7 +194,7 @@ function TermsOfService() {
 
       <H2>7. Limitation of liability</H2>
       <P>
-        To the maximum extent permitted by law, {COMPANY.toolEntity} and its officers, employees, and partners shall not
+        To the maximum extent permitted by law, {COMPANY.brand} and its operators shall not
         be liable for any indirect, incidental, special, consequential, or punitive damages, or any loss of data,
         revenue, or profits, arising from your use of or inability to use the Service, or from your use of any content
         obtained through it. Our total aggregate liability shall not exceed the amount you paid us (if any) in the three
@@ -202,7 +203,7 @@ function TermsOfService() {
 
       <H2>8. Indemnification</H2>
       <P>
-        You agree to indemnify and hold harmless {COMPANY.toolEntity} from any claims, damages, or expenses (including
+        You agree to indemnify and hold harmless {COMPANY.brand} and its operators from any claims, damages, or expenses (including
         reasonable legal fees) arising from your use of the Service or your violation of these Terms or any third-party
         right.
       </P>
@@ -221,13 +222,14 @@ function TermsOfService() {
 
       <H2>11. Governing law</H2>
       <P>
-        These Terms are governed by the laws of {COMPANY.jurisdiction}, without regard to conflict-of-law rules. Disputes
-        shall be subject to the exclusive jurisdiction of the courts located there.
+        These Terms are governed by the laws of the jurisdiction in which the operator of the Service is established,
+        without regard to conflict-of-law rules. Disputes shall be subject to the exclusive jurisdiction of the
+        competent courts of that jurisdiction.
       </P>
 
       <H2>12. Contact</H2>
       <P>
-        Questions about these Terms: <Strong>{COMPANY.contactEmail}</Strong> — {COMPANY.address}.
+        Questions about these Terms: <Strong>{COMPANY.contactEmail}</Strong>.
       </P>
     </>
   );
@@ -237,7 +239,7 @@ function PrivacyPolicy() {
   return (
     <>
       <P>
-        This Privacy Policy explains how {COMPANY.toolEntity} (“we”) handles information when you use {COMPANY.brand} at{' '}
+        This Privacy Policy explains how {COMPANY.brand} (“we”) handles information when you use {COMPANY.brand} at{' '}
         {COMPANY.domain}. We aim to collect as little personal data as possible.
       </P>
 
@@ -303,7 +305,7 @@ function PrivacyPolicy() {
 
       <H2>9. Contact</H2>
       <P>
-        Privacy questions: <Strong>{COMPANY.contactEmail}</Strong> — {COMPANY.address}.
+        Privacy questions: <Strong>{COMPANY.contactEmail}</Strong>.
       </P>
     </>
   );
@@ -313,7 +315,7 @@ function DmcaPolicy() {
   return (
     <>
       <P>
-        {COMPANY.toolEntity} respects the intellectual-property rights of others and complies with the Digital Millennium
+        {COMPANY.brand} respects the intellectual-property rights of others and complies with the Digital Millennium
         Copyright Act (DMCA) and equivalent laws. {COMPANY.brand} does not host or store user content; it is a tool that
         acts at a user’s direction. Nonetheless, we provide this notice-and-takedown process.
       </P>
@@ -352,8 +354,7 @@ function DmcaPolicy() {
 
       <H2>4. Designated agent</H2>
       <P>
-        DMCA notices should be directed to: <Strong>Copyright Agent</Strong>, {COMPANY.toolEntity}, {COMPANY.address} —{' '}
-        {COMPANY.dmcaEmail}.
+        DMCA notices should be directed to our designated <Strong>Copyright Agent</Strong> at {COMPANY.dmcaEmail}.
       </P>
     </>
   );
@@ -364,7 +365,7 @@ function RefundPolicy() {
     <>
       <P>
         Paid subscriptions to {COMPANY.brand} (for example, HD video and MP3 audio downloads) are sold and processed by{' '}
-        {COMPANY.billingEntity} (“Billing Provider”). This policy describes subscription, renewal, cancellation, and
+        our payment processor, Stripe (“Billing Provider”). This policy describes subscription, renewal, cancellation, and
         refund terms.
       </P>
 
@@ -418,8 +419,8 @@ function RefundPolicy() {
 
       <H2>7. Billing contact</H2>
       <P>
-        Billing and refund enquiries: <Strong>{COMPANY.contactEmail}</Strong>. The merchant of record for paid
-        subscriptions is {COMPANY.billingEntity}.
+        Billing and refund enquiries: <Strong>{COMPANY.contactEmail}</Strong>. Payments for paid subscriptions are
+        securely processed by Stripe.
       </P>
     </>
   );

@@ -2,6 +2,7 @@ import { useCallback, useState } from 'react';
 import { navigate } from '../hooks/useRoute';
 import { clearLicense, getLicense, type StoredLicense } from '../lib/license';
 import { useStripeReturn } from '../hooks/useStripeReturn';
+import { useDocumentMeta } from '../hooks/useDocumentMeta';
 import { RestoreProPanel } from '../components/RestoreProPanel';
 import { Confetti } from '../components/Confetti';
 import { SiteHeader } from '../components/SiteHeader';
@@ -28,7 +29,7 @@ const PRICING_FAQ = [
   },
   {
     q: 'Which payment methods do you accept?',
-    a: 'Visa, Mastercard, American Express, and PayPal — all processed securely by Stripe. We never see or store your card details.',
+    a: 'All major cards — Visa, Mastercard, and American Express — processed securely by Stripe. We never see or store your card details.',
   },
   {
     q: 'I signed out or switched phones — how do I get Pro back?',
@@ -47,6 +48,11 @@ interface Props {
 
 /** Pricing + Stripe checkout page. Also handles the post-checkout redeem flow. */
 export function PricingPage({ theme, onToggleTheme }: Props) {
+  useDocumentMeta({
+    title: `Pricing — Free & Pro Plans · ${COMPANY.brand}`,
+    description:
+      'VidCliply is free for downloads up to 1080p with sound. Go Pro ($19.99/year) for 2K & 4K, MP3 audio, and priority processing. Cancel anytime.',
+  });
   const [license, setLic] = useState<StoredLicense | null>(getLicense());
   const [justUpgraded, setJustUpgraded] = useState(false);
 
