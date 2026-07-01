@@ -30,46 +30,36 @@ const CORE_FEATURES = [
       </svg>
     ),
   },
+  {
+    title: 'Snip section',
+    body: 'Cut a short moment from anywhere in the video — grab just the seconds you need, fast.',
+    icon: (
+      <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
+        <path strokeLinecap="round" strokeLinejoin="round" d="M9.5 5.5 5 10l4.5 4.5M14.5 5.5 19 10l-4.5 4.5" />
+        <path strokeLinecap="round" strokeLinejoin="round" d="M5 10h14" />
+      </svg>
+    ),
+  },
 ] as const;
 
 /** Headline + value props above the URL input. */
 export function Hero() {
   return (
     <div className="mx-auto max-w-5xl text-center">
-      <motion.p
-        initial={{ opacity: 0, y: 10 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.5 }}
-        className="text-sm font-semibold uppercase tracking-[0.18em] text-indigo-600"
-      >
-        Free video downloader & clipper
-      </motion.p>
-
       <motion.h1
         initial={{ opacity: 0, y: 16 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.6, delay: 0.05 }}
-        className="mt-4 text-[clamp(1.9rem,6.3vw,3.6rem)] font-bold leading-[1.15] tracking-tight text-slate-900"
+        className="text-[clamp(1.9rem,6.3vw,3.6rem)] font-bold leading-[1.15] tracking-tight text-slate-900"
       >
-        Save or <span className="gradient-text">clip</span> videos from{' '}
-        <span className="gradient-text">YouTube, Facebook & Instagram</span>
+        Best <span className="gradient-text">Free Online</span> Video Downloader
       </motion.h1>
-
-      <motion.p
-        initial={{ opacity: 0, y: 12 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.6, delay: 0.1 }}
-        className="mx-auto mt-5 max-w-2xl text-base leading-relaxed text-slate-600 sm:text-lg"
-      >
-        Paste a link below. Download the full video in HD, 2K, or 4K — or trim to the exact
-        seconds you want. No app, no sign-up, no watermark.
-      </motion.p>
 
       <motion.div
         initial={{ opacity: 0, y: 14 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.6, delay: 0.15 }}
-        className="mx-auto mt-8 grid max-w-3xl gap-3 sm:grid-cols-2 sm:gap-4"
+        transition={{ duration: 0.6, delay: 0.12 }}
+        className="mx-auto mt-9 grid max-w-4xl gap-3 sm:grid-cols-2 lg:grid-cols-3 sm:gap-4"
       >
         {CORE_FEATURES.map((feature) => (
           <div
@@ -92,10 +82,9 @@ export function Hero() {
       <motion.div
         initial={{ opacity: 0, y: 12 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.6, delay: 0.22 }}
-        className="mt-8 flex flex-wrap items-center justify-center gap-2.5"
+        transition={{ duration: 0.6, delay: 0.2 }}
+        className="mt-9 flex flex-wrap items-center justify-center gap-2.5"
       >
-        <span className="text-xs font-medium uppercase tracking-wide text-slate-400">Works with</span>
         {SOCIALS.map((s) => (
           <span
             key={s.id}
