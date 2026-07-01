@@ -176,6 +176,23 @@ async function readVideoPayloadFromResponse(res: Response): Promise<VideoFilePay
   return { blob, filename };
 }
 
+async function readDesktopVideoPayloadFromResponse(res: Response): Promise<VideoFilePayload> {
+  const blob = await res.blob();
+  const head = await blob.slice(0, Math.min(blob.size, 512 * 1024)).arrayBuffer();
+
+  if (looksLikeHtmlOrJson(head) || !isMp4Bytes(head)) {
+    throw new Error(
+      'Received an invalid file (not MP4). The download API may be misconfigured — check VITE_API_URL on Vercel.',
+    );
+  }
+  if (blob.size < 10_000) {
+    throw new Error('Video file is too small — the download may have failed.');
+  }
+
+  const filename = parseFilename(res.headers.get('Content-Disposition')) || 'VidCliply-video.mp4';
+  return { blob, filename };
+}
+
 async function fetchVideoBytes(jobId: string): Promise<VideoFilePayload> {
   const maxAttempts = 8;
   let lastError: Error | null = null;
@@ -348,11 +365,62 @@ export async function saveMobileVideoToGallery(jobId: string): Promise<void> {
   }
 }
 
+async function fetchDesktopVideoBytes(jobId: string): Promise<VideoFilePayload> {
+  const maxAttempts = 8;
+  let lastError: Error | null = null;
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    const res = await fetch(apiUrl(`/api/file/${jobId}`));
+
+    if (res.status === 503 && attempt < maxAttempts) {
+      await sleep(FILE_RETRY_MS);
+      continue;
+    }
+
+    if (!res.ok) {
+      try {
+        const buf = await res.arrayBuffer();
+        const data = JSON.parse(new TextDecoder().decode(buf)) as { error?: string };
+        lastError = new Error(data.error ?? 'Could not fetch the video file.');
+      } catch {
+        lastError = new Error('Could not fetch the video file.');
+      }
+      if (attempt < maxAttempts) {
+        await sleep(FILE_RETRY_MS);
+        continue;
+      }
+      throw lastError;
+    }
+
+    return readDesktopVideoPayloadFromResponse(res);
+  }
+
+  throw lastError ?? new Error('Could not fetch the video file.');
+}
+
+/** Fetch the finished file after the job reports ready (mobile gallery path). */
+export async function fetchReadyVideoFile(jobId: string): Promise<VideoFilePayload> {
+  return fetchVideoBytes(jobId);
+}
+
+/** Download via blob URL so the page stays put — no cross-origin tab navigation. */
+export async function downloadFileToDevice(jobId: string): Promise<void> {
+  const payload = await fetchDesktopVideoBytes(jobId);
+  const objectUrl = URL.createObjectURL(payload.blob);
+  try {
+    const a = document.createElement('a');
+    a.href = objectUrl;
+    a.download = payload.filename;
+    a.rel = 'noopener';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+  } finally {
+    URL.revokeObjectURL(objectUrl);
+  }
+}
+
+/** @deprecated Use downloadFileToDevice — kept for any legacy imports. */
 export function classicFileDownload(jobId: string): void {
-  const a = document.createElement('a');
-  a.href = apiUrl(`/api/file/${jobId}`);
-  a.rel = 'noopener';
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
+  void downloadFileToDevice(jobId);
 }

@@ -26,11 +26,11 @@ import {
   warmSocialPreview,
   startDownloadJob,
   subscribeProgress,
-  triggerFileDownload,
 } from './api/client';
 import {
   cancelMobileGalleryGestureFallback,
-  waitForMobileGalleryPayload,
+  downloadFileToDevice,
+  fetchReadyVideoFile,
   type ShareResult,
   type VideoFilePayload,
 } from './utils/saveVideo';
@@ -165,125 +165,43 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
   const [infoWarm, setInfoWarm] = useState(false);
   /** IG/FB: decoded thumbnail — card stays on skeleton until this is set. */
   const [preloadedThumb, setPreloadedThumb] = useState<PreloadedThumb | null>(null);
-  /** Mobile: user tapped Download — preparing file for save sheet. */
-  const [mobileSaving, setMobileSaving] = useState(false);
-  /** Mobile: gallery-ready file after user confirms quality + Download. */
+  /** Mobile: gallery-ready file after download completes. */
   const [mobileSavePayload, setMobileSavePayload] = useState<VideoFilePayload | null>(null);
   const [clipMode, setClipMode] = useState<ClipMode>('full');
   const [clipStart, setClipStart] = useState('0:00');
   const [clipEnd, setClipEnd] = useState('');
 
   const lastJobId = useRef<string | null>(null);
-  // The pre-fetched, gallery-ready video so the Save tap can open the share
-  // sheet synchronously (Web Share needs a live user gesture).
-  const galleryPayload = useRef<VideoFilePayload | null>(null);
   const unsubscribe = useRef<(() => void) | null>(null);
   const fetchedUrl = useRef<string>('');
   const prevUrlLen = useRef(0);
   const infoWarmPromise = useRef<Promise<void> | null>(null);
   const infoWarmRef = useRef(false);
-  const prefetchJobId = useRef<string | null>(null);
-  const prefetchUrl = useRef('');
-  const prefetchKeyRef = useRef('');
-  const prefetchPayloadPromise = useRef<Promise<VideoFilePayload | null> | null>(null);
   const socialRevealedRef = useRef(false);
-  const autoShareKeyRef = useRef('');
   const proPanelRef = useRef<HTMLDivElement>(null);
-
-  const mobilePrefetchKey = useCallback(
-    (normalized: string, quality: QualityId, isIgFb: boolean, clipKey: string) =>
-      `${normalized}:${quality}${isIgFb ? ':igfb' : ''}${clipKey}`,
-    [],
-  );
 
   const activeClip = useCallback(() => {
     if (clipMode !== 'clip') return null;
     return clipRangeFromInputs(clipStart, clipEnd, info?.durationSeconds ?? null);
   }, [clipMode, clipStart, clipEnd, info?.durationSeconds]);
 
-  const clipKeySuffix = useCallback(() => {
-    const clip = activeClip();
-    return clip ? `:clip:${clip.startTime}-${clip.endTime}` : '';
-  }, [activeClip]);
-
-  /** Mobile: prepare file after user picks quality and taps Download. */
-  const ensureMobilePayload = useCallback(
-    async (normalized: string, quality: QualityId, isIgFb: boolean): Promise<VideoFilePayload> => {
-      const key = mobilePrefetchKey(normalized, quality, isIgFb, clipKeySuffix());
-      if (prefetchKeyRef.current === key && galleryPayload.current) {
-        return galleryPayload.current;
-      }
-      if (prefetchKeyRef.current === key && prefetchPayloadPromise.current) {
-        const cached = await prefetchPayloadPromise.current;
-        if (cached) return cached;
-      }
-
-      if (isIgFb && !infoWarmRef.current) {
-        await infoWarmPromise.current?.catch(() => undefined);
-        if (!infoWarmRef.current) {
-          throw new Error('Still loading video info. Wait a moment and try again.');
-        }
-      }
-
-      if (prefetchKeyRef.current !== key) {
-        galleryPayload.current = null;
-        prefetchPayloadPromise.current = null;
-      }
-      prefetchKeyRef.current = key;
-      prefetchUrl.current = normalized;
-      prefetchJobId.current = null;
-
-      const run = startDownloadJob(normalized, quality, 'compatible', licenseToken(), {
-        fast: true,
-        reuse: false,
-        clip: activeClip(),
-      })
-        .then((jobId) => {
-          if (prefetchKeyRef.current !== key) return null;
-          prefetchJobId.current = jobId;
-          lastJobId.current = jobId;
-          return waitForMobileGalleryPayload(jobId);
-        })
-        .then((payload) => {
-          if (prefetchKeyRef.current !== key || !payload) return null;
-          galleryPayload.current = payload;
-          return payload;
-        });
-
-      prefetchPayloadPromise.current = run;
-      const payload = await run;
-      if (!payload) throw new Error('Could not prepare this video. Try again.');
-      return payload;
-    },
-    [mobilePrefetchKey, activeClip, clipKeySuffix],
-  );
-
   const handleMobileSaved = useCallback(
     (result: ShareResult) => {
       if (result === 'unavailable') return;
       setError(null);
-      if (result === 'shared' && fetchedUrl.current && info) {
-        const isIgFb = info.platform === 'instagram' || info.platform === 'facebook';
-        autoShareKeyRef.current = mobilePrefetchKey(fetchedUrl.current, selected, isIgFb, clipKeySuffix());
-      }
     },
-    [info, selected, mobilePrefetchKey, clipKeySuffix],
+    [],
   );
 
   const handleMobileDownloadAnother = useCallback(() => {
     cancelMobileGalleryGestureFallback();
     setMobileSavePayload(null);
-    setMobileSaving(false);
     setUrl('');
     setPhase('idle');
     setInfo(null);
     setError(null);
     setPreloadedThumb(null);
     fetchedUrl.current = '';
-    autoShareKeyRef.current = '';
-    galleryPayload.current = null;
-    prefetchKeyRef.current = '';
-    prefetchPayloadPromise.current = null;
     socialRevealedRef.current = false;
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }, []);
@@ -327,15 +245,8 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
     setInfoWarm(false);
     infoWarmRef.current = false;
     infoWarmPromise.current = null;
-    prefetchJobId.current = null;
-    prefetchUrl.current = '';
-    prefetchKeyRef.current = '';
-    prefetchPayloadPromise.current = null;
     socialRevealedRef.current = false;
-    autoShareKeyRef.current = '';
     cancelMobileGalleryGestureFallback();
-    galleryPayload.current = null;
-    setMobileSaving(false);
     setMobileSavePayload(null);
     setPreloadedThumb(null);
     setClipMode('full');
@@ -566,27 +477,12 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
       const isIgFb = platform?.id === 'instagram' || platform?.id === 'facebook';
       const currentUrl = fetchedUrl.current || url;
 
-      /** Mobile: user chose quality → prepare file → save-to-gallery prompt. */
-      if (mobile) {
-        setMobileSaving(true);
-        setMobileSavePayload(null);
-        try {
-          const payload = await ensureMobilePayload(currentUrl, quality, isIgFb);
-          setMobileSavePayload(payload);
-        } catch (e) {
-          setError(e instanceof ApiError ? e.message : e instanceof Error ? e.message : 'Could not prepare this video.');
-          setPhase('error');
-        } finally {
-          setMobileSaving(false);
-        }
-        return;
-      }
-
+      setMobileSavePayload(null);
       setProgress(INITIAL_PROGRESS);
-      galleryPayload.current = null;
       setOutputHeight(null);
       setPhase('downloading');
       setProgress({ ...INITIAL_PROGRESS, percent: 1 });
+
       try {
         if (isIgFb && !infoWarmRef.current) {
           await infoWarmPromise.current?.catch(() => undefined);
@@ -595,38 +491,54 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
           }
         }
 
-        const attachDesktopJob = (jobId: string) => {
-          lastJobId.current = jobId;
-          unsubscribe.current?.();
-          unsubscribe.current = subscribeProgress(jobId, {
-            onProgress: (p) => setProgress(p),
-            onDone: (height) => {
-              if (typeof height === 'number') setOutputHeight(height);
-              void triggerFileDownload(jobId);
-              setPhase('success');
-            },
-            onError: (message) => {
-              setError(message);
-              setPhase('error');
-            },
-          });
-        };
-
         const effectiveMode: CodecMode = isIgFb ? 'compatible' : mode;
         const jobId = await startDownloadJob(
           currentUrl,
           quality,
           effectiveMode,
           licenseToken(),
-          { fast: isIgFb, reuse: !clip, clip },
+          { fast: isIgFb || mobile, reuse: !mobile && !clip, clip },
         );
-        attachDesktopJob(jobId);
+
+        lastJobId.current = jobId;
+        unsubscribe.current?.();
+        unsubscribe.current = subscribeProgress(jobId, {
+          onProgress: (p) => setProgress(p),
+          onDone: (height) => {
+            if (typeof height === 'number') setOutputHeight(height);
+            void (async () => {
+              try {
+                if (mobile) {
+                  const payload = await fetchReadyVideoFile(jobId);
+                  setMobileSavePayload(payload);
+                  setPhase('ready');
+                } else {
+                  await downloadFileToDevice(jobId);
+                  setPhase('success');
+                }
+              } catch (e) {
+                setError(
+                  e instanceof ApiError
+                    ? e.message
+                    : e instanceof Error
+                      ? e.message
+                      : 'Could not save the video.',
+                );
+                setPhase('error');
+              }
+            })();
+          },
+          onError: (message) => {
+            setError(message);
+            setPhase('error');
+          },
+        });
       } catch (e) {
         setError(e instanceof ApiError ? e.message : e instanceof Error ? e.message : 'Could not start the download.');
         setPhase('error');
       }
     },
-    [info, url, maxHeight, ensureMobilePayload, clipMode, activeClip],
+    [info, url, maxHeight, clipMode, activeClip],
   );
 
   const clipReady = isClipReady(clipMode, clipStart, clipEnd, info?.durationSeconds ?? null);
@@ -658,7 +570,7 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
     : Boolean(info) && phase !== 'idle' && phase !== 'fetching';
 
   const view: 'ready' | 'downloading' | 'success' | null =
-    phase === 'downloading' && !isMobileDevice()
+    phase === 'downloading'
       ? 'downloading'
       : phase === 'success' && !isMobileDevice()
         ? 'success'
@@ -670,7 +582,7 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
     Boolean(info) &&
     previewCardReady &&
     !mobileSavePayload &&
-    (view === 'ready' || (isMobileDevice() && mobileSaving));
+    view === 'ready';
 
   return (
     <div className="app-bg min-h-screen text-slate-600">
@@ -785,7 +697,6 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
                         downloadReady={
                           (info!.platform !== 'instagram' && info!.platform !== 'facebook') || infoWarm
                         }
-                        saving={mobileSaving}
                         onDownload={() => void handleDownload(selected, codecMode)}
                         onUpgrade={() => proPanelRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })}
                         onUseFree={() => dismissProUpgrade()}

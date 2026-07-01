@@ -1,6 +1,6 @@
 import type { ClipRange, CodecMode, ProgressUpdate, QualityId, VideoInfo } from '../types';
 import { API_NOT_CONFIGURED_MSG, API_UNREACHABLE_MSG, apiUrl, isApiConfigured } from '../config/api';
-import { classicFileDownload, isMobileDevice, saveMobileVideoToGallery } from '../utils/saveVideo';
+import { downloadFileToDevice, isMobileDevice, saveMobileVideoToGallery } from '../utils/saveVideo';
 import { detectPlatform } from '../utils/platform';
 import { fetchClientYoutubePreview } from '../utils/youtube';
 import { fetchClientInstagramPreview } from '../utils/instagram';
@@ -371,7 +371,7 @@ export function subscribeProgress(jobId: string, handlers: ProgressHandlers): ()
  */
 export async function triggerFileDownload(jobId: string): Promise<void> {
   if (!isMobileDevice()) {
-    classicFileDownload(jobId);
+    await downloadFileToDevice(jobId);
     return;
   }
   await saveMobileVideoToGallery(jobId);
