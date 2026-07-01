@@ -459,6 +459,14 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [url]);
 
+  useEffect(() => {
+    if (phase !== 'downloading') return;
+    const t = window.setTimeout(() => {
+      document.getElementById('download-progress')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }, 80);
+    return () => window.clearTimeout(t);
+  }, [phase]);
+
   const handleDownload = useCallback(
     async (quality: QualityId, mode: CodecMode) => {
       if (!info) return;
@@ -647,39 +655,72 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
             )}
           </AnimatePresence>
 
-          <AnimatePresence mode="wait">
-            {((info && view) || phase === 'preview') && (
+          <AnimatePresence mode="popLayout">
+            {(info || phase === 'preview') && (
               <motion.div
-                key={view ?? 'preview'}
+                key="downloader-card"
                 initial={{ opacity: 0, y: 8 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -8 }}
                 transition={{ duration: 0.25 }}
                 className="space-y-5"
               >
-                <>
-                  {!previewCardReady || !info ? (
-                    <VideoPreviewSkeleton />
-                  ) : (
-                    <VideoPreview info={info} preloadedThumb={preloadedThumb} />
-                  )}
+                {!previewCardReady || !info ? (
+                  <VideoPreviewSkeleton />
+                ) : (
+                  <VideoPreview info={info} preloadedThumb={preloadedThumb} />
+                )}
+
+                <AnimatePresence mode="wait">
                   {info && view === 'downloading' ? (
-                    <DownloadProgress
-                      progress={progress}
-                      qualityLabel={qualityLabel}
-                      delivering={delivering}
-                    />
+                    <motion.div
+                      key="downloading"
+                      id="download-progress"
+                      initial={{ opacity: 0, y: 10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: -6 }}
+                      transition={{ duration: 0.2 }}
+                    >
+                      <DownloadProgress
+                        progress={progress}
+                        qualityLabel={qualityLabel}
+                        delivering={delivering}
+                      />
+                    </motion.div>
                   ) : info && view === 'success' ? (
-                    <SuccessState outputHeight={outputHeight} requestedLabel={qualityLabel || undefined} />
+                    <motion.div
+                      key="success"
+                      initial={{ opacity: 0, y: 10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: -6 }}
+                      transition={{ duration: 0.2 }}
+                    >
+                      <SuccessState outputHeight={outputHeight} requestedLabel={qualityLabel || undefined} />
+                    </motion.div>
                   ) : info && isMobileDevice() && mobileSavePayload ? (
-                    <MobileSavePrompt
-                      payload={mobileSavePayload}
-                      author={info.author}
-                      onSaved={handleMobileSaved}
-                      onDownloadAnother={handleMobileDownloadAnother}
-                    />
+                    <motion.div
+                      key="mobile-save"
+                      initial={{ opacity: 0, y: 10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: -6 }}
+                      transition={{ duration: 0.2 }}
+                    >
+                      <MobileSavePrompt
+                        payload={mobileSavePayload}
+                        author={info.author}
+                        onSaved={handleMobileSaved}
+                        onDownloadAnother={handleMobileDownloadAnother}
+                      />
+                    </motion.div>
                   ) : showQualityPanel ? (
-                    <>
+                    <motion.div
+                      key="quality"
+                      initial={{ opacity: 0, y: 10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: -6 }}
+                      transition={{ duration: 0.2 }}
+                      className="space-y-5"
+                    >
                       <ClipSelector
                         durationSeconds={info!.durationSeconds}
                         mode={clipMode}
@@ -690,24 +731,24 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
                         onEndTimeChange={setClipEnd}
                       />
                       <div className="mt-4">
-                      <QualitySelector
-                        formats={info!.formats}
-                        selected={selected}
-                        onSelect={setSelected}
-                        mode={codecMode}
-                        onModeChange={setCodecMode}
-                        maxHeight={maxHeight}
-                        refining={refining}
-                        sourceMaxHeight={info!.sourceMaxHeight}
-                        downloadReady={
-                          (info!.platform !== 'instagram' && info!.platform !== 'facebook') || infoWarm
-                        }
-                        onDownload={() => void handleDownload(selected, codecMode)}
-                        onUpgrade={() => proPanelRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })}
-                        onUseFree={() => dismissProUpgrade()}
-                        downloadLabel={downloadButtonLabel}
-                        downloadDisabled={clipMode === 'clip' && !clipReady}
-                      />
+                        <QualitySelector
+                          formats={info!.formats}
+                          selected={selected}
+                          onSelect={setSelected}
+                          mode={codecMode}
+                          onModeChange={setCodecMode}
+                          maxHeight={maxHeight}
+                          refining={refining}
+                          sourceMaxHeight={info!.sourceMaxHeight}
+                          downloadReady={
+                            (info!.platform !== 'instagram' && info!.platform !== 'facebook') || infoWarm
+                          }
+                          onDownload={() => void handleDownload(selected, codecMode)}
+                          onUpgrade={() => proPanelRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })}
+                          onUseFree={() => dismissProUpgrade()}
+                          downloadLabel={downloadButtonLabel}
+                          downloadDisabled={clipMode === 'clip' && !clipReady}
+                        />
                       </div>
                       <AnimatePresence>
                         {showProUpgrade && (
@@ -724,9 +765,9 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
                           </motion.div>
                         )}
                       </AnimatePresence>
-                    </>
+                    </motion.div>
                   ) : null}
-                </>
+                </AnimatePresence>
               </motion.div>
             )}
           </AnimatePresence>
