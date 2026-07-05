@@ -52,7 +52,7 @@ export function HowItWorks() {
             transition={{ duration: 0.4, delay: i * 0.08 }}
             className="glass relative rounded-3xl p-6"
           >
-            <span className="absolute right-5 top-5 text-5xl font-black leading-none text-slate-100">
+            <span className="absolute right-5 top-5 text-5xl font-black leading-none text-slate-300">
               {i + 1}
             </span>
             <div className="grid h-12 w-12 place-items-center rounded-2xl bg-accent-gradient text-white shadow-glow-soft">
