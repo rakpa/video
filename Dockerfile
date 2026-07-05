@@ -70,4 +70,5 @@ ENV NODE_OPTIONS=--max-old-space-size=192
 
 EXPOSE 10000
 
-CMD ["docker-entrypoint.sh"]
+# Use sh explicitly to avoid permission issues on Railway
+CMD ["sh", "/usr/local/bin/docker-entrypoint.sh"]
