@@ -46,8 +46,9 @@ COPY package.json package-lock.json ./
 COPY client/package.json client/package-lock.json ./client/
 COPY server/package.json server/package-lock.json ./server/
 
-RUN npm ci --prefix client --include=dev \
-  && npm ci --prefix server --include=dev
+# Temporarily using npm install instead of npm ci to fix lock file sync issue
+RUN npm install --prefix client --include=dev \
+  && npm install --prefix server --include=dev
 
 COPY client ./client
 COPY server ./server
@@ -56,7 +57,7 @@ RUN npm run build --prefix client && npm run build --prefix server
 
 # Entrypoint starts the PO token provider (only if it was built) then the API.
 COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
-RUN chmod +x /usr/local/bin/docker-entrypoint.sh
+RUN chmod -x /usr/local/bin/docker-entrypoint.sh
 
 ENV NODE_ENV=production
 ENV SERVE_CLIENT=true
