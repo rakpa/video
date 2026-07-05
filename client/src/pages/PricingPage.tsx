@@ -17,15 +17,15 @@ import type { Theme } from '../hooks/useTheme';
 const PRICING_FAQ = [
   {
     q: 'What’s the difference between Free and Pro?',
-    a: 'Free downloads go up to 1080p Full HD with sound. Pro ($19.99/year) unlocks 2K & 4K, plus MP3 extraction and priority processing.',
+    a: 'Free gives you unlimited downloads up to 1080p Full HD with sound. Pro ($19.99/year) unlocks 2K & 4K, MP3 audio extraction, unlimited everything, and priority server processing.',
   },
   {
     q: 'Can I cancel anytime?',
-    a: 'Yes. Yearly Pro renews once a year and you can cancel anytime — you keep access until the end of your billing period.',
+    a: 'Yes. The yearly Pro plan renews once a year. Cancel anytime — you keep full Pro access until the end of your current billing period.',
   },
   {
     q: 'Do you offer refunds?',
-    a: 'We offer a 14-day money-back guarantee on your initial purchase if the service doesn’t work as described. See our Refund Policy for details.',
+    a: 'We offer a 14-day money-back guarantee on your first purchase if the service doesn’t work as described. See our Refund Policy for details.',
   },
   {
     q: 'Which payment methods do you accept?',
@@ -51,7 +51,7 @@ export function PricingPage({ theme, onToggleTheme }: Props) {
   useDocumentMeta({
     title: `Pricing — Free & Pro Plans · ${COMPANY.brand}`,
     description:
-      'VidCliply is free for downloads up to 1080p with sound. Go Pro ($19.99/year) for 2K & 4K, MP3 audio, and priority processing. Cancel anytime.',
+      'VidCliply is free for downloads up to 1080p with sound. Go Pro ($19.99/year) for 2K & 4K, MP3 audio, and priority processing. Cancel anytime. 14-day money-back guarantee.',
   });
   const [license, setLic] = useState<StoredLicense | null>(getLicense());
   const [justUpgraded, setJustUpgraded] = useState(false);
