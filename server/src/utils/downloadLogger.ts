@@ -1,13 +1,20 @@
 import Database from 'better-sqlite3';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { existsSync, mkdirSync } from 'node:fs';
 import geoip from 'geoip-lite';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 // Database file will be created in server/data/downloads.db
-const dbPath = path.join(__dirname, '../../data/downloads.db');
+const dbDir = path.join(__dirname, '../../data');
+const dbPath = path.join(dbDir, 'downloads.db');
+
+// Ensure the data directory exists
+if (!existsSync(dbDir)) {
+  mkdirSync(dbDir, { recursive: true });
+}
 
 const db = new Database(dbPath);
 
