@@ -37,9 +37,9 @@ export function PricingHero() {
         Simple <span className="gradient-text">pricing</span>
       </h1>
       <p className="mx-auto mt-3 max-w-2xl text-base text-slate-600 sm:text-lg">
-        Paste a URL — your thumbnail loads in a flash. Pick a quality, hit download, and save straight to your gallery.
-        Free includes HD; upgrade to Pro for 2K &amp; 4K.
+        Download in up to 1080p Full HD for free, forever. Go Pro for just <span className="font-semibold text-slate-900">$19.99/year</span> and unlock 2K & 4K, MP3 audio extraction, unlimited downloads, and priority processing.
       </p>
+      <p className="mt-2 text-sm text-slate-500">Cancel anytime. 14-day money-back guarantee.</p>
     </motion.div>
   );
 }
