@@ -154,22 +154,15 @@ export function QualitySelector({ formats, selected, onSelect, mode, onModeChang
                 {f.tag}
               </span>
 
-              <span className={`mt-1 text-xs text-slate-500 ${refining && f.estimatedBytes == null ? 'shimmer relative overflow-hidden rounded' : ''}`}>
-                {disabled
-                  ? mode === 'compatible' && f.height > COMPATIBLE_MAX_HEIGHT
-                    ? 'Best-quality only'
-                    : 'Not available'
-                  : refining && f.estimatedBytes == null
-                    ? 'Estimating size…'
-                    : `≈ ${formatBytes(f.estimatedBytes)}`}
-              </span>
-
-              {!disabled && (
-                <span className="inline-flex items-center gap-1 text-xs font-medium text-emerald-600">
-                  <svg viewBox="0 0 24 24" className="h-3 w-3" fill="currentColor" aria-hidden="true">
-                    <path d="M3 10v4h4l5 5V5L7 10H3Zm13.5 2a4.5 4.5 0 0 0-2.5-4v8a4.5 4.5 0 0 0 2.5-4Z" />
-                  </svg>
-                  with sound
+              {(disabled || (refining && f.estimatedBytes == null) || f.estimatedBytes) && (
+                <span className={`mt-1 text-xs text-slate-500 ${refining && f.estimatedBytes == null ? 'shimmer relative overflow-hidden rounded' : ''}`}>
+                  {disabled
+                    ? mode === 'compatible' && f.height > COMPATIBLE_MAX_HEIGHT
+                      ? 'Best-quality only'
+                      : 'Not available'
+                    : refining && f.estimatedBytes == null
+                      ? 'Estimating size…'
+                      : `≈ ${formatBytes(f.estimatedBytes)}`}
                 </span>
               )}
             </motion.button>

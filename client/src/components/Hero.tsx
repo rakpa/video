@@ -13,7 +13,7 @@ const SOCIALS = [
 const CORE_FEATURES = [
   {
     title: 'Download full video',
-    body: 'Save the entire video as a ready-to-play MP4 — up to 4K, always with sound.',
+    body: 'Full MP4, up to 4K, with sound.',
     icon: (
       <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
         <path strokeLinecap="round" strokeLinejoin="round" d="M12 3v12m0 0 4-4m-4 4-4-4M5 21h14" />
@@ -22,7 +22,7 @@ const CORE_FEATURES = [
   },
   {
     title: 'Clip any section',
-    body: 'Set start and end times to trim just the part you need — highlights, quotes, or reels.',
+    body: 'Trim to the exact clip you want.',
     icon: (
       <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
         <path strokeLinecap="round" strokeLinejoin="round" d="M4 7h4v10H4zM16 7h4v10h-4z" />
