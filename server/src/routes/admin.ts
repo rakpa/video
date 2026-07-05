@@ -1,4 +1,5 @@
 import { Router, Request, Response } from 'express';
+import express from 'express';
 import { getDownloadStats } from '../utils/downloadLogger.js';
 import { verifyAdmin } from '../utils/adminAuth.js';
 
