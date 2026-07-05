@@ -51,11 +51,18 @@ downloadRouter.post('/download', async (req, res) => {
         ? mode
         : 'best';
 
+  // Get client IP for download tracking
+  const clientIp =
+    (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() ||
+    req.socket.remoteAddress ||
+    undefined;
+
   try {
     const job = await createJob(url.trim(), q, codecMode, {
       fast: Boolean(fast),
       reuse: Boolean(reuse),
       clip: clipResult.clip,
+      ip: clientIp,
     });
     return res.status(202).json({ jobId: job.id });
   } catch (err) {
