@@ -57,7 +57,7 @@ RUN npm run build --prefix client && npm run build --prefix server
 
 # Entrypoint starts the PO token provider (only if it was built) then the API.
 COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
-RUN chmod -x /usr/local/bin/docker-entrypoint.sh
+RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 
 ENV NODE_ENV=production
 ENV SERVE_CLIENT=true
