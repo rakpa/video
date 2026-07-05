@@ -56,13 +56,13 @@ export function HeroPlatforms() {
       className="mb-4 flex flex-col items-center gap-2.5 sm:mb-5"
     >
       <span className="text-xs font-medium uppercase tracking-wide text-slate-400">Works with</span>
-      <div className="flex flex-wrap items-center justify-center gap-2">
+      <div className="flex flex-nowrap items-center justify-center gap-1.5 sm:gap-2">
         {SOCIALS.map((s) => (
           <span
             key={s.id}
-            className="glass inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-sm font-medium text-slate-700"
+            className="glass inline-flex items-center gap-1.5 sm:gap-2 rounded-full px-2.5 sm:px-3 py-1 sm:py-1.5 text-xs sm:text-sm font-medium text-slate-700"
           >
-            <PlatformIcon platform={s.id} className="h-5 w-5" />
+            <PlatformIcon platform={s.id} className="h-4 w-4 sm:h-5 sm:w-5" />
             {s.label}
           </span>
         ))}
