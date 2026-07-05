@@ -73,6 +73,7 @@ app.post('/api/billing/webhook', express.raw({ type: 'application/json' }), (req
 });
 
 app.use(express.json({ limit: '64kb' }));
+app.use(express.urlencoded({ extended: true }));
 
 // Malformed JSON should be a 400, not an unhandled 500.
 app.use((err: unknown, req: express.Request, res: express.Response, next: express.NextFunction) => {
