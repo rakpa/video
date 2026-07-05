@@ -5,73 +5,25 @@ import { verifyAdmin } from '../utils/adminAuth.js';
 
 const router = Router();
 
-// Simple in-memory session store (for demo, can be improved later)
-const sessions = new Map<string, { username: string; expires: number }>();
-
-function generateSessionId(): string {
-  return Math.random().toString(36).substring(2) + Date.now().toString(36);
-}
-
-function getSession(req: Request): { username: string } | null {
-  const sessionId = req.cookies?.admin_session;
-  if (!sessionId) return null;
-
-  const session = sessions.get(sessionId);
-  if (!session || session.expires < Date.now()) {
-    sessions.delete(sessionId);
-    return null;
-  }
-  return { username: session.username };
-}
-
-// Login page + form handling
+// Login page
 router.get('/stats', (req: Request, res: Response) => {
-  const session = getSession(req);
+  res.send(renderLoginPage());
+});
 
-  if (session) {
-    // Already logged in - show dashboard
+// Handle login
+router.post('/stats/login', express.urlencoded({ extended: true }), (req: Request, res: Response) => {
+  const { username, password } = req.body;
+
+  if (verifyAdmin(username, password)) {
     try {
       const stats = getDownloadStats();
-      return res.send(renderDashboard(stats, session.username));
+      return res.send(renderDashboard(stats, username));
     } catch (err) {
       return res.status(500).send('Error loading stats');
     }
   }
 
-  // Not logged in - show login form
-  res.send(renderLoginPage());
-});
-
-// Handle login form submission
-router.post('/stats/login', express.urlencoded({ extended: true }), (req: Request, res: Response) => {
-  const { username, password } = req.body;
-
-  if (verifyAdmin(username, password)) {
-    const sessionId = generateSessionId();
-    sessions.set(sessionId, {
-      username,
-      expires: Date.now() + 1000 * 60 * 60 * 8, // 8 hours
-    });
-
-    res.cookie('admin_session', sessionId, {
-      httpOnly: true,
-      maxAge: 1000 * 60 * 60 * 8,
-      sameSite: 'lax',
-    });
-
-    return res.redirect('/admin/stats');
-  }
-
-  // Login failed
   res.send(renderLoginPage('Invalid username or password'));
-});
-
-// Logout
-router.get('/stats/logout', (req: Request, res: Response) => {
-  const sessionId = req.cookies?.admin_session;
-  if (sessionId) sessions.delete(sessionId);
-  res.clearCookie('admin_session');
-  res.redirect('/admin/stats');
 });
 
 // Render login page
@@ -123,7 +75,7 @@ function renderLoginPage(errorMessage = ''): string {
 </html>`;
 }
 
-// Render dashboard (same as before but with logout button)
+// Render dashboard
 function renderDashboard(stats: any, username: string): string {
   const byPlatform = Object.entries(stats.byPlatform)
     .map(([platform, count]) => `<div class="flex justify-between items-center mb-2">
@@ -165,14 +117,6 @@ function renderDashboard(stats: any, username: string): string {
           <p class="text-slate-400 text-sm">Welcome back, <span class="text-white">${username}</span></p>
         </div>
       </div>
-
-      <div class="flex items-center gap-3">
-        <a href="/admin/stats/logout" 
-           class="px-5 py-2.5 text-sm font-medium bg-slate-900 hover:bg-slate-800 border border-slate-700 rounded-2xl flex items-center gap-2">
-          <i class="fa-solid fa-sign-out-alt"></i>
-          <span>Logout</span>
-        </a>
-      </div>
     </div>
 
     <!-- Stats Cards -->
@@ -212,6 +156,10 @@ function renderDashboard(stats: any, username: string): string {
           </tbody>
         </table>
       </div>
+    </div>
+
+    <div class="mt-6 text-xs text-slate-500 text-center">
+      Logged in as <span class="text-white">${username}</span> • <a href="/admin/stats" class="underline hover:text-white">Refresh</a>
     </div>
   </div>
 </body>
