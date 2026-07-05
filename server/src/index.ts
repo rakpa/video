@@ -15,6 +15,7 @@ import { fileRouter } from './routes/file.js';
 import { thumbRouter } from './routes/thumb.js';
 import { billingRouter, handleWebhook } from './routes/billing.js';
 import statsRouter from './routes/stats.js';
+import adminRouter from './routes/admin.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const clientDist = path.resolve(__dirname, '../../client/dist');
@@ -116,6 +117,7 @@ app.use('/api', fileRouter);
 app.use('/api', thumbRouter);
 app.use('/api', billingRouter);
 app.use('/api/admin', statsRouter);
+app.use('/admin', adminRouter);
 
 // 404 + error fallbacks (never leak stack traces to the client)
 app.use('/api', (_req, res) => res.status(404).json({ error: 'Not found.' }));
@@ -128,7 +130,7 @@ const serveClient = process.env.SERVE_CLIENT === 'true' && existsSync(clientDist
 if (serveClient) {
   app.use(express.static(clientDist));
   app.get('*', (req, res, next) => {
-    if (req.path.startsWith('/api')) return next();
+    if (req.path.startsWith('/api') || req.path.startsWith('/admin')) return next();
     res.sendFile(path.join(clientDist, 'index.html'));
   });
   logger.info(`Serving client from ${clientDist}`);
