@@ -14,6 +14,7 @@ import { progressRouter } from './routes/progress.js';
 import { fileRouter } from './routes/file.js';
 import { thumbRouter } from './routes/thumb.js';
 import { billingRouter, handleWebhook } from './routes/billing.js';
+import statsRouter from './routes/stats.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const clientDist = path.resolve(__dirname, '../../client/dist');
@@ -114,6 +115,7 @@ app.use('/api', progressRouter);
 app.use('/api', fileRouter);
 app.use('/api', thumbRouter);
 app.use('/api', billingRouter);
+app.use('/api/admin', statsRouter);
 
 // 404 + error fallbacks (never leak stack traces to the client)
 app.use('/api', (_req, res) => res.status(404).json({ error: 'Not found.' }));
