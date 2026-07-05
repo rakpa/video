@@ -1,6 +1,7 @@
 import Database from 'better-sqlite3';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import geoip from 'geoip-lite';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -56,19 +57,31 @@ export interface DownloadLog {
   quality: string;
   outputHeight?: number | null;
   ip?: string;
-  country?: string;
 }
 
-/** Log a successful download */
+/** Log a successful download with automatic country lookup */
 export function logDownload(log: DownloadLog) {
   const now = Date.now();
+  let country: string | null = null;
+
+  if (log.ip) {
+    try {
+      const geo = geoip.lookup(log.ip);
+      if (geo?.country) {
+        country = geo.country;
+      }
+    } catch {
+      // geoip lookup failed, ignore
+    }
+  }
+
   insertStmt.run(
     now,
     log.platform,
     log.quality,
     log.outputHeight ?? null,
     log.ip ?? null,
-    log.country ?? null,
+    country,
     1
   );
 }
