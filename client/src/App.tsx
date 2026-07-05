@@ -182,6 +182,9 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
   const infoWarmRef = useRef(false);
   const socialRevealedRef = useRef(false);
   const proPanelRef = useRef<HTMLDivElement>(null);
+  /** Tracks which fetched URL we've already auto-scrolled to the preview card for,
+   * so a re-render (e.g. progress ticks) doesn't keep yanking the page back down. */
+  const scrolledPreviewUrlRef = useRef<string | null>(null);
 
   const activeClip = useCallback(() => {
     if (clipMode !== 'clip') return null;
@@ -258,6 +261,7 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
     setClipStart('0:00');
     setClipEnd('');
     fetchedUrl.current = normalized;
+    scrolledPreviewUrlRef.current = null;
 
     pingApiWarmup();
 
@@ -597,6 +601,21 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
     !mobileSavePayload &&
     view === 'ready';
 
+  // First-time-user feedback: once a pasted URL resolves to a loaded video card,
+  // scroll down to it so it's obvious something happened — on mobile the card
+  // otherwise loads ~3 screens below the fold, out of view.
+  useEffect(() => {
+    if (!previewCardReady) return;
+    if (window.innerWidth >= 640) return;
+    const currentUrl = fetchedUrl.current;
+    if (!currentUrl || scrolledPreviewUrlRef.current === currentUrl) return;
+    scrolledPreviewUrlRef.current = currentUrl;
+    const t = window.setTimeout(() => {
+      document.getElementById('video-preview-card')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 80);
+    return () => window.clearTimeout(t);
+  }, [previewCardReady]);
+
   return (
     <div className="app-bg min-h-screen text-slate-600">
       <SiteHeader theme={theme} onToggleTheme={onToggleTheme} />
@@ -664,6 +683,7 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
             {(info || phase === 'preview') && (
               <motion.div
                 key="downloader-card"
+                id="video-preview-card"
                 initial={{ opacity: 0, y: 8 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -8 }}
