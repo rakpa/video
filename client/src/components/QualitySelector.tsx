@@ -154,7 +154,7 @@ export function QualitySelector({ formats, selected, onSelect, mode, onModeChang
                 {f.tag}
               </span>
 
-              {(disabled || (refining && f.estimatedBytes == null) || f.estimatedBytes) && (
+              {(disabled || (refining && f.estimatedBytes == null) || Boolean(f.estimatedBytes)) && (
                 <span className={`mt-1 text-xs text-slate-500 ${refining && f.estimatedBytes == null ? 'shimmer relative overflow-hidden rounded' : ''}`}>
                   {disabled
                     ? mode === 'compatible' && f.height > COMPATIBLE_MAX_HEIGHT
