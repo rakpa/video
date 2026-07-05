@@ -10,6 +10,7 @@ import { needsGalleryNormalize, normalizeForGallery, canServeDirectToGallery, pr
 import type { ClipRange } from './utils/clip.js';
 import { getFreshInfoJson } from './services/infoJsonCache.js';
 import { logger } from './utils/logger.js';
+import { logDownload } from './utils/downloadLogger.js';
 
 type JobStatus = 'running' | 'ready' | 'error';
 
@@ -316,6 +317,16 @@ async function runWithRetry(job: Job, url: string, quality: QualityDef, mode: Co
           );
         }
       }
+
+      // === TRACK SUCCESSFUL DOWNLOAD ===
+      if (job.platformId) {
+        logDownload({
+          platform: job.platformId,
+          quality: quality.label,
+          outputHeight: job.outputHeight ?? null,
+        });
+      }
+
       emit(job, { done: true, outputHeight: job.outputHeight ?? null });
       return;
     } catch (err) {
@@ -339,7 +350,6 @@ async function runWithRetry(job: Job, url: string, quality: QualityDef, mode: Co
 
 export function getJob(id: string): Job | undefined {
   return jobs.get(id);
-}
 
 /** Removes a job and deletes its temp directory. */
 export async function destroyJob(id: string): Promise<void> {
