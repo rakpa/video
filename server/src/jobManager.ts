@@ -39,6 +39,8 @@ export interface Job {
   outputHeight?: number | null;
   /** Optional clip range applied after the full download. */
   clip?: ClipRange | null;
+  /** Client IP for download tracking */
+  ip?: string;
   /** SSE listeners subscribed to this job's progress. */
   listeners: Set<(p: ProgressUpdate | { done: true; outputHeight?: number | null } | { error: string }) => void>;
 }
@@ -134,7 +136,7 @@ export async function createJob(
   url: string,
   quality: QualityDef,
   mode: CodecMode,
-  options?: { fast?: boolean; reuse?: boolean; clip?: ClipRange | null },
+  options?: { fast?: boolean; reuse?: boolean; clip?: ClipRange | null; ip?: string },
 ): Promise<Job> {
   const q = effectiveQuality(url, quality, options?.fast);
   const clip = options?.clip ?? null;
@@ -175,6 +177,7 @@ export async function createJob(
     platformId: detectPlatform(url)?.id,
     fast: options?.fast ?? false,
     clip,
+    ip: options?.ip,
     cacheKey,
     cancel: () => undefined, // replaced per attempt
     listeners: new Set(),
@@ -324,6 +327,7 @@ async function runWithRetry(job: Job, url: string, quality: QualityDef, mode: Co
           platform: job.platformId,
           quality: quality.label,
           outputHeight: job.outputHeight ?? null,
+          ip: job.ip,
         });
       }
 
@@ -350,6 +354,7 @@ async function runWithRetry(job: Job, url: string, quality: QualityDef, mode: Co
 
 export function getJob(id: string): Job | undefined {
   return jobs.get(id);
+}
 
 /** Removes a job and deletes its temp directory. */
 export async function destroyJob(id: string): Promise<void> {
