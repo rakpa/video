@@ -181,7 +181,7 @@ function TermsOfService() {
       <P>
         Certain features (such as high-definition or audio-only downloads) may require a paid subscription, which is
         provided and billed through our payment processor, Stripe, under the separate{' '}
-        <LegalLink to="/refunds">Refund &amp; Subscription Policy</LegalLink>. That policy forms part of these Terms for
+        <LegalLink to="/refunds">Refund & Subscription Policy</LegalLink>. That policy forms part of these Terms for
         paying users.
       </P>
 
@@ -254,11 +254,11 @@ function PrivacyPolicy() {
           prevention, and rate limiting.
         </li>
         <li>
-          <Strong>Account &amp; billing data</Strong> (only if you subscribe) — email and payment details, handled by our
+          <Strong>Account & billing data</Strong> (only if you subscribe) — email and payment details, handled by our
           payment processor; we do not store full card numbers.
         </li>
         <li>
-          <Strong>Cookies &amp; analytics</Strong> — to remember preferences (e.g. theme) and understand aggregate usage.
+          <Strong>Cookies & analytics</Strong> — to remember preferences (e.g. theme) and understand aggregate usage.
         </li>
       </UL>
 
@@ -294,7 +294,7 @@ function PrivacyPolicy() {
         data, or object to its processing. To exercise these rights, contact {COMPANY.contactEmail}.
       </P>
 
-      <H2>7. Data retention &amp; security</H2>
+      <H2>7. Data retention & security</H2>
       <P>
         We keep account and billing records as long as needed to provide the Service and meet legal obligations, and
         apply reasonable technical and organisational measures to protect data. No method of transmission is 100% secure.
@@ -364,63 +364,55 @@ function RefundPolicy() {
   return (
     <>
       <P>
-        Paid subscriptions to {COMPANY.brand} (for example, HD video and MP3 audio downloads) are sold and processed by{' '}
-        our payment processor, Stripe (“Billing Provider”). This policy describes subscription, renewal, cancellation, and
-        refund terms.
+        Paid Pro subscriptions on {COMPANY.brand} are sold and processed securely by our payment provider, <Strong>Stripe</Strong>.
+        This policy covers subscriptions, renewals, cancellations, and refunds.
       </P>
 
-      <H2>1. Subscription plans</H2>
+      <H2>1. Subscription</H2>
       <P>
-        Plans are offered on recurring billing cycles (e.g. 1, 6, or 12 months) at the prices shown at checkout. Prices
-        may exclude applicable taxes/VAT, which are added where required.
+        Pro is offered as a <Strong>yearly subscription</Strong> at the price shown at checkout (currently $19.99/year).
+        Prices may exclude applicable taxes or VAT, which are added where required by law.
       </P>
 
       <H2>2. Automatic renewal</H2>
       <P>
-        <Strong>Subscriptions renew automatically</Strong> at the end of each cycle at the then-current price, using your
-        saved payment method, unless you cancel before the renewal date. We will rely on the authorisation you provide at
-        purchase to charge each renewal.
+        Your subscription renews automatically each year at the then-current price unless you cancel before the renewal date.
+        We use the payment method you provided at checkout for renewals.
       </P>
 
       <H2>3. Cancellation</H2>
       <P>
-        You may cancel at any time from your account page or by emailing {COMPANY.contactEmail}. Cancellation stops
-        future renewals; you retain access until the end of the current paid period. Cancelling does not, by itself,
-        trigger a refund of the current period.
+        You can cancel anytime from the Pricing page or by emailing {COMPANY.contactEmail}. You keep full Pro access until
+        the end of your current billing period. Cancellation does not automatically trigger a refund for the current period.
       </P>
 
-      <H2>4. Refunds</H2>
-      <UL>
-        <li>
-          <Strong>14-day guarantee:</Strong> if the Service does not work as described, you may request a refund within 14
-          days of your initial purchase.
-        </li>
-        <li>
-          Refunds are generally not provided for partially used billing periods or for renewals you forgot to cancel,
-          except where required by law.
-        </li>
-        <li>
-          Statutory rights (for example, EU/UK consumer “cooling-off” rights) are not affected by this policy and prevail
-          where applicable.
-        </li>
-      </UL>
-
-      <H2>5. How to request a refund</H2>
+      <H2>4. 14-day money-back guarantee</H2>
       <P>
-        Email {COMPANY.contactEmail} from your account email with your order details. Approved refunds are returned to the
-        original payment method within a reasonable period set by the Billing Provider and your bank.
+        If the Service does not work as described, you may request a full refund within <Strong>14 days</Strong> of your
+        initial purchase. This guarantee applies to your first subscription only.
       </P>
 
-      <H2>6. Chargebacks</H2>
+      <H2>5. Other refunds</H2>
       <P>
-        Please contact us before initiating a chargeback so we can resolve the issue. Fraudulent chargebacks may result
-        in termination of access.
+        Refunds for partially used periods or missed cancellation reminders are not provided, except where required by
+        consumer protection laws in your country (e.g. EU/UK cooling-off rights).
       </P>
 
-      <H2>7. Billing contact</H2>
+      <H2>6. How to request a refund</H2>
       <P>
-        Billing and refund enquiries: <Strong>{COMPANY.contactEmail}</Strong>. Payments for paid subscriptions are
-        securely processed by Stripe.
+        Email {COMPANY.contactEmail} from the address used at checkout with your order details. Approved refunds are
+        processed back to your original payment method within a few business days (timing depends on Stripe and your bank).
+      </P>
+
+      <H2>7. Chargebacks</H2>
+      <P>
+        Please contact us first before initiating a chargeback. We will do our best to resolve any issue quickly.
+        Fraudulent chargebacks may result in loss of access.
+      </P>
+
+      <H2>8. Contact</H2>
+      <P>
+        Billing and refund questions: <Strong>{COMPANY.contactEmail}</Strong>
       </P>
     </>
   );
