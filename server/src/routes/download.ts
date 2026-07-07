@@ -9,7 +9,7 @@ import { maxAllowedHeight, isPro } from '../services/license.js';
 import { parseClipRange } from '../utils/clip.js';
 import { config } from '../config.js';
 import { HIGH_RES_MIN_HEIGHT } from '../utils/downloadLogger.js';
-import { getHighResCount, isRedisQuotaEnabled } from '../utils/highResQuota.js';
+import { getHighResCount, quotaStoreKind } from '../utils/highResQuota.js';
 
 export const downloadRouter = Router();
 
@@ -32,9 +32,9 @@ function highResLimitMessage(): string {
  * Pro users always have unlimited access.
  */
 downloadRouter.get('/download/quota', async (req, res) => {
-  // `store` reveals whether the count is durable (redis) or ephemeral (sqlite,
-  // which resets on every free-tier restart). Helps diagnose "limit never hits".
-  const store = isRedisQuotaEnabled() ? 'redis' : 'sqlite';
+  // `store` reveals whether the count is durable (redis/upstash) or ephemeral
+  // (sqlite, which resets on every free-tier restart). Diagnoses "limit never hits".
+  const store = quotaStoreKind();
   const ip = clientIpOf(req);
   const pro = isPro((req.query.license as string) ?? null);
   const limit = config.freeHighResLimit;

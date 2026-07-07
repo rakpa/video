@@ -35,13 +35,14 @@ services:
       # Free 2K/4K downloads allowed per IP before Pro is required.
       - key: FREE_HIGH_RES_LIMIT
         value: '5'
-      # Durable per-IP 2K/4K counter (Upstash Redis). Without these the count
-      # falls back to the ephemeral SQLite DB and resets on every restart.
-      # Create a free DB at https://console.upstash.com → copy REST URL + token.
-      - key: UPSTASH_REDIS_REST_URL
-        sync: false
-      - key: UPSTASH_REDIS_REST_TOKEN
-        sync: false
+      # Durable per-IP 2K/4K counter. Uses Render's own Key Value store below
+      # (no third-party signup) — survives web-service restarts so the limit
+      # actually sticks. Falls back to ephemeral SQLite only if this is absent.
+      - key: REDIS_URL
+        fromService:
+          type: keyvalue
+          name: clipvault-kv
+          property: connectionString
       - key: ADMIN_EMAILS
         value: rakpa8@gmail.com
       - key: LICENSE_SECRET
@@ -78,3 +79,11 @@ services:
       - type: rewrite
         source: /*
         destination: /index.html
+
+  # Durable key/value store for the per-IP 2K/4K download counter. Free plan.
+  # Internal-only (no public access needed) — the API connects via REDIS_URL.
+  - type: keyvalue
+    name: clipvault-kv
+    plan: free
+    ipAllowList: []
+    maxmemoryPolicy: noeviction
