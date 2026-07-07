@@ -589,6 +589,8 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
 
   const qualityLabel = info?.formats.find((f) => f.id === activeQuality)?.label ?? '';
   const selectedFmt = info?.formats.find((f) => f.id === selected);
+  /** Whether the currently selected quality is 2K/4K (the tiers that are limited). */
+  const selectedIsHighRes = Boolean(selectedFmt && selectedFmt.height >= 1440);
   const showProUpgrade = !limitReached && Boolean(selectedFmt && selectedFmt.height > maxHeight);
 
   const dismissProUpgrade = useCallback(() => {
@@ -703,7 +705,7 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
           </AnimatePresence>
 
           <AnimatePresence mode="popLayout">
-            {limitReached && (
+            {limitReached && selectedIsHighRes && (
               <motion.div
                 key="highres-limit"
                 initial={{ opacity: 0, y: -8 }}
