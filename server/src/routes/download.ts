@@ -8,7 +8,8 @@ import { detectPlatform } from '../services/platform.js';
 import { maxAllowedHeight, isPro } from '../services/license.js';
 import { parseClipRange } from '../utils/clip.js';
 import { config } from '../config.js';
-import { countHighResDownloadsByIp, HIGH_RES_MIN_HEIGHT } from '../utils/downloadLogger.js';
+import { HIGH_RES_MIN_HEIGHT } from '../utils/downloadLogger.js';
+import { getHighResCount } from '../utils/highResQuota.js';
 
 export const downloadRouter = Router();
 
@@ -30,13 +31,13 @@ function highResLimitMessage(): string {
  * GET /api/download/quota — how many free 2K/4K downloads this IP has left.
  * Pro users always have unlimited access.
  */
-downloadRouter.get('/download/quota', (req, res) => {
+downloadRouter.get('/download/quota', async (req, res) => {
   const pro = isPro((req.query.license as string) ?? null);
   const limit = config.freeHighResLimit;
   if (pro) {
     return res.json({ pro: true, limit, used: 0, remaining: null, unlimited: true });
   }
-  const used = countHighResDownloadsByIp(clientIpOf(req));
+  const used = await getHighResCount(clientIpOf(req));
   const remaining = Math.max(0, limit - used);
   return res.json({ pro: false, limit, used, remaining, unlimited: false });
 });
@@ -66,7 +67,7 @@ downloadRouter.post('/download', async (req, res) => {
   const entitledByLicense = q.height <= allowedHeight;
 
   if (isHighRes && !entitledByLicense) {
-    const used = countHighResDownloadsByIp(clientIp);
+    const used = await getHighResCount(clientIp);
     if (used >= config.freeHighResLimit) {
       return res.status(402).json({
         error: highResLimitMessage(),
