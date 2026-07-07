@@ -1,6 +1,12 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { motion } from 'framer-motion';
-import { ApiError, createCheckout, fetchBillingConfig, type BillingConfig } from '../api/client';
+import {
+  ApiError,
+  createCheckout,
+  fetchBillingConfig,
+  pingApiWarmup,
+  type BillingConfig,
+} from '../api/client';
 
 const TIER_FEATURES = [
   'Merged MP4 with sound',
@@ -40,9 +46,27 @@ export function ProUpgradeCard({ onDismiss }: Props) {
   const [cfg, setCfg] = useState<BillingConfig | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  /** Pre-created Stripe Checkout URL so clicking "Get Pro" redirects instantly. */
+  const checkoutUrl = useRef<string | null>(null);
 
   useEffect(() => {
-    fetchBillingConfig().then(setCfg).catch(() => undefined);
+    let cancelled = false;
+    // Wake the (free-tier) backend and pre-create the checkout session the moment
+    // this card appears, so the user's click is a fast redirect, not a cold start.
+    pingApiWarmup();
+    fetchBillingConfig()
+      .then((c) => {
+        if (!cancelled) setCfg(c);
+      })
+      .catch(() => undefined);
+    createCheckout('pro')
+      .then((url) => {
+        if (!cancelled) checkoutUrl.current = url;
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const proCents = cfg?.plans.pro.cents ?? 1999;
@@ -51,6 +75,11 @@ export function ProUpgradeCard({ onDismiss }: Props) {
 
   const startCheckout = async () => {
     setError(null);
+    // Use the pre-created session if it's ready → instant redirect.
+    if (checkoutUrl.current) {
+      window.location.href = checkoutUrl.current;
+      return;
+    }
     setBusy(true);
     try {
       const url = await createCheckout('pro');
