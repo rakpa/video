@@ -9,7 +9,7 @@ import { maxAllowedHeight, isPro } from '../services/license.js';
 import { parseClipRange } from '../utils/clip.js';
 import { config } from '../config.js';
 import { HIGH_RES_MIN_HEIGHT } from '../utils/downloadLogger.js';
-import { getHighResCount } from '../utils/highResQuota.js';
+import { getHighResCount, isRedisQuotaEnabled } from '../utils/highResQuota.js';
 
 export const downloadRouter = Router();
 
@@ -32,14 +32,18 @@ function highResLimitMessage(): string {
  * Pro users always have unlimited access.
  */
 downloadRouter.get('/download/quota', async (req, res) => {
+  // `store` reveals whether the count is durable (redis) or ephemeral (sqlite,
+  // which resets on every free-tier restart). Helps diagnose "limit never hits".
+  const store = isRedisQuotaEnabled() ? 'redis' : 'sqlite';
+  const ip = clientIpOf(req);
   const pro = isPro((req.query.license as string) ?? null);
   const limit = config.freeHighResLimit;
   if (pro) {
-    return res.json({ pro: true, limit, used: 0, remaining: null, unlimited: true });
+    return res.json({ pro: true, limit, used: 0, remaining: null, unlimited: true, store, ip });
   }
-  const used = await getHighResCount(clientIpOf(req));
+  const used = await getHighResCount(ip);
   const remaining = Math.max(0, limit - used);
-  return res.json({ pro: false, limit, used, remaining, unlimited: false });
+  return res.json({ pro: false, limit, used, remaining, unlimited: false, store, ip });
 });
 
 /**
