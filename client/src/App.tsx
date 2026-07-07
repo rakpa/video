@@ -159,6 +159,10 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
   const [selected, setSelected] = useState<QualityId>('1080');
   const [codecMode, setCodecMode] = useState<CodecMode>('best');
   const [maxHeight, setMaxHeight] = useState(() => maxAllowedHeight());
+  /** True once the free 2K/4K allowance is exhausted (server-enforced). */
+  const [limitReached, setLimitReached] = useState(false);
+  /** Exact server message shown when the 2K/4K limit is hit. */
+  const [limitMessage, setLimitMessage] = useState<string | null>(null);
   // True while the slow full /api/info (real sizes/availability) is still loading
   // in the background, after the fast preview has already shown the cards.
   const [refining, setRefining] = useState(false);
@@ -213,13 +217,20 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }, []);
 
+  /**
+   * Effective max download height. Pro/admin get full access; free users may
+   * still *select* 2K/4K — the server enforces the free per-IP allowance and
+   * returns a limit message once it's used up.
+   */
+  const computeMaxHeight = useCallback(() => Math.max(maxAllowedHeight(), 2160), []);
+
   const refreshEntitlement = useCallback(() => {
-    setMaxHeight(maxAllowedHeight());
-  }, []);
+    setMaxHeight(computeMaxHeight());
+  }, [computeMaxHeight]);
 
   useEffect(() => {
-    setMaxHeight(maxAllowedHeight());
-  }, []);
+    setMaxHeight(computeMaxHeight());
+  }, [computeMaxHeight]);
 
   useEffect(() => {
     if (info?.durationSeconds != null && info.durationSeconds > 0) {
@@ -247,6 +258,8 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
     }
 
     setError(null);
+    setLimitReached(false);
+    setLimitMessage(null);
     setPhase('preview');
     setRefining(true);
     setInfoWarm(false);
@@ -488,6 +501,8 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
       }
 
       setError(null);
+      setLimitReached(false);
+      setLimitMessage(null);
       setActiveQuality(quality);
 
       const platform = detectPlatform(fetchedUrl.current || url);
@@ -551,6 +566,14 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
           },
         });
       } catch (e) {
+        // Free 2K/4K allowance exhausted → show the upgrade prompt (not a red error).
+        if (e instanceof ApiError && e.data?.limitReached) {
+          setLimitMessage(e.message);
+          setLimitReached(true);
+          setError(null);
+          setPhase('ready');
+          return;
+        }
         setError(e instanceof ApiError ? e.message : e instanceof Error ? e.message : 'Could not start the download.');
         setPhase('error');
       }
@@ -566,7 +589,7 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
 
   const qualityLabel = info?.formats.find((f) => f.id === activeQuality)?.label ?? '';
   const selectedFmt = info?.formats.find((f) => f.id === selected);
-  const showProUpgrade = Boolean(selectedFmt && selectedFmt.height > maxHeight);
+  const showProUpgrade = !limitReached && Boolean(selectedFmt && selectedFmt.height > maxHeight);
 
   const dismissProUpgrade = useCallback(() => {
     if (!info) return;
@@ -676,6 +699,29 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
                 onDismiss={() => setError(null)}
                 onRetry={fetchedUrl.current ? () => handleFetch(fetchedUrl.current) : undefined}
               />
+            )}
+          </AnimatePresence>
+
+          <AnimatePresence mode="popLayout">
+            {limitReached && (
+              <motion.div
+                key="highres-limit"
+                initial={{ opacity: 0, y: -8 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -8 }}
+                className="space-y-4"
+              >
+                <div className="flex items-start gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800 shadow-card">
+                  <svg viewBox="0 0 24 24" className="mt-0.5 h-5 w-5 shrink-0 text-amber-500" fill="currentColor" aria-hidden="true">
+                    <path d="M12 1a5 5 0 0 0-5 5v3H6a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-9a2 2 0 0 0-2-2h-1V6a5 5 0 0 0-5-5Zm3 8H9V6a3 3 0 0 1 6 0v3Z" />
+                  </svg>
+                  <p className="font-semibold leading-relaxed">
+                    {limitMessage ??
+                      'You have reached your limit of 5 free 2K/4K downloads. Upgrade to Pro to continue downloading in high resolution.'}
+                  </p>
+                </div>
+                <ProUpgradeCard />
+              </motion.div>
             )}
           </AnimatePresence>
 

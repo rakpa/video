@@ -5,10 +5,41 @@ import { getQuality, isCodecMode } from '../services/formats.js';
 import { createJob } from '../jobManager.js';
 import { YtDlpError, readCachedVideoInfo } from '../services/ytdlp.js';
 import { detectPlatform } from '../services/platform.js';
-import { maxAllowedHeight } from '../services/license.js';
+import { maxAllowedHeight, isPro } from '../services/license.js';
 import { parseClipRange } from '../utils/clip.js';
+import { config } from '../config.js';
+import { countHighResDownloadsByIp, HIGH_RES_MIN_HEIGHT } from '../utils/downloadLogger.js';
 
 export const downloadRouter = Router();
+
+/** Best-effort client IP for per-IP download tracking (behind proxies/CDN). */
+function clientIpOf(req: import('express').Request): string | undefined {
+  return (
+    (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() ||
+    req.socket.remoteAddress ||
+    undefined
+  );
+}
+
+/** The exact message shown when a visitor exhausts their free 2K/4K allowance. */
+function highResLimitMessage(): string {
+  return `You have reached your limit of ${config.freeHighResLimit} free 2K/4K downloads. Upgrade to Pro to continue downloading in high resolution.`;
+}
+
+/**
+ * GET /api/download/quota — how many free 2K/4K downloads this IP has left.
+ * Pro users always have unlimited access.
+ */
+downloadRouter.get('/download/quota', (req, res) => {
+  const pro = isPro((req.query.license as string) ?? null);
+  const limit = config.freeHighResLimit;
+  if (pro) {
+    return res.json({ pro: true, limit, used: 0, remaining: null, unlimited: true });
+  }
+  const used = countHighResDownloadsByIp(clientIpOf(req));
+  const remaining = Math.max(0, limit - used);
+  return res.json({ pro: false, limit, used, remaining, unlimited: false });
+});
 
 /**
  * POST /api/download { url, quality } → { jobId }
@@ -25,8 +56,28 @@ downloadRouter.post('/download', async (req, res) => {
   const q = getQuality(String(quality ?? ''));
   if (!q) return res.status(400).json({ error: 'Please choose a valid quality.' });
 
+  const clientIp = clientIpOf(req);
+
+  // High-resolution (2K/4K) gating. Pro/licensed users are entitled outright;
+  // everyone else gets a limited number of free 2K/4K downloads per IP, after
+  // which high-resolution downloads require Pro.
   const allowedHeight = maxAllowedHeight(license);
-  if (q.height > allowedHeight) {
+  const isHighRes = q.height >= HIGH_RES_MIN_HEIGHT;
+  const entitledByLicense = q.height <= allowedHeight;
+
+  if (isHighRes && !entitledByLicense) {
+    const used = countHighResDownloadsByIp(clientIp);
+    if (used >= config.freeHighResLimit) {
+      return res.status(402).json({
+        error: highResLimitMessage(),
+        upgrade: true,
+        limitReached: true,
+        requiredHeight: q.height,
+      });
+    }
+    // Otherwise the visitor still has free 2K/4K downloads remaining — allow it.
+  } else if (q.height > allowedHeight) {
+    // Non-high-res height above the allowance (shouldn't normally happen).
     return res.status(402).json({
       error: `${q.label} requires Pro. Upgrade to download 2K or 4K.`,
       upgrade: true,
@@ -50,12 +101,6 @@ downloadRouter.post('/download', async (req, res) => {
       : isCodecMode(mode)
         ? mode
         : 'best';
-
-  // Get client IP for download tracking
-  const clientIp =
-    (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() ||
-    req.socket.remoteAddress ||
-    undefined;
 
   try {
     const job = await createJob(url.trim(), q, codecMode, {

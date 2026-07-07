@@ -103,6 +103,12 @@ export const config = {
   // Resolutions at or below this height are free without a license (1080p HD).
   freeMaxHeight: Number(process.env.FREE_MAX_HEIGHT ?? 1080) || 1080,
 
+  /**
+   * Number of 2K/4K downloads a non-Pro visitor may make per IP address before
+   * high-resolution downloads require Pro. Set to 0 to disable free 2K/4K.
+   */
+  freeHighResLimit: Number(process.env.FREE_HIGH_RES_LIMIT ?? 5),
+
   /** Comma-separated emails with unlimited quality access (owner/testing). */
   adminEmails: (process.env.ADMIN_EMAILS ?? 'rakpa8@gmail.com')
     .split(',')

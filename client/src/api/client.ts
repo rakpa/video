@@ -8,7 +8,14 @@ import { fetchClientFacebookPreview } from '../utils/facebook';
 import { retryFetch } from '../utils/retryFetch';
 
 /** Thrown for any non-2xx API response, carrying the friendly server message. */
-export class ApiError extends Error {}
+export class ApiError extends Error {
+  /** Extra fields from the JSON error body (e.g. `limitReached`, `upgrade`). */
+  data?: Record<string, unknown>;
+  constructor(message: string, data?: Record<string, unknown>) {
+    super(message);
+    this.data = data;
+  }
+}
 
 /** Enough attempts to survive Render free-tier cold starts (~50s wake). */
 const COLD_START_RETRY = { retries: 8, delayMs: 5000, backoffFactor: 1.4 } as const;
@@ -51,10 +58,12 @@ async function postJson<T>(path: string, body: unknown): Promise<T> {
   }
 
   const isJson = res.headers.get('content-type')?.includes('application/json');
-  const data = (isJson ? await res.json().catch(() => ({})) : {}) as { error?: string };
+  const data = (isJson ? await res.json().catch(() => ({})) : {}) as {
+    error?: string;
+  } & Record<string, unknown>;
 
   if (!res.ok) {
-    if (data.error) throw new ApiError(data.error);
+    if (data.error) throw new ApiError(data.error, data);
     throw new ApiError(apiFailureMessage(res, Boolean(isJson)));
   }
 

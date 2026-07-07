@@ -32,10 +32,25 @@ db.exec(`
   );
 `);
 
+// Migration: add requested_height (the quality tier the user chose) so we can
+// count 2K/4K downloads per IP regardless of the delivered height.
+const columns = db.prepare('PRAGMA table_info(downloads)').all() as Array<{ name: string }>;
+if (!columns.some((c) => c.name === 'requested_height')) {
+  db.exec('ALTER TABLE downloads ADD COLUMN requested_height INTEGER');
+}
+
+// The smallest height considered "high resolution" (2K). 2K = 1440, 4K = 2160.
+export const HIGH_RES_MIN_HEIGHT = 1440;
+
 // Prepare statements for performance
 const insertStmt = db.prepare(`
-  INSERT INTO downloads (timestamp, platform, quality, output_height, ip, country, success)
-  VALUES (?, ?, ?, ?, ?, ?, ?)
+  INSERT INTO downloads (timestamp, platform, quality, output_height, requested_height, ip, country, success)
+  VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+`);
+
+const countHighResByIpStmt = db.prepare(`
+  SELECT COUNT(*) as total FROM downloads
+  WHERE success = 1 AND ip = ? AND (requested_height >= ? OR output_height >= ?)
 `);
 
 const countAllStmt = db.prepare('SELECT COUNT(*) as total FROM downloads WHERE success = 1');
@@ -63,6 +78,8 @@ export interface DownloadLog {
   platform: string;
   quality: string;
   outputHeight?: number | null;
+  /** The quality tier height the user requested (e.g. 1440 or 2160). */
+  requestedHeight?: number | null;
   ip?: string;
 }
 
@@ -87,10 +104,23 @@ export function logDownload(log: DownloadLog) {
     log.platform,
     log.quality,
     log.outputHeight ?? null,
+    log.requestedHeight ?? null,
     log.ip ?? null,
     country,
     1
   );
+}
+
+/**
+ * How many successful 2K/4K downloads this IP has made. Used to enforce the free
+ * high-resolution download allowance before requiring Pro.
+ */
+export function countHighResDownloadsByIp(ip: string | undefined | null): number {
+  if (!ip) return 0;
+  const row = countHighResByIpStmt.get(ip, HIGH_RES_MIN_HEIGHT, HIGH_RES_MIN_HEIGHT) as {
+    total: number;
+  };
+  return row?.total ?? 0;
 }
 
 /** Get basic stats for admin */

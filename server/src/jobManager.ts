@@ -327,6 +327,7 @@ async function runWithRetry(job: Job, url: string, quality: QualityDef, mode: Co
           platform: job.platformId,
           quality: quality.label,
           outputHeight: job.outputHeight ?? null,
+          requestedHeight: quality.height,
           ip: job.ip,
         });
       }
