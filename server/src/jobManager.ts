@@ -86,6 +86,14 @@ function countRunningJobs(): number {
   return n;
 }
 
+/** The running job (if any) belonging to a given visitor IP. */
+function findRunningJobByIp(ip: string): Job | undefined {
+  for (const job of jobs.values()) {
+    if (job.status === 'running' && job.ip === ip) return job;
+  }
+  return undefined;
+}
+
 /** Respect the user's quality choice — fast mode only tunes chunk parallelism. */
 function effectiveQuality(_url: string, quality: QualityDef, _fast?: boolean): QualityDef {
   return quality;
@@ -154,10 +162,20 @@ export async function createJob(
   if (countRunningJobs() >= config.maxConcurrentJobs) {
     const existing = findReusableJob(url, q, mode, options?.fast, clip);
     if (existing) return existing;
-    throw new YtDlpError(
-      'The server is busy with another download. Wait a moment and try again.',
-      'FAILED',
-    );
+    // A new download request from the same visitor supersedes their previous,
+    // still-running one (they've moved on) — this frees the single free-tier
+    // slot instead of making them wait out an abandoned/stuck job.
+    const mine = options?.ip ? findRunningJobByIp(options.ip) : undefined;
+    if (mine) {
+      logger.info(`Superseding running job ${mine.id} for same visitor (new download requested)`);
+      await destroyJob(mine.id);
+    }
+    if (countRunningJobs() >= config.maxConcurrentJobs) {
+      throw new YtDlpError(
+        'The server is busy with another download. Wait a moment and try again.',
+        'FAILED',
+      );
+    }
   }
 
   if (q.id !== quality.id) {
