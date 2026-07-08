@@ -719,7 +719,7 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
                   </svg>
                   <p className="font-semibold leading-relaxed">
                     {limitMessage ??
-                      'You have exceeded the free limit of 2K/4K downloads. Please upgrade to the Premium plan for $20 per year to enjoy unlimited 2K/4K downloads.'}
+                      'You have exceeded the free limit of 2K/4K downloads. Please upgrade to the Premium plan for $20 per year to enjoy unlimited 2K/4K downloads. You can still download 720p and 1080p HD for free — switch to a lower quality to continue.'}
                   </p>
                 </div>
                 <ProUpgradeCard />
