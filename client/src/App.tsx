@@ -9,6 +9,12 @@ import { fetchClientInstagramPreview } from './utils/instagram';
 import { fetchClientYoutubePreview } from './utils/youtube';
 import { preloadThumbnail, warmThumbnailFetch, type PreloadedThumb } from './utils/preloadThumb';
 import { licenseToken, maxAllowedHeight } from './lib/license';
+import {
+  bumpHighResQuotaCache,
+  isHighResCacheExhausted,
+  markHighResCacheExhausted,
+  writeHighResQuotaCache,
+} from './lib/highResQuotaCache';
 import { resolveFormatAvailability } from './utils/qualityAvailability';
 import {
   clipRangeFromInputs,
@@ -239,6 +245,24 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
     setMaxHeight(computeMaxHeight());
   }, [computeMaxHeight]);
 
+  // Restore limit state from session cache on load (instant — no network).
+  useEffect(() => {
+    pingApiWarmup();
+    if (isHighResCacheExhausted()) {
+      setLimitReached(true);
+      setLimitMessage(HIGH_RES_LIMIT_MSG);
+    }
+    void fetchHighResQuota(licenseToken())
+      .then((q) => {
+        writeHighResQuotaCache(q.used, q.limit);
+        if (isHighResQuotaExhausted(q)) {
+          setLimitReached(true);
+          setLimitMessage(HIGH_RES_LIMIT_MSG);
+        }
+      })
+      .catch(() => undefined);
+  }, []);
+
   useEffect(() => {
     if (info?.durationSeconds != null && info.durationSeconds > 0) {
       setClipEnd(formatTimeInput(info.durationSeconds));
@@ -247,10 +271,19 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
 
   useStripeReturn(useCallback(() => refreshEntitlement(), [refreshEntitlement]));
 
-  /** Fast quota sync — updates limit banner without waiting for a full download POST. */
+  /** Show the 2K/4K limit banner immediately (no server round-trip). */
+  const showHighResLimit = useCallback(() => {
+    setLimitMessage(HIGH_RES_LIMIT_MSG);
+    setLimitReached(true);
+    setError(null);
+    setPhase('ready');
+  }, []);
+
+  /** Background quota sync — updates cache + banner when the server responds. */
   const syncHighResLimit = useCallback(async (): Promise<boolean> => {
     try {
       const q = await fetchHighResQuota(licenseToken());
+      writeHighResQuotaCache(q.used, q.limit);
       if (isHighResQuotaExhausted(q)) {
         setLimitReached(true);
         setLimitMessage(HIGH_RES_LIMIT_MSG);
@@ -260,7 +293,7 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
       setLimitMessage(null);
       return false;
     } catch {
-      return limitReached;
+      return isHighResCacheExhausted() || limitReached;
     }
   }, [limitReached]);
 
@@ -531,11 +564,9 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
         return;
       }
 
-      // Already over limit and picking 2K/4K — show banner, don't hit the server.
-      if (fmt && fmt.height >= 1440 && limitReached) {
-        setLimitMessage(HIGH_RES_LIMIT_MSG);
-        setError(null);
-        setPhase('ready');
+      // Instant block from session cache or prior sync — zero network wait.
+      if (fmt && fmt.height >= 1440 && (isHighResCacheExhausted() || limitReached)) {
+        showHighResLimit();
         return;
       }
 
@@ -548,16 +579,6 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
       downloadBusy.current = true;
       setError(null);
       setActiveQuality(quality);
-
-      // Fast quota check BEFORE the heavy download POST (which can take ~10s on cold start).
-      if (fmt && fmt.height >= 1440) {
-        const over = await syncHighResLimit();
-        if (over) {
-          downloadBusy.current = false;
-          setPhase('ready');
-          return;
-        }
-      }
 
       const platform = detectPlatform(fetchedUrl.current || url);
       const mobile = isMobileDevice();
@@ -587,6 +608,8 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
           licenseToken(),
           { fast: isIgFb || mobile, reuse: !mobile && !clip, clip },
         );
+
+        if (fmt && fmt.height >= 1440) bumpHighResQuotaCache();
 
         lastJobId.current = jobId;
         unsubscribe.current?.();
@@ -622,6 +645,7 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
       } catch (e) {
         // Free 2K/4K allowance exhausted → show the upgrade prompt (not a red error).
         if (e instanceof ApiError && e.data?.limitReached) {
+          markHighResCacheExhausted();
           setLimitMessage(e.message);
           setLimitReached(true);
           setError(null);
@@ -634,7 +658,7 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
         downloadBusy.current = false;
       }
     },
-    [info, url, maxHeight, clipMode, activeClip, limitReached, syncHighResLimit],
+    [info, url, maxHeight, clipMode, activeClip, limitReached, showHighResLimit],
   );
 
   const clipReady = isClipReady(clipMode, clipStart, clipEnd, info?.durationSeconds ?? null);
