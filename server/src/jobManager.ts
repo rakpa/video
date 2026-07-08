@@ -10,8 +10,7 @@ import { needsGalleryNormalize, normalizeForGallery, canServeDirectToGallery, pr
 import type { ClipRange } from './utils/clip.js';
 import { getFreshInfoJson } from './services/infoJsonCache.js';
 import { logger } from './utils/logger.js';
-import { logDownload, HIGH_RES_MIN_HEIGHT } from './utils/downloadLogger.js';
-import { incrementHighResCount } from './utils/highResQuota.js';
+import { logDownload } from './utils/downloadLogger.js';
 
 type JobStatus = 'running' | 'ready' | 'error';
 
@@ -349,11 +348,6 @@ async function runWithRetry(job: Job, url: string, quality: QualityDef, mode: Co
           requestedHeight: quality.height,
           ip: job.ip,
         });
-      }
-
-      // Durable per-IP tally for the free 2K/4K allowance (survives restarts).
-      if (quality.height >= HIGH_RES_MIN_HEIGHT) {
-        await incrementHighResCount(job.ip);
       }
 
       emit(job, { done: true, outputHeight: job.outputHeight ?? null });

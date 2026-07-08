@@ -15,7 +15,7 @@ export function isApiConfigured(): boolean {
 }
 
 export const API_NOT_CONFIGURED_MSG =
-  'Download service is not connected. The API server must be deployed and VITE_API_URL set in Vercel (see render.yaml in the repo).';
+  'Download service is not connected. The API server must be deployed and VITE_API_URL set in Vercel (see railway.toml in the repo).';
 
 export const API_UNREACHABLE_MSG =
   'Could not reach the download service. If you just deployed, wait a minute for the API to wake up (free tier) and try again.';

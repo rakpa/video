@@ -9,7 +9,7 @@ import { maxAllowedHeight, isPro } from '../services/license.js';
 import { parseClipRange } from '../utils/clip.js';
 import { config } from '../config.js';
 import { HIGH_RES_MIN_HEIGHT } from '../utils/downloadLogger.js';
-import { getHighResCount, quotaStoreKind } from '../utils/highResQuota.js';
+import { getHighResCount, reserveHighResSlot, quotaStoreKind } from '../utils/highResQuota.js';
 
 export const downloadRouter = Router();
 
@@ -71,8 +71,8 @@ downloadRouter.post('/download', async (req, res) => {
   const entitledByLicense = q.height <= allowedHeight;
 
   if (isHighRes && !entitledByLicense) {
-    const used = await getHighResCount(clientIp);
-    if (used >= config.freeHighResLimit) {
+    const slot = await reserveHighResSlot(clientIp, config.freeHighResLimit);
+    if (!slot.allowed) {
       return res.status(402).json({
         error: highResLimitMessage(),
         upgrade: true,
@@ -80,7 +80,6 @@ downloadRouter.post('/download', async (req, res) => {
         requiredHeight: q.height,
       });
     }
-    // Otherwise the visitor still has free 2K/4K downloads remaining — allow it.
   } else if (q.height > allowedHeight) {
     // Non-high-res height above the allowance (shouldn't normally happen).
     return res.status(402).json({
