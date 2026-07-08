@@ -177,6 +177,8 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
   const [limitReached, setLimitReached] = useState(() => isHighResCacheExhausted());
   /** True when the limit-exceeded banner + Pro card should be visible. */
   const [showLimitSection, setShowLimitSection] = useState(false);
+  /** Bumped on every limit-section open so repeat 2K/4K clicks still scroll up. */
+  const [limitScrollKey, setLimitScrollKey] = useState(0);
   // True while the slow full /api/info (real sizes/availability) is still loading
   // in the background, after the fast preview has already shown the cards.
   const [refining, setRefining] = useState(false);
@@ -274,6 +276,7 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
     markHighResCacheExhausted();
     setLimitReached(true);
     setShowLimitSection(true);
+    setLimitScrollKey((k) => k + 1);
     setError(null);
     setPhase('ready');
   }, []);
@@ -719,7 +722,7 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
       highResLimitRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }, 80);
     return () => window.clearTimeout(t);
-  }, [showLimitSection]);
+  }, [showLimitSection, limitScrollKey]);
 
   // Once a pasted URL resolves, scroll to the preview card so the clip + qualities are in view.
   useEffect(() => {
