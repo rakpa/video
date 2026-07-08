@@ -707,7 +707,7 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
 
   const qualityLabel = info?.formats.find((f) => f.id === activeQuality)?.label ?? '';
   const selectedFmt = info?.formats.find((f) => f.id === selected);
-  const showProUpgrade = !limitReached && Boolean(selectedFmt && selectedFmt.height > maxHeight);
+  const showProUpgrade = !limitReached && Boolean(selectedFmt && selectedFmt.premium && !isPro());
 
   const dismissProUpgrade = useCallback(() => {
     if (!info) return;
@@ -921,6 +921,7 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
                         onUseFree={() => dismissProUpgrade()}
                         downloadLabel={downloadButtonLabel}
                         downloadDisabled={clipMode === 'clip' && !clipReady}
+                        freeHighResRemaining={!shouldGateHighRes()}
                       />
                     </div>
                     <AnimatePresence>

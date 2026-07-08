@@ -3,6 +3,7 @@ import { useMemo, useState } from 'react';
 import { COMPATIBLE_MAX_HEIGHT, type AvailableFormat, type CodecMode, type QualityId } from '../types';
 import { formatBytes } from '../utils/format';
 import { displaySourceMaxHeight } from '../utils/qualityAvailability';
+import { isPro } from '../lib/license';
 
 interface Props {
   formats: AvailableFormat[];
@@ -32,6 +33,8 @@ interface Props {
   downloadDisabled?: boolean;
   /** Native max height from yt-dlp — drives honest availability for 2K/4K. */
   sourceMaxHeight?: number | null;
+  /** When true, free users may still download 2K/4K (quota remaining). */
+  freeHighResRemaining?: boolean;
 }
 
 /**
@@ -39,7 +42,7 @@ interface Props {
  * above the free tier show a PRO lock until the user upgrades. Controlled by the
  * parent so the URL-bar Download button stays in sync.
  */
-export function QualitySelector({ formats, selected, onSelect, mode, onModeChange, maxHeight, refining = false, downloadReady = true, saving = false, showDownloadButton = true, onDownload, onUpgrade, onUseFree, downloadLabel, downloadDisabled = false, sourceMaxHeight }: Props) {
+export function QualitySelector({ formats, selected, onSelect, mode, onModeChange, maxHeight, refining = false, downloadReady = true, saving = false, showDownloadButton = true, onDownload, onUpgrade, onUseFree, downloadLabel, downloadDisabled = false, sourceMaxHeight, freeHighResRemaining = false }: Props) {
   // Keep every tier clickable on first load — source height is advisory only (shown in the
   // helper text). Compatible mode still hides tiers above 1080p.
   const resolvedFormats = useMemo(
@@ -79,7 +82,10 @@ export function QualitySelector({ formats, selected, onSelect, mode, onModeChang
   };
 
   const selectedFmt = visibleFormats.find((f) => f.id === selected);
-  const needsUpgrade = Boolean(selectedFmt && selectedFmt.height > maxHeight);
+  const proUser = isPro();
+  const needsUpgrade = Boolean(
+    selectedFmt && selectedFmt.premium && !proUser && !freeHighResRemaining,
+  );
   const highestFreeFmt = visibleFormats.filter((f) => f.available && f.height <= maxHeight).sort((a, b) => b.height - a.height)[0];
 
   return (
@@ -106,7 +112,7 @@ export function QualitySelector({ formats, selected, onSelect, mode, onModeChang
         {visibleFormats.map((f) => {
           const active = selected === f.id;
           const disabled = !f.available;
-          const locked = f.height > maxHeight;
+          const locked = f.premium && !proUser;
           return (
             <motion.button
               key={f.id}
