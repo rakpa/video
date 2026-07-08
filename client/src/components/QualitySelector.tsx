@@ -2,7 +2,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useMemo, useState } from 'react';
 import { COMPATIBLE_MAX_HEIGHT, type AvailableFormat, type CodecMode, type QualityId } from '../types';
 import { formatBytes } from '../utils/format';
-import { displaySourceMaxHeight, isQualityAvailable } from '../utils/qualityAvailability';
+import { displaySourceMaxHeight } from '../utils/qualityAvailability';
 
 interface Props {
   formats: AvailableFormat[];
@@ -40,16 +40,15 @@ interface Props {
  * parent so the URL-bar Download button stays in sync.
  */
 export function QualitySelector({ formats, selected, onSelect, mode, onModeChange, maxHeight, refining = false, downloadReady = true, saving = false, showDownloadButton = true, onDownload, onUpgrade, onUseFree, downloadLabel, downloadDisabled = false, sourceMaxHeight }: Props) {
+  // Keep every tier clickable on first load — source height is advisory only (shown in the
+  // helper text). Compatible mode still hides tiers above 1080p.
   const resolvedFormats = useMemo(
     () =>
       formats.map((f) => ({
         ...f,
-        available:
-          typeof sourceMaxHeight === 'number' && sourceMaxHeight > 0
-            ? isQualityAvailable(sourceMaxHeight, f.height)
-            : f.available,
+        available: f.available !== false,
       })),
-    [formats, sourceMaxHeight],
+    [formats],
   );
 
   const sourceLabel =

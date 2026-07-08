@@ -8,7 +8,7 @@ import { PLACEHOLDER_FORMATS } from './utils/formats';
 import { fetchClientInstagramPreview } from './utils/instagram';
 import { fetchClientYoutubePreview } from './utils/youtube';
 import { preloadThumbnail, warmThumbnailFetch, type PreloadedThumb } from './utils/preloadThumb';
-import { licenseToken, maxAllowedHeight } from './lib/license';
+import { isPro, licenseToken, maxAllowedHeight } from './lib/license';
 import {
   canStartHighResDownload,
   isHighResCacheExhausted,
@@ -269,17 +269,19 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
 
   useStripeReturn(useCallback(() => refreshEntitlement(), [refreshEntitlement]));
 
-  /** Open the limit-exceeded section and scroll to it — instant, no server wait. */
+  /** Open the limit-exceeded section — scroll runs in useEffect once the banner mounts. */
   const openLimitSection = useCallback(() => {
     markHighResCacheExhausted();
     setLimitReached(true);
     setShowLimitSection(true);
     setError(null);
     setPhase('ready');
-    requestAnimationFrame(() => {
-      highResLimitRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    });
   }, []);
+
+  const shouldGateHighRes = useCallback(
+    () => !isPro() && (limitReached || isHighResCacheExhausted() || !canStartHighResDownload()),
+    [limitReached],
+  );
 
   const syncHighResLimit = useCallback(async (): Promise<boolean> => {
     try {
@@ -301,7 +303,7 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
   const handleSelectQuality = useCallback(
     (quality: QualityId) => {
       const fmt = info?.formats.find((f) => f.id === quality);
-      if (fmt && fmt.height >= HIGH_RES_MIN_PX && (isHighResCacheExhausted() || limitReached)) {
+      if (fmt && fmt.height >= HIGH_RES_MIN_PX && shouldGateHighRes()) {
         setSelected(quality);
         openLimitSection();
         return;
@@ -312,7 +314,7 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
         void syncHighResLimit();
       }
     },
-    [info, syncHighResLimit, limitReached, openLimitSection],
+    [info, syncHighResLimit, shouldGateHighRes, openLimitSection],
   );
 
   const pickDefault = (formats: AvailableFormat[], sourceMaxHeight?: number | null): QualityId => {
@@ -573,7 +575,8 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
 
       // Instant — localStorage check, scroll to limit section, no download POST.
       if (fmt && fmt.height >= HIGH_RES_MIN_PX) {
-        if (limitReached || !canStartHighResDownload()) {
+        if (shouldGateHighRes()) {
+          setSelected(quality);
           openLimitSection();
           return;
         }
@@ -663,7 +666,7 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
         downloadBusy.current = false;
       }
     },
-    [info, url, maxHeight, clipMode, activeClip, limitReached, openLimitSection],
+    [info, url, maxHeight, clipMode, activeClip, shouldGateHighRes, openLimitSection],
   );
 
   const clipReady = isClipReady(clipMode, clipStart, clipEnd, info?.durationSeconds ?? null);
@@ -709,12 +712,18 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
     !mobileSavePayload &&
     view === 'ready';
 
-  // First-time-user feedback: once a pasted URL resolves to a loaded video card,
-  // scroll down to it so it's obvious something happened — on mobile the card
-  // otherwise loads ~3 screens below the fold, out of view.
+  // Scroll to the limit banner once it mounts (AnimatePresence needs a paint first).
+  useEffect(() => {
+    if (!showLimitSection) return;
+    const t = window.setTimeout(() => {
+      highResLimitRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 80);
+    return () => window.clearTimeout(t);
+  }, [showLimitSection]);
+
+  // Once a pasted URL resolves, scroll to the preview card so the clip + qualities are in view.
   useEffect(() => {
     if (!previewCardReady) return;
-    if (window.innerWidth >= 640) return;
     const currentUrl = fetchedUrl.current;
     if (!currentUrl || scrolledPreviewUrlRef.current === currentUrl) return;
     scrolledPreviewUrlRef.current = currentUrl;
