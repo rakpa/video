@@ -20,6 +20,7 @@ import { useStripeReturn } from './hooks/useStripeReturn';
 import {
   ApiError,
   fetchHighResQuota,
+  isHighResQuotaExhausted,
   fetchVideoInfo,
   fetchVideoPreview,
   isMobileDevice,
@@ -246,6 +247,35 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
 
   useStripeReturn(useCallback(() => refreshEntitlement(), [refreshEntitlement]));
 
+  /** Fast quota sync — updates limit banner without waiting for a full download POST. */
+  const syncHighResLimit = useCallback(async (): Promise<boolean> => {
+    try {
+      const q = await fetchHighResQuota(licenseToken());
+      if (isHighResQuotaExhausted(q)) {
+        setLimitReached(true);
+        setLimitMessage(HIGH_RES_LIMIT_MSG);
+        return true;
+      }
+      setLimitReached(false);
+      setLimitMessage(null);
+      return false;
+    } catch {
+      return limitReached;
+    }
+  }, [limitReached]);
+
+  const handleSelectQuality = useCallback(
+    (quality: QualityId) => {
+      setSelected(quality);
+      const fmt = info?.formats.find((f) => f.id === quality);
+      if (fmt && fmt.height >= 1440) {
+        pingApiWarmup();
+        void syncHighResLimit();
+      }
+    },
+    [info, syncHighResLimit],
+  );
+
   const pickDefault = (formats: AvailableFormat[], sourceMaxHeight?: number | null): QualityId => {
     const resolved = resolveFormatAvailability(formats, sourceMaxHeight);
     return (
@@ -283,17 +313,7 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
     pingApiWarmup();
 
     // Sync 2K/4K quota from server — limit is per IP across all URLs, not per video.
-    void fetchHighResQuota(licenseToken())
-      .then((q) => {
-        if (!q.unlimited && q.used >= q.limit) {
-          setLimitReached(true);
-          setLimitMessage(HIGH_RES_LIMIT_MSG);
-        } else {
-          setLimitReached(false);
-          setLimitMessage(null);
-        }
-      })
-      .catch(() => undefined);
+    void syncHighResLimit();
 
     const platform = detectPlatform(normalized)!;
     const isSocial = platform.id === 'instagram' || platform.id === 'facebook';
@@ -529,6 +549,16 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
       setError(null);
       setActiveQuality(quality);
 
+      // Fast quota check BEFORE the heavy download POST (which can take ~10s on cold start).
+      if (fmt && fmt.height >= 1440) {
+        const over = await syncHighResLimit();
+        if (over) {
+          downloadBusy.current = false;
+          setPhase('ready');
+          return;
+        }
+      }
+
       const platform = detectPlatform(fetchedUrl.current || url);
       const mobile = isMobileDevice();
       const isIgFb = platform?.id === 'instagram' || platform?.id === 'facebook';
@@ -604,7 +634,7 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
         downloadBusy.current = false;
       }
     },
-    [info, url, maxHeight, clipMode, activeClip, limitReached],
+    [info, url, maxHeight, clipMode, activeClip, limitReached, syncHighResLimit],
   );
 
   const clipReady = isClipReady(clipMode, clipStart, clipEnd, info?.durationSeconds ?? null);
@@ -808,7 +838,7 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
                       <QualitySelector
                         formats={info!.formats}
                         selected={selected}
-                        onSelect={setSelected}
+                        onSelect={handleSelectQuality}
                         mode={codecMode}
                         onModeChange={setCodecMode}
                         maxHeight={maxHeight}

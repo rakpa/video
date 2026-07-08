@@ -200,12 +200,28 @@ export interface HighResQuota {
   unlimited: boolean;
 }
 
-/** How many free 2K/4K downloads this IP has left (any URL). */
-export async function fetchHighResQuota(license?: string | null): Promise<HighResQuota> {
+/** How many free 2K/4K downloads this IP has left (any URL). Lightweight GET — no cold-start retries. */
+export async function fetchHighResQuota(license?: string | null, timeoutMs = 4000): Promise<HighResQuota> {
   const params = license ? `?license=${encodeURIComponent(license)}` : '';
-  const res = await fetch(apiUrl(`/api/download/quota${params}`));
-  if (!res.ok) throw new ApiError('Could not load download quota.');
-  return res.json();
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), timeoutMs);
+  try {
+    const res = await fetch(apiUrl(`/api/download/quota${params}`), { signal: ctrl.signal });
+    if (!res.ok) throw new ApiError('Could not load download quota.');
+    return res.json();
+  } catch (e) {
+    if (e instanceof DOMException && e.name === 'AbortError') {
+      throw new ApiError('Could not reach the server to check your download quota.');
+    }
+    throw e;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/** True when this visitor has used all free 2K/4K downloads. */
+export function isHighResQuotaExhausted(q: HighResQuota): boolean {
+  return !q.unlimited && q.used >= q.limit;
 }
 
 export type CheckoutPlan = 'pro';
