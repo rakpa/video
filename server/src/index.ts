@@ -22,6 +22,9 @@ const clientDist = path.resolve(__dirname, '../../client/dist');
 
 const app = express();
 
+// Railway / reverse proxies set X-Forwarded-For — required for correct per-IP limits.
+app.set('trust proxy', true);
+
 // Normalise an origin to a scheme-less, lowercase host (no trailing slash) so a
 // configured CLIENT_ORIGIN that omits "https://" (a very common mistake) still
 // matches the real browser Origin header. The `cors` package otherwise does an

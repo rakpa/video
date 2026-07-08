@@ -192,6 +192,22 @@ export async function fetchBillingConfig(): Promise<BillingConfig> {
   return res.json();
 }
 
+export interface HighResQuota {
+  pro: boolean;
+  limit: number;
+  used: number;
+  remaining: number | null;
+  unlimited: boolean;
+}
+
+/** How many free 2K/4K downloads this IP has left (any URL). */
+export async function fetchHighResQuota(license?: string | null): Promise<HighResQuota> {
+  const params = license ? `?license=${encodeURIComponent(license)}` : '';
+  const res = await fetch(apiUrl(`/api/download/quota${params}`));
+  if (!res.ok) throw new ApiError('Could not load download quota.');
+  return res.json();
+}
+
 export type CheckoutPlan = 'pro';
 
 /** Starts Stripe Checkout for a plan; returns the redirect URL. */

@@ -4,11 +4,8 @@ import { countHighResDownloadsByIp } from './downloadLogger.js';
 import { logger } from './logger.js';
 
 /**
- * Persistent per-IP counter for free 2K/4K downloads.
- *
- * SQLite on the local disk is wiped on every Railway restart, so the limit
- * never sticks unless Redis is configured. Railway: add a Redis database in
- * your project and reference REDIS_URL (or REDIS_PRIVATE_URL) on the API service.
+ * Persistent per-IP counter for free 2K/4K downloads (any URL).
+ * Railway: reference REDIS_URL / REDIS_PRIVATE_URL from a Redis database.
  */
 
 interface QuotaStore {
@@ -19,7 +16,6 @@ interface QuotaStore {
 
 type StoreKind = 'redis' | 'upstash' | 'sqlite';
 
-// Railway Redis: prefer private URL (same project network), then public URL.
 const redisUrl = process.env.REDIS_PRIVATE_URL || process.env.REDIS_URL;
 const upstashUrl = process.env.UPSTASH_REDIS_REST_URL;
 const upstashToken = process.env.UPSTASH_REDIS_REST_TOKEN;
@@ -27,10 +23,15 @@ const upstashToken = process.env.UPSTASH_REDIS_REST_TOKEN;
 let store: QuotaStore | null = null;
 let storeKind: StoreKind = 'sqlite';
 
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 if (redisUrl) {
   const client = new IORedis(redisUrl, {
     maxRetriesPerRequest: 2,
     lazyConnect: false,
+    ...(redisUrl.startsWith('rediss://') ? { tls: {} } : {}),
   });
   client.on('error', (err: Error) => logger.warn(`Quota Redis error: ${err.message}`));
   store = {
@@ -63,12 +64,10 @@ if (redisUrl) {
   storeKind = 'upstash';
 }
 
-/** True when a durable external store is backing the quota (vs ephemeral SQLite). */
 export function isRedisQuotaEnabled(): boolean {
   return store !== null;
 }
 
-/** Which backend is active — surfaced by the quota endpoint for diagnostics. */
 export function quotaStoreKind(): StoreKind {
   return storeKind;
 }
@@ -77,7 +76,6 @@ function keyFor(ip: string): string {
   return `highres:count:${ip}`;
 }
 
-/** How many 2K/4K downloads this IP has used. */
 export async function getHighResCount(ip: string | undefined | null): Promise<number> {
   if (!ip) return 0;
   if (store) {
@@ -95,36 +93,52 @@ export interface ReserveResult {
   used: number;
 }
 
+/** Roll back one reserved slot when the download job fails to start. */
+export async function rollbackHighResSlot(ip: string | undefined | null): Promise<void> {
+  if (!ip || !store) return;
+  try {
+    await store.rollback(keyFor(ip));
+  } catch (err) {
+    logger.warn(`Quota rollback failed: ${(err as Error).message}`);
+  }
+}
+
 /**
- * Atomically try to consume one free 2K/4K slot for this IP.
- * With Redis: INCR then rollback if over limit.
+ * Atomically consume one free 2K/4K slot for this IP (counts across all URLs).
+ * With Redis: INCR then rollback if over limit. Retries on transient errors.
  */
 export async function reserveHighResSlot(
   ip: string | undefined | null,
   limit: number,
 ): Promise<ReserveResult> {
-  if (!ip) return { allowed: true, used: 0 };
+  if (!ip) {
+    logger.warn('High-res quota check skipped — could not determine client IP');
+    return { allowed: false, used: limit };
+  }
 
   if (store) {
-    try {
-      const key = keyFor(ip);
-      const after = await store.reserve(key);
-      if (after > limit) {
-        await store.rollback(key);
+    const key = keyFor(ip);
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        const after = await store.reserve(key);
+        if (after > limit) {
+          await store.rollback(key);
+          return { allowed: false, used: limit };
+        }
+        return { allowed: true, used: after };
+      } catch (err) {
+        if (attempt < 2) {
+          await sleep(150 * (attempt + 1));
+          continue;
+        }
+        logger.error(`Quota reserve failed after retries: ${(err as Error).message}`);
+        // Fail closed — never fall back to ephemeral sqlite when Redis is configured.
         return { allowed: false, used: limit };
       }
-      return { allowed: true, used: after };
-    } catch (err) {
-      logger.warn(`Quota reserve failed, falling back to SQLite: ${(err as Error).message}`);
     }
   }
 
   const used = countHighResDownloadsByIp(ip);
   if (used >= limit) return { allowed: false, used };
   return { allowed: true, used };
-}
-
-/** SQLite-only: count is updated via logDownload on job success. */
-export async function incrementHighResCount(ip: string | undefined | null): Promise<void> {
-  if (!ip || store) return;
 }

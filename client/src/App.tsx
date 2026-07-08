@@ -19,6 +19,7 @@ import {
 import { useStripeReturn } from './hooks/useStripeReturn';
 import {
   ApiError,
+  fetchHighResQuota,
   fetchVideoInfo,
   fetchVideoPreview,
   isMobileDevice,
@@ -90,6 +91,9 @@ const INITIAL_PROGRESS: ProgressUpdate = {
   streamIndex: 1,
   streamTotal: 1,
 };
+
+const HIGH_RES_LIMIT_MSG =
+  'You have exceeded the free limit of 2K/4K downloads. Please upgrade to the Premium plan for $20 per year to enjoy unlimited 2K/4K downloads. You can still download 720p and 1080p HD for free — switch to a lower quality to continue.';
 
 /** Top-level router: legal pages vs. the main downloader app. */
 export default function App() {
@@ -258,8 +262,6 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
     }
 
     setError(null);
-    setLimitReached(false);
-    setLimitMessage(null);
     setPhase('preview');
     setRefining(true);
     setInfoWarm(false);
@@ -277,6 +279,19 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
     scrolledPreviewUrlRef.current = null;
 
     pingApiWarmup();
+
+    // Sync 2K/4K quota from server — limit is per IP across all URLs, not per video.
+    void fetchHighResQuota(licenseToken())
+      .then((q) => {
+        if (!q.unlimited && q.remaining === 0) {
+          setLimitReached(true);
+          setLimitMessage(HIGH_RES_LIMIT_MSG);
+        } else {
+          setLimitReached(false);
+          setLimitMessage(null);
+        }
+      })
+      .catch(() => undefined);
 
     const platform = detectPlatform(normalized)!;
     const isSocial = platform.id === 'instagram' || platform.id === 'facebook';
@@ -494,6 +509,22 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
         return;
       }
 
+      // Block 2K/4K immediately if this IP is already over the free allowance (any URL).
+      if (fmt && fmt.height >= 1440) {
+        try {
+          const quota = await fetchHighResQuota(licenseToken());
+          if (!quota.unlimited && quota.remaining === 0) {
+            setLimitMessage(HIGH_RES_LIMIT_MSG);
+            setLimitReached(true);
+            setError(null);
+            setPhase('ready');
+            return;
+          }
+        } catch {
+          // Server enforces on POST if quota check fails.
+        }
+      }
+
       const clip = activeClip();
       if (clipMode === 'clip' && !clip) {
         setError('Please enter a valid start and end time for your clip.');
@@ -501,8 +532,6 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
       }
 
       setError(null);
-      setLimitReached(false);
-      setLimitMessage(null);
       setActiveQuality(quality);
 
       const platform = detectPlatform(fetchedUrl.current || url);
@@ -718,8 +747,7 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
                     <path d="M12 1a5 5 0 0 0-5 5v3H6a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-9a2 2 0 0 0-2-2h-1V6a5 5 0 0 0-5-5Zm3 8H9V6a3 3 0 0 1 6 0v3Z" />
                   </svg>
                   <p className="font-semibold leading-relaxed">
-                    {limitMessage ??
-                      'You have exceeded the free limit of 2K/4K downloads. Please upgrade to the Premium plan for $20 per year to enjoy unlimited 2K/4K downloads. You can still download 720p and 1080p HD for free — switch to a lower quality to continue.'}
+                    {limitMessage ?? HIGH_RES_LIMIT_MSG}
                   </p>
                 </div>
                 <ProUpgradeCard />

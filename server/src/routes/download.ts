@@ -9,18 +9,10 @@ import { maxAllowedHeight, isPro } from '../services/license.js';
 import { parseClipRange } from '../utils/clip.js';
 import { config } from '../config.js';
 import { HIGH_RES_MIN_HEIGHT } from '../utils/downloadLogger.js';
-import { getHighResCount, reserveHighResSlot, quotaStoreKind } from '../utils/highResQuota.js';
+import { getClientIp } from '../utils/clientIp.js';
+import { getHighResCount, reserveHighResSlot, rollbackHighResSlot, quotaStoreKind } from '../utils/highResQuota.js';
 
 export const downloadRouter = Router();
-
-/** Best-effort client IP for per-IP download tracking (behind proxies/CDN). */
-function clientIpOf(req: import('express').Request): string | undefined {
-  return (
-    (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() ||
-    req.socket.remoteAddress ||
-    undefined
-  );
-}
 
 /** The exact message shown when a visitor exhausts their free 2K/4K allowance. */
 function highResLimitMessage(): string {
@@ -35,7 +27,7 @@ downloadRouter.get('/download/quota', async (req, res) => {
   // `store` reveals whether the count is durable (redis/upstash) or ephemeral
   // (sqlite, which resets on every free-tier restart). Diagnoses "limit never hits".
   const store = quotaStoreKind();
-  const ip = clientIpOf(req);
+  const ip = getClientIp(req);
   const pro = isPro((req.query.license as string) ?? null);
   const limit = config.freeHighResLimit;
   if (pro) {
@@ -61,14 +53,14 @@ downloadRouter.post('/download', async (req, res) => {
   const q = getQuality(String(quality ?? ''));
   if (!q) return res.status(400).json({ error: 'Please choose a valid quality.' });
 
-  const clientIp = clientIpOf(req);
+  const clientIp = getClientIp(req);
 
   // High-resolution (2K/4K) gating. Pro/licensed users are entitled outright;
-  // everyone else gets a limited number of free 2K/4K downloads per IP, after
-  // which high-resolution downloads require Pro.
+  // everyone else gets a limited number of free 2K/4K downloads per IP (any URL).
   const allowedHeight = maxAllowedHeight(license);
   const isHighRes = q.height >= HIGH_RES_MIN_HEIGHT;
   const entitledByLicense = q.height <= allowedHeight;
+  let reservedHighRes = false;
 
   if (isHighRes && !entitledByLicense) {
     const slot = await reserveHighResSlot(clientIp, config.freeHighResLimit);
@@ -80,6 +72,7 @@ downloadRouter.post('/download', async (req, res) => {
         requiredHeight: q.height,
       });
     }
+    reservedHighRes = true;
   } else if (q.height > allowedHeight) {
     // Non-high-res height above the allowance (shouldn't normally happen).
     return res.status(402).json({
@@ -115,6 +108,7 @@ downloadRouter.post('/download', async (req, res) => {
     });
     return res.status(202).json({ jobId: job.id });
   } catch (err) {
+    if (reservedHighRes) await rollbackHighResSlot(clientIp);
     if (err instanceof YtDlpError) {
       return res.status(500).json({ error: err.message });
     }
