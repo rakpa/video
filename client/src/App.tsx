@@ -104,6 +104,7 @@ const HIGH_RES_LIMIT_MSG =
   'You have exceeded the free limit of 2K/4K downloads. Please upgrade to the Premium plan for $20 per year to enjoy unlimited 2K/4K downloads. You can still download 720p and 1080p HD for free — switch to a lower quality to continue.';
 
 const HIGH_RES_MIN_PX = 1440;
+const HIGH_RES_LIMIT_ID = 'highres-limit-section';
 
 /** Top-level router: legal pages vs. the main downloader app. */
 export default function App() {
@@ -177,8 +178,6 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
   const [limitReached, setLimitReached] = useState(() => isHighResCacheExhausted());
   /** True when the limit-exceeded banner + Pro card should be visible. */
   const [showLimitSection, setShowLimitSection] = useState(false);
-  /** Bumped on every limit-section open so repeat 2K/4K clicks still scroll up. */
-  const [limitScrollKey, setLimitScrollKey] = useState(0);
   // True while the slow full /api/info (real sizes/availability) is still loading
   // in the background, after the fast preview has already shown the cards.
   const [refining, setRefining] = useState(false);
@@ -271,15 +270,36 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
 
   useStripeReturn(useCallback(() => refreshEntitlement(), [refreshEntitlement]));
 
-  /** Open the limit-exceeded section — scroll runs in useEffect once the banner mounts. */
+  /** Scroll to the amber limit banner — retries while AnimatePresence mounts the node. */
+  const scrollToLimitSection = useCallback(() => {
+    const run = (): boolean => {
+      const el = document.getElementById(HIGH_RES_LIMIT_ID);
+      if (!el) return false;
+      const top = el.getBoundingClientRect().top + window.scrollY - 24;
+      window.scrollTo({ top: Math.max(0, top), behavior: 'smooth' });
+      return true;
+    };
+
+    if (run()) return;
+
+    let tries = 0;
+    const retry = () => {
+      tries += 1;
+      if (run() || tries >= 10) return;
+      window.setTimeout(retry, 50);
+    };
+    requestAnimationFrame(retry);
+  }, []);
+
+  /** Open the limit-exceeded section and always scroll to it. */
   const openLimitSection = useCallback(() => {
     markHighResCacheExhausted();
     setLimitReached(true);
     setShowLimitSection(true);
-    setLimitScrollKey((k) => k + 1);
     setError(null);
     setPhase('ready');
-  }, []);
+    scrollToLimitSection();
+  }, [scrollToLimitSection]);
 
   const shouldGateHighRes = useCallback(
     () => !isPro() && (limitReached || isHighResCacheExhausted() || !canStartHighResDownload()),
@@ -294,7 +314,8 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
         setLimitReached(true);
         return true;
       }
-      setLimitReached(false);
+      // Never clear a locally-exhausted quota while a background sync is in flight.
+      if (!isHighResCacheExhausted()) setLimitReached(false);
       return false;
     } catch {
       const exhausted = isHighResCacheExhausted();
@@ -303,21 +324,28 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
     }
   }, []);
 
+  const gateHighResQuality = useCallback(
+    (quality: QualityId): boolean => {
+      const fmt = info?.formats.find((f) => f.id === quality);
+      if (!fmt || fmt.height < HIGH_RES_MIN_PX || !shouldGateHighRes()) return false;
+      setSelected(quality);
+      openLimitSection();
+      return true;
+    },
+    [info, shouldGateHighRes, openLimitSection],
+  );
+
   const handleSelectQuality = useCallback(
     (quality: QualityId) => {
-      const fmt = info?.formats.find((f) => f.id === quality);
-      if (fmt && fmt.height >= HIGH_RES_MIN_PX && shouldGateHighRes()) {
-        setSelected(quality);
-        openLimitSection();
-        return;
-      }
+      if (gateHighResQuality(quality)) return;
       setSelected(quality);
+      const fmt = info?.formats.find((f) => f.id === quality);
       if (fmt && fmt.height >= HIGH_RES_MIN_PX) {
         pingApiWarmup();
         void syncHighResLimit();
       }
     },
-    [info, syncHighResLimit, shouldGateHighRes, openLimitSection],
+    [info, syncHighResLimit, gateHighResQuality],
   );
 
   const pickDefault = (formats: AvailableFormat[], sourceMaxHeight?: number | null): QualityId => {
@@ -579,8 +607,7 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
       // Instant — localStorage check, scroll to limit section, no download POST.
       if (fmt && fmt.height >= HIGH_RES_MIN_PX) {
         if (shouldGateHighRes()) {
-          setSelected(quality);
-          openLimitSection();
+          gateHighResQuality(quality);
           return;
         }
         recordHighResDownloadClick();
@@ -669,7 +696,7 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
         downloadBusy.current = false;
       }
     },
-    [info, url, maxHeight, clipMode, activeClip, shouldGateHighRes, openLimitSection],
+    [info, url, maxHeight, clipMode, activeClip, shouldGateHighRes, gateHighResQuality, openLimitSection],
   );
 
   const clipReady = isClipReady(clipMode, clipStart, clipEnd, info?.durationSeconds ?? null);
@@ -718,11 +745,8 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
   // Scroll to the limit banner once it mounts (AnimatePresence needs a paint first).
   useEffect(() => {
     if (!showLimitSection) return;
-    const t = window.setTimeout(() => {
-      highResLimitRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    }, 80);
-    return () => window.clearTimeout(t);
-  }, [showLimitSection, limitScrollKey]);
+    scrollToLimitSection();
+  }, [showLimitSection, scrollToLimitSection]);
 
   // Once a pasted URL resolves, scroll to the preview card so the clip + qualities are in view.
   useEffect(() => {
@@ -803,11 +827,12 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
             {showLimitSection && (
               <motion.div
                 key="highres-limit"
+                id={HIGH_RES_LIMIT_ID}
                 ref={highResLimitRef}
                 initial={{ opacity: 0, y: -8 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -8 }}
-                className="space-y-4"
+                className="scroll-mt-24 space-y-4"
               >
                 <div className="flex items-start gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800 shadow-card">
                   <svg viewBox="0 0 24 24" className="mt-0.5 h-5 w-5 shrink-0 text-amber-500" fill="currentColor" aria-hidden="true">
@@ -886,7 +911,13 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
                           (info!.platform !== 'instagram' && info!.platform !== 'facebook') || infoWarm
                         }
                         onDownload={() => void handleDownload(selected, codecMode)}
-                        onUpgrade={() => proPanelRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })}
+                        onUpgrade={() => {
+                          if (shouldGateHighRes() || showLimitSection) {
+                            openLimitSection();
+                            return;
+                          }
+                          proPanelRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+                        }}
                         onUseFree={() => dismissProUpgrade()}
                         downloadLabel={downloadButtonLabel}
                         downloadDisabled={clipMode === 'clip' && !clipReady}
