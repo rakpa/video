@@ -1,5 +1,6 @@
-/** Session cache so the 2K/4K limit banner can show instantly (no cold-start wait). */
+/** Persists 2K/4K usage in localStorage so the limit banner shows instantly (no server wait). */
 const KEY = 'vidcliply_highres_quota';
+const DEFAULT_LIMIT = 5;
 
 export interface CachedHighResQuota {
   used: number;
@@ -7,9 +8,19 @@ export interface CachedHighResQuota {
   updatedAt: number;
 }
 
-export function readHighResQuotaCache(): CachedHighResQuota | null {
+function storage(): Storage | null {
   try {
-    const raw = sessionStorage.getItem(KEY);
+    return localStorage;
+  } catch {
+    return null;
+  }
+}
+
+export function readHighResQuotaCache(): CachedHighResQuota | null {
+  const store = storage();
+  if (!store) return null;
+  try {
+    const raw = store.getItem(KEY);
     if (!raw) return null;
     const parsed = JSON.parse(raw) as CachedHighResQuota;
     if (typeof parsed.used !== 'number' || typeof parsed.limit !== 'number') return null;
@@ -20,27 +31,50 @@ export function readHighResQuotaCache(): CachedHighResQuota | null {
 }
 
 export function writeHighResQuotaCache(used: number, limit: number): void {
+  const store = storage();
+  if (!store) return;
   try {
     const payload: CachedHighResQuota = { used, limit, updatedAt: Date.now() };
-    sessionStorage.setItem(KEY, JSON.stringify(payload));
+    store.setItem(KEY, JSON.stringify(payload));
   } catch {
-    /* private browsing / quota exceeded */
+    /* quota exceeded / private mode */
   }
 }
 
+/** Merge server count with local — never under-count vs the server. */
+export function mergeHighResQuotaCache(serverUsed: number, serverLimit: number): void {
+  const local = getHighResUsed();
+  const limit = serverLimit || getHighResLimit();
+  writeHighResQuotaCache(Math.max(local, serverUsed), limit);
+}
+
+export function getHighResUsed(): number {
+  return readHighResQuotaCache()?.used ?? 0;
+}
+
+export function getHighResLimit(): number {
+  return readHighResQuotaCache()?.limit ?? DEFAULT_LIMIT;
+}
+
 export function isHighResCacheExhausted(): boolean {
-  const c = readHighResQuotaCache();
-  return c != null && c.used >= c.limit;
+  return getHighResUsed() >= getHighResLimit();
 }
 
-/** Call after the server accepts a 2K/4K download job (HTTP 202). */
-export function bumpHighResQuotaCache(): void {
-  const c = readHighResQuotaCache();
-  const limit = c?.limit ?? 5;
-  const used = (c?.used ?? 0) + 1;
-  writeHighResQuotaCache(used, limit);
-}
-
-export function markHighResCacheExhausted(limit = 5): void {
+export function markHighResCacheExhausted(limit = DEFAULT_LIMIT): void {
   writeHighResQuotaCache(limit, limit);
+}
+
+/**
+ * Synchronous pre-check before any network call.
+ * Returns false when the visitor is already at/over the free 2K/4K allowance.
+ */
+export function canStartHighResDownload(): boolean {
+  return getHighResUsed() < getHighResLimit();
+}
+
+/** Count one 4K/2K download attempt immediately on button click. */
+export function recordHighResDownloadClick(): void {
+  const used = getHighResUsed();
+  const limit = getHighResLimit();
+  writeHighResQuotaCache(used + 1, limit);
 }

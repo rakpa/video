@@ -10,10 +10,11 @@ import { fetchClientYoutubePreview } from './utils/youtube';
 import { preloadThumbnail, warmThumbnailFetch, type PreloadedThumb } from './utils/preloadThumb';
 import { licenseToken, maxAllowedHeight } from './lib/license';
 import {
-  bumpHighResQuotaCache,
+  canStartHighResDownload,
   isHighResCacheExhausted,
   markHighResCacheExhausted,
-  writeHighResQuotaCache,
+  mergeHighResQuotaCache,
+  recordHighResDownloadClick,
 } from './lib/highResQuotaCache';
 import { resolveFormatAvailability } from './utils/qualityAvailability';
 import {
@@ -254,7 +255,7 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
     }
     void fetchHighResQuota(licenseToken())
       .then((q) => {
-        writeHighResQuotaCache(q.used, q.limit);
+        mergeHighResQuotaCache(q.used, q.limit);
         if (isHighResQuotaExhausted(q)) {
           setLimitReached(true);
           setLimitMessage(HIGH_RES_LIMIT_MSG);
@@ -283,7 +284,7 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
   const syncHighResLimit = useCallback(async (): Promise<boolean> => {
     try {
       const q = await fetchHighResQuota(licenseToken());
-      writeHighResQuotaCache(q.used, q.limit);
+      mergeHighResQuotaCache(q.used, q.limit);
       if (isHighResQuotaExhausted(q)) {
         setLimitReached(true);
         setLimitMessage(HIGH_RES_LIMIT_MSG);
@@ -302,11 +303,15 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
       setSelected(quality);
       const fmt = info?.formats.find((f) => f.id === quality);
       if (fmt && fmt.height >= 1440) {
+        if (isHighResCacheExhausted() || limitReached) {
+          showHighResLimit();
+          return;
+        }
         pingApiWarmup();
         void syncHighResLimit();
       }
     },
-    [info, syncHighResLimit],
+    [info, syncHighResLimit, limitReached, showHighResLimit],
   );
 
   const pickDefault = (formats: AvailableFormat[], sourceMaxHeight?: number | null): QualityId => {
@@ -564,10 +569,14 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
         return;
       }
 
-      // Instant block from session cache or prior sync — zero network wait.
-      if (fmt && fmt.height >= 1440 && (isHighResCacheExhausted() || limitReached)) {
-        showHighResLimit();
-        return;
+      // Instant block — synchronous localStorage check, zero network.
+      if (fmt && fmt.height >= 1440) {
+        if (limitReached || !canStartHighResDownload()) {
+          markHighResCacheExhausted();
+          showHighResLimit();
+          return;
+        }
+        recordHighResDownloadClick();
       }
 
       const clip = activeClip();
@@ -608,8 +617,6 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
           licenseToken(),
           { fast: isIgFb || mobile, reuse: !mobile && !clip, clip },
         );
-
-        if (fmt && fmt.height >= 1440) bumpHighResQuotaCache();
 
         lastJobId.current = jobId;
         unsubscribe.current?.();
