@@ -10,7 +10,7 @@ import { parseClipRange } from '../utils/clip.js';
 import { config } from '../config.js';
 import { HIGH_RES_MIN_HEIGHT } from '../utils/downloadLogger.js';
 import { getClientIp } from '../utils/clientIp.js';
-import { getHighResCount, reserveHighResSlot, rollbackHighResSlot, quotaStoreKind } from '../utils/highResQuota.js';
+import { getHighResCount, reserveHighResSlot, quotaStoreKind } from '../utils/highResQuota.js';
 
 export const downloadRouter = Router();
 
@@ -60,7 +60,6 @@ downloadRouter.post('/download', async (req, res) => {
   const allowedHeight = maxAllowedHeight(license);
   const isHighRes = q.height >= HIGH_RES_MIN_HEIGHT;
   const entitledByLicense = q.height <= allowedHeight;
-  let reservedHighRes = false;
 
   if (isHighRes && !entitledByLicense) {
     const slot = await reserveHighResSlot(clientIp, config.freeHighResLimit);
@@ -72,7 +71,6 @@ downloadRouter.post('/download', async (req, res) => {
         requiredHeight: q.height,
       });
     }
-    reservedHighRes = true;
   } else if (q.height > allowedHeight) {
     // Non-high-res height above the allowance (shouldn't normally happen).
     return res.status(402).json({
@@ -108,7 +106,9 @@ downloadRouter.post('/download', async (req, res) => {
     });
     return res.status(202).json({ jobId: job.id });
   } catch (err) {
-    if (reservedHighRes) await rollbackHighResSlot(clientIp);
+    // Do NOT roll back the reserved slot — the visitor attempted a 2K/4K download.
+    // Rolling back on transient errors ("server busy") meant the count never
+    // reached 5 and users had to click multiple times before a job started.
     if (err instanceof YtDlpError) {
       return res.status(500).json({ error: err.message });
     }

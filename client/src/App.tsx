@@ -190,6 +190,8 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
   const infoWarmRef = useRef(false);
   const socialRevealedRef = useRef(false);
   const proPanelRef = useRef<HTMLDivElement>(null);
+  /** Prevents double-clicks while a download request is in flight. */
+  const downloadBusy = useRef(false);
   /** Tracks which fetched URL we've already auto-scrolled to the preview card for,
    * so a re-render (e.g. progress ticks) doesn't keep yanking the page back down. */
   const scrolledPreviewUrlRef = useRef<string | null>(null);
@@ -283,7 +285,7 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
     // Sync 2K/4K quota from server — limit is per IP across all URLs, not per video.
     void fetchHighResQuota(licenseToken())
       .then((q) => {
-        if (!q.unlimited && q.remaining === 0) {
+        if (!q.unlimited && q.used >= q.limit) {
           setLimitReached(true);
           setLimitMessage(HIGH_RES_LIMIT_MSG);
         } else {
@@ -502,27 +504,19 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
 
   const handleDownload = useCallback(
     async (quality: QualityId, mode: CodecMode) => {
-      if (!info) return;
+      if (!info || downloadBusy.current) return;
       const fmt = info.formats.find((f) => f.id === quality);
       if (fmt && fmt.height > maxHeight) {
         proPanelRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
         return;
       }
 
-      // Block 2K/4K immediately if this IP is already over the free allowance (any URL).
-      if (fmt && fmt.height >= 1440) {
-        try {
-          const quota = await fetchHighResQuota(licenseToken());
-          if (!quota.unlimited && quota.remaining === 0) {
-            setLimitMessage(HIGH_RES_LIMIT_MSG);
-            setLimitReached(true);
-            setError(null);
-            setPhase('ready');
-            return;
-          }
-        } catch {
-          // Server enforces on POST if quota check fails.
-        }
+      // Already over limit and picking 2K/4K — show banner, don't hit the server.
+      if (fmt && fmt.height >= 1440 && limitReached) {
+        setLimitMessage(HIGH_RES_LIMIT_MSG);
+        setError(null);
+        setPhase('ready');
+        return;
       }
 
       const clip = activeClip();
@@ -531,6 +525,7 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
         return;
       }
 
+      downloadBusy.current = true;
       setError(null);
       setActiveQuality(quality);
 
@@ -605,9 +600,11 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
         }
         setError(e instanceof ApiError ? e.message : e instanceof Error ? e.message : 'Could not start the download.');
         setPhase('error');
+      } finally {
+        downloadBusy.current = false;
       }
     },
-    [info, url, maxHeight, clipMode, activeClip],
+    [info, url, maxHeight, clipMode, activeClip, limitReached],
   );
 
   const clipReady = isClipReady(clipMode, clipStart, clipEnd, info?.durationSeconds ?? null);
