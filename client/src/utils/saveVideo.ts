@@ -199,7 +199,33 @@ async function readDesktopVideoPayloadFromResponse(res: Response): Promise<Video
   return { blob, filename };
 }
 
-async function fetchVideoBytes(jobId: string): Promise<VideoFilePayload> {
+/**
+ * Read the finished file as a share payload WITHOUT the H.264 gallery gate.
+ * For 2K/4K on a mobile browser: YouTube has no H.264 variant at those heights,
+ * so instead of blocking on a slow server transcode we hand the raw MP4 to the
+ * OS share sheet and let the user pick Save Video (if the phone accepts it) or
+ * Save to Files. iOS Photos only takes H.264, so 4K typically lands in Files.
+ */
+async function readRawSharePayloadFromResponse(res: Response): Promise<VideoFilePayload> {
+  const blob = await res.blob();
+  const head = await blob.slice(0, Math.min(blob.size, 512 * 1024)).arrayBuffer();
+
+  if (looksLikeHtmlOrJson(head) || !isMp4Bytes(head)) {
+    throw new Error(
+      'Received an invalid file (not MP4). The download API may be misconfigured — check VITE_API_URL on Vercel.',
+    );
+  }
+  if (blob.size < 10_000) {
+    throw new Error('Video file is too small — the download may have failed.');
+  }
+
+  return { blob, filename: iosGalleryFilename() };
+}
+
+async function fetchVideoBytes(
+  jobId: string,
+  read: (res: Response) => Promise<VideoFilePayload> = readVideoPayloadFromResponse,
+): Promise<VideoFilePayload> {
   const maxAttempts = 8;
   let lastError: Error | null = null;
 
@@ -238,10 +264,22 @@ async function fetchVideoBytes(jobId: string): Promise<VideoFilePayload> {
       throw lastError;
     }
 
-    return readVideoPayloadFromResponse(res);
+    return read(res);
   }
 
   throw lastError ?? new Error('Could not fetch the video file.');
+}
+
+/**
+ * Mobile 2K/4K delivery: fetch the finished file (no server transcode, so no
+ * 99% "merging" hang) for the Save-to-Gallery share sheet. Skips the H.264 gate
+ * — the OS decides Save Video vs Save to Files.
+ */
+export async function fetchRawShareFile(jobId: string): Promise<VideoFilePayload> {
+  if (!isApiConfigured()) {
+    throw new Error(API_NOT_CONFIGURED_MSG);
+  }
+  return fetchVideoBytes(jobId, readRawSharePayloadFromResponse);
 }
 
 export async function waitForGalleryReady(jobId: string, timeoutMs = 12 * 60_000): Promise<void> {
