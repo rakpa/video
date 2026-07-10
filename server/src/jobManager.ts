@@ -7,6 +7,7 @@ import { startDownload, ensureInfoJsonCache, YtDlpError, type ProgressUpdate } f
 import { getQuality, type CodecMode, type QualityDef } from './services/formats.js';
 import { detectPlatform, type PlatformId } from './services/platform.js';
 import {
+  needsGalleryNormalize,
   needsGalleryNormalizeForJob,
   normalizeForGallery,
   galleryNormalizeOptions,
@@ -42,6 +43,8 @@ export interface Job {
   fast?: boolean;
   /** Requested output height (720–2160) — drives mobile VP9/HEVC gallery prep. */
   requestedHeight?: number;
+  /** Native app requested H.264 gallery prep — mobile browsers skip this. */
+  galleryPrep?: boolean;
   /** Dedupe key for prefetch / reuse. */
   cacheKey?: string;
   /** Verified output height (ffprobe) after download completes. */
@@ -113,13 +116,20 @@ function emit(job: Job, payload: ProgressUpdate | { done: true; outputHeight?: n
 
 /** True when the file is ready to serve for mobile "Save to gallery". */
 export function isGalleryReady(job: Job): boolean {
-  if (!needsGalleryNormalizeForJob(job.platformId, job.fast, job.requestedHeight)) return true;
+  if (!needsGalleryNormalizeForJob(job.platformId, job.fast, job.requestedHeight, job.galleryPrep)) {
+    return true;
+  }
   return Boolean(job.galleryPath);
 }
 
 /** Start H.264 transcode in the background — never block the download progress UI. */
 export function warmGalleryNormalize(job: Job): void {
-  if (!job.filePath || !needsGalleryNormalizeForJob(job.platformId, job.fast, job.requestedHeight)) return;
+  if (
+    !job.filePath ||
+    !needsGalleryNormalizeForJob(job.platformId, job.fast, job.requestedHeight, job.galleryPrep)
+  ) {
+    return;
+  }
   if (job.galleryNormalize || job.galleryPath) return;
 
   const input = job.filePath;
@@ -153,7 +163,7 @@ export async function createJob(
   url: string,
   quality: QualityDef,
   mode: CodecMode,
-  options?: { fast?: boolean; reuse?: boolean; clip?: ClipRange | null; ip?: string },
+  options?: { fast?: boolean; reuse?: boolean; clip?: ClipRange | null; ip?: string; galleryPrep?: boolean },
 ): Promise<Job> {
   const q = effectiveQuality(url, quality, options?.fast);
   const clip = options?.clip ?? null;
@@ -204,6 +214,7 @@ export async function createJob(
     platformId: detectPlatform(url)?.id,
     fast: options?.fast ?? false,
     requestedHeight: q.height,
+    galleryPrep: options?.galleryPrep ?? false,
     clip,
     ip: options?.ip,
     cacheKey,
@@ -296,7 +307,7 @@ async function runWithRetry(job: Job, url: string, quality: QualityDef, mode: Co
 
       const servePath = job.filePath!;
 
-      if (needsGalleryNormalizeForJob(job.platformId, job.fast, quality.height)) {
+      if (needsGalleryNormalizeForJob(job.platformId, job.fast, quality.height, job.galleryPrep)) {
         if (await canServeDirectToGallery(servePath)) {
           job.galleryPath = servePath;
           logger.info('Gallery skip remux — H.264 + faststart already present');
@@ -313,7 +324,7 @@ async function runWithRetry(job: Job, url: string, quality: QualityDef, mode: Co
           emit(job, job.progress);
           if (job.galleryNormalize) await job.galleryNormalize;
           if (!job.galleryPath) {
-            if (job.fast) {
+            if (job.fast && needsGalleryNormalize(job.platformId)) {
               job.status = 'error';
               job.errorMessage =
                 'Could not prepare this video for your gallery. Try again or pick 720p.';

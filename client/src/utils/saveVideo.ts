@@ -1,5 +1,10 @@
 import { API_NOT_CONFIGURED_MSG, apiUrl, isApiConfigured } from '../config/api';
 
+/** True on the installed Capacitor app — not mobile Safari/Chrome. */
+export function isNativeMobileApp(): boolean {
+  return false;
+}
+
 /** Phones/tablets — coarse pointer or common mobile UA. */
 export function isMobileDevice(): boolean {
   if (typeof window === 'undefined') return false;

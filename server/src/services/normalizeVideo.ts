@@ -21,7 +21,9 @@ export function needsGalleryNormalizeForJob(
   platformId: string | undefined,
   fast?: boolean,
   requestedHeight?: number,
+  galleryPrep?: boolean,
 ): boolean {
+  if (!galleryPrep) return false;
   if (needsGalleryNormalize(platformId)) return true;
   return Boolean(
     fast && requestedHeight != null && requestedHeight > MOBILE_GALLERY_HEIGHT_THRESHOLD,

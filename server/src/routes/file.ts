@@ -19,7 +19,9 @@ function safeName(name: string): string {
  */
 function resolveServePath(job: Job): string | null {
   const raw = job.filePath!;
-  if (!needsGalleryNormalizeForJob(job.platformId, job.fast, job.requestedHeight)) return raw;
+  if (!needsGalleryNormalizeForJob(job.platformId, job.fast, job.requestedHeight, job.galleryPrep)) {
+    return raw;
+  }
   if (job.galleryPath) return job.galleryPath;
 
   if (!job.galleryNormalize && !job.galleryNormalizeFailed) {
@@ -41,7 +43,7 @@ fileRouter.get('/file/:jobId/status', (req, res) => {
   }
 
   if (
-    needsGalleryNormalizeForJob(job.platformId, job.fast, job.requestedHeight) &&
+    needsGalleryNormalizeForJob(job.platformId, job.fast, job.requestedHeight, job.galleryPrep) &&
     !job.galleryPath &&
     !job.galleryNormalize
   ) {

@@ -1,6 +1,6 @@
 import type { ClipRange, CodecMode, ProgressUpdate, QualityId, VideoInfo } from '../types';
 import { API_NOT_CONFIGURED_MSG, API_UNREACHABLE_MSG, apiUrl, isApiConfigured } from '../config/api';
-import { downloadFileToDevice, isMobileDevice, saveMobileVideoToGallery } from '../utils/saveVideo';
+import { downloadFileToDevice, isMobileDevice, isNativeMobileApp, saveMobileVideoToGallery } from '../utils/saveVideo';
 import { detectPlatform } from '../utils/platform';
 import { fetchClientYoutubePreview } from '../utils/youtube';
 import { fetchClientInstagramPreview } from '../utils/instagram';
@@ -159,7 +159,7 @@ export async function startDownloadJob(
   quality: QualityId,
   mode: CodecMode,
   license?: string,
-  options?: { fast?: boolean; reuse?: boolean; clip?: ClipRange | null },
+  options?: { fast?: boolean; reuse?: boolean; clip?: ClipRange | null; galleryPrep?: boolean },
 ): Promise<string> {
   const { jobId } = await postJson<{ jobId: string }>('/api/download', {
     url,
@@ -168,6 +168,7 @@ export async function startDownloadJob(
     license,
     fast: options?.fast ?? false,
     reuse: options?.reuse ?? false,
+    galleryPrep: options?.galleryPrep ?? false,
     ...(options?.clip
       ? { startTime: options.clip.startTime, endTime: options.clip.endTime }
       : {}),
@@ -295,9 +296,13 @@ export function subscribeProgress(jobId: string, handlers: ProgressHandlers): ()
     es.close(); // stop EventSource's own reconnect loop; we own recovery now
     let attempts = 0;
     let networkErrors = 0;
+    let lastProgress: ProgressUpdate | undefined;
     const tick = async () => {
       if (settled) return;
       attempts += 1;
+      const merging = lastProgress?.stage === 'merging';
+      const maxAttempts = merging ? 1800 : 180;
+      const pollMs = merging ? 1000 : 2000;
       try {
         const res = await fetch(apiUrl(`/api/file/${jobId}/status`));
         const data = (await res.json().catch(() => ({}))) as {
@@ -322,6 +327,7 @@ export function subscribeProgress(jobId: string, handlers: ProgressHandlers): ()
         }
         // Still running — keep the progress bar moving from the polled state.
         if (data.progress && typeof data.progress.percent === 'number') {
+          lastProgress = data.progress;
           handlers.onProgress(data.progress);
         }
       } catch {
@@ -332,11 +338,11 @@ export function subscribeProgress(jobId: string, handlers: ProgressHandlers): ()
           return;
         }
       }
-      if (attempts >= 180) {
+      if (attempts >= maxAttempts) {
         settle(() => handlers.onError('Lost connection to the server. Please try again.'));
         return;
       }
-      pollTimer = setTimeout(() => void tick(), 2000);
+      pollTimer = setTimeout(() => void tick(), pollMs);
     };
     void tick();
   };
@@ -411,11 +417,11 @@ export function subscribeProgress(jobId: string, handlers: ProgressHandlers): ()
  * Delivers the finished file. Desktop: direct download. Mobile: validated fetch + share.
  */
 export async function triggerFileDownload(jobId: string): Promise<void> {
-  if (!isMobileDevice()) {
-    await downloadFileToDevice(jobId);
+  if (isNativeMobileApp()) {
+    await saveMobileVideoToGallery(jobId);
     return;
   }
-  await saveMobileVideoToGallery(jobId);
+  await downloadFileToDevice(jobId);
 }
 
 export { isMobileDevice };

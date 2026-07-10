@@ -41,6 +41,7 @@ import {
   downloadFileToDevice,
   deliverMobileVideo,
   formatDownloadError,
+  isNativeMobileApp,
   type ShareResult,
   type VideoFilePayload,
 } from './utils/saveVideo';
@@ -638,6 +639,7 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
 
       const platform = detectPlatform(fetchedUrl.current || url);
       const mobile = isMobileDevice();
+      const nativeApp = isNativeMobileApp();
       const isIgFb = platform?.id === 'instagram' || platform?.id === 'facebook';
       const currentUrl = fetchedUrl.current || url;
 
@@ -662,7 +664,7 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
           quality,
           effectiveMode,
           licenseToken(),
-          { fast: isIgFb || mobile, reuse: !mobile && !clip, clip },
+          { fast: isIgFb || mobile, reuse: !mobile && !clip, clip, galleryPrep: nativeApp },
         );
 
         lastJobId.current = jobId;
@@ -674,7 +676,7 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
             void (async () => {
               try {
                 setProgress((p) => ({ ...p, percent: 100, stage: 'done', speed: null, eta: null }));
-                if (mobile) {
+                if (nativeApp) {
                   const delivery = await deliverMobileVideo(jobId);
                   setMobileSavePayload(delivery.payload);
                   setPhase('ready');
@@ -747,7 +749,7 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
   const view: 'ready' | 'downloading' | 'success' | null =
     phase === 'downloading'
       ? 'downloading'
-      : phase === 'success' && !isMobileDevice()
+      : phase === 'success'
         ? 'success'
         : phase === 'ready' || phase === 'preview' || phase === 'error'
           ? 'ready'
@@ -872,9 +874,13 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
                   </div>
                 ) : info && view === 'success' ? (
                   <div id="download-success">
-                    <SuccessState outputHeight={outputHeight} requestedLabel={qualityLabel || undefined} />
+                    <SuccessState
+                      outputHeight={outputHeight}
+                      requestedLabel={qualityLabel || undefined}
+                      mobileBrowser={isMobileDevice() && !isNativeMobileApp()}
+                    />
                   </div>
-                ) : info && isMobileDevice() && mobileSavePayload ? (
+                ) : info && isNativeMobileApp() && mobileSavePayload ? (
                   <MobileSavePrompt
                     payload={mobileSavePayload}
                     author={info.author}

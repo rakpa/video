@@ -11,10 +11,12 @@ interface Props {
   outputHeight?: number | null;
   /** Label the user picked before download (e.g. "4K"). */
   requestedLabel?: string;
+  /** Mobile browser — Files/Downloads wording instead of desktop folder. */
+  mobileBrowser?: boolean;
 }
 
-/** Desktop: shown after browser download starts — replaces quality/download controls. */
-export function SuccessState({ outputHeight, requestedLabel }: Props) {
+/** Shown after the file is delivered — replaces quality/download controls. */
+export function SuccessState({ outputHeight, requestedLabel, mobileBrowser }: Props) {
   const verified =
     typeof outputHeight === 'number' && outputHeight > 0 ? verifiedLabel(outputHeight) : null;
 
@@ -62,7 +64,9 @@ export function SuccessState({ outputHeight, requestedLabel }: Props) {
           </>
         )}
         <br />
-        You can now access it from your Downloads folder.
+        {mobileBrowser
+          ? 'Check your Downloads or Files app to open the video.'
+          : 'You can now access it from your Downloads folder.'}
       </p>
     </motion.div>
   );
