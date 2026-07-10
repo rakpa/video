@@ -169,7 +169,9 @@ app.listen(config.port, () => {
   } else {
     const memGb = (os.totalmem() / 1024 ** 3).toFixed(1);
     logger.info(
-      `Download capacity: ${config.maxConcurrentJobs} global, ${config.maxConcurrentJobsPerIp} per visitor (${memGb} GB RAM)`,
+      `Download capacity: ${config.maxConcurrentJobs} total, ${config.maxConcurrentHighResJobs} high-res, ` +
+        `${config.maxConcurrentTranscodes} transcodes, ${config.maxConcurrentJobsPerIp}/visitor ` +
+        `(${memGb} GB RAM, ${config.cpuCount} vCPU)`,
     );
   }
 });

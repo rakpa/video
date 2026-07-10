@@ -65,7 +65,7 @@ ENV PORT=10000
 ENV YTDLP_PATH=yt-dlp
 ENV FFMPEG_PATH=ffmpeg
 ENV LOW_MEMORY_MODE=false
-ENV NODE_OPTIONS=--max-old-space-size=384
+ENV NODE_OPTIONS=--max-old-space-size=1024
 
 EXPOSE 10000
 

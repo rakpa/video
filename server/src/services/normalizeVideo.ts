@@ -30,13 +30,38 @@ export function needsGalleryNormalizeForJob(
   );
 }
 
-/** Only one ffmpeg transcode at a time — prevents OOM on 512 MB Render free tier. */
-let normalizeChain: Promise<unknown> = Promise.resolve();
+/** Parallel ffmpeg transcodes — pool sized from RAM (Railway Hobby ≈ 3 at 8 GB). */
+let transcodeActive = 0;
+const transcodeWaitQueue: Array<() => void> = [];
+
+function acquireTranscodeSlot(): Promise<void> {
+  const limit = config.maxConcurrentTranscodes;
+  if (transcodeActive < limit) {
+    transcodeActive++;
+    return Promise.resolve();
+  }
+  return new Promise((resolve) => {
+    transcodeWaitQueue.push(() => {
+      transcodeActive++;
+      resolve();
+    });
+  });
+}
+
+function releaseTranscodeSlot(): void {
+  transcodeActive--;
+  const next = transcodeWaitQueue.shift();
+  if (next) next();
+}
 
 function enqueueNormalize<T>(fn: () => Promise<T>): Promise<T> {
-  const next = normalizeChain.then(fn, fn);
-  normalizeChain = next.catch(() => undefined);
-  return next;
+  return acquireTranscodeSlot().then(async () => {
+    try {
+      return await fn();
+    } finally {
+      releaseTranscodeSlot();
+    }
+  });
 }
 
 async function readHeadBytes(filePath: string, max = 512 * 1024): Promise<Buffer> {
@@ -311,13 +336,21 @@ function galleryNormalizeOptions(job: {
 }
 
 /**
- * Memory-safe ffmpeg flags. On Railway / non–low-memory hosts default to all
- * cores ('0') so a 2K/4K VP9→H.264 convert finishes in minutes not tens of minutes.
+ * ffmpeg thread budget per transcode. Split vCPUs across the transcode pool so
+ * three parallel 4K converts don't fight for the same cores.
  */
-const FFMPEG_THREADS = (
-  process.env.FFMPEG_THREADS ?? (config.lowMemoryMode ? '1' : '0')
-).trim() || (config.lowMemoryMode ? '1' : '0');
-const FFMPEG_LOW_MEM = ['-threads', FFMPEG_THREADS, '-max_muxing_queue_size', '512'];
+function ffmpegLowMemArgs(): string[] {
+  const explicit = process.env.FFMPEG_THREADS?.trim();
+  if (explicit) {
+    return ['-threads', explicit, '-max_muxing_queue_size', '1024'];
+  }
+  if (config.lowMemoryMode) {
+    return ['-threads', '1', '-max_muxing_queue_size', '512'];
+  }
+  const slots = config.maxConcurrentTranscodes;
+  const perJob = Math.max(2, Math.floor(config.cpuCount / slots));
+  return ['-threads', String(perJob), '-max_muxing_queue_size', '1024'];
+}
 
 const TRANSCODE_STRATEGIES: TranscodeStrategy[] = config.lowMemoryMode
   ? [
@@ -533,7 +566,7 @@ async function transcodeForGallery(
           '-i',
           inputPath,
           ...strategy.extraArgs,
-          ...FFMPEG_LOW_MEM,
+          ...ffmpegLowMemArgs(),
           '-movflags',
           '+faststart',
           '-avoid_negative_ts',

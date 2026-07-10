@@ -47,11 +47,39 @@ function inferMaxConcurrentJobs(lowMemoryMode: boolean): number {
   if (lowMemoryMode) return 1;
 
   const memGb = os.totalmem() / 1024 ** 3;
+  const cpus = os.cpus().length;
   if (memGb < 0.6) return 2;
   if (memGb < 1.2) return 4;
-  if (memGb < 2.5) return 8;
-  if (memGb < 5) return 12;
-  return 16;
+  if (memGb < 2.5) return Math.min(8, cpus);
+  if (memGb < 5) return Math.min(10, cpus + 2);
+  // Railway Hobby (8 GB / 8 vCPU): ~12 parallel HD jobs, with 2K/4K capped separately.
+  return Math.min(16, cpus + 4);
+}
+
+/** Parallel VP9/HEVC → H.264 converts (mobile gallery prep). ~2 GB RAM each at 4K. */
+function inferMaxConcurrentTranscodes(lowMemoryMode: boolean): number {
+  const raw = process.env.MAX_CONCURRENT_TRANSCODES?.trim();
+  if (raw) return Math.max(1, Number(raw) || 1);
+  if (lowMemoryMode) return 1;
+
+  const memGb = os.totalmem() / 1024 ** 3;
+  const cpus = os.cpus().length;
+  const byRam = Math.max(1, Math.floor(memGb / 2.5));
+  const byCpu = Math.max(1, Math.floor(cpus / 2));
+  return Math.min(4, byRam, byCpu);
+}
+
+/** Simultaneous 2K/4K yt-dlp downloads — keeps bandwidth and disk fair across users. */
+function inferMaxConcurrentHighResJobs(lowMemoryMode: boolean): number {
+  const raw = process.env.MAX_CONCURRENT_HIGH_RES_JOBS?.trim();
+  if (raw) return Math.max(1, Number(raw) || 1);
+  if (lowMemoryMode) return 1;
+
+  const memGb = os.totalmem() / 1024 ** 3;
+  const cpus = os.cpus().length;
+  if (memGb < 2) return 2;
+  if (memGb < 5) return 4;
+  return Math.min(6, Math.max(4, Math.floor(cpus * 0.75)));
 }
 
 /**
@@ -74,6 +102,8 @@ export const config = {
   ytdlpPath: process.env.YTDLP_PATH ?? 'yt-dlp',
   ffmpegPath: process.env.FFMPEG_PATH ?? 'ffmpeg',
 
+  cpuCount: os.cpus().length,
+
   /**
    * Render free tier = 512 MB RAM. yt-dlp + ffmpeg HEVC transcode can exceed that
    * unless downloads are serialized and ffmpeg uses minimal threads/buffers.
@@ -90,6 +120,16 @@ export const config = {
 
   /** Max simultaneous downloads per visitor IP (web + phone + spare tab). */
   maxConcurrentJobsPerIp: Math.max(1, Number(process.env.MAX_CONCURRENT_JOBS_PER_IP ?? 3)),
+
+  /** Parallel ffmpeg gallery transcodes (2K/4K mobile). */
+  get maxConcurrentTranscodes(): number {
+    return inferMaxConcurrentTranscodes(this.lowMemoryMode);
+  },
+
+  /** Simultaneous 2K/4K downloads across all visitors. */
+  get maxConcurrentHighResJobs(): number {
+    return inferMaxConcurrentHighResJobs(this.lowMemoryMode);
+  },
 
   // --- yt-dlp hardening for cloud hosts (YouTube bot-detection) ---
   // Path to a Netscape-format cookies.txt so yt-dlp can authenticate. This is

@@ -17,7 +17,7 @@ import {
 import type { ClipRange } from './utils/clip.js';
 import { getFreshInfoJson } from './services/infoJsonCache.js';
 import { logger } from './utils/logger.js';
-import { logDownload } from './utils/downloadLogger.js';
+import { logDownload, HIGH_RES_MIN_HEIGHT } from './utils/downloadLogger.js';
 
 type JobStatus = 'running' | 'ready' | 'error';
 
@@ -102,6 +102,14 @@ function countRunningJobs(): number {
 
 function runningJobsByIp(ip: string): Job[] {
   return [...jobs.values()].filter((j) => j.status === 'running' && j.ip === ip);
+}
+
+function countRunningHighResJobs(): number {
+  let n = 0;
+  for (const job of jobs.values()) {
+    if (job.status === 'running' && (job.requestedHeight ?? 0) >= HIGH_RES_MIN_HEIGHT) n += 1;
+  }
+  return n;
 }
 
 /** Respect the user's quality choice; optional cap for phone-optimized 2K/4K. */
@@ -202,6 +210,13 @@ export async function createJob(
       logger.info(`Reusing download job ${existing.id} (${existing.status})`);
       return existing;
     }
+  }
+
+  if (q.height >= HIGH_RES_MIN_HEIGHT && countRunningHighResJobs() >= config.maxConcurrentHighResJobs) {
+    throw new YtDlpError(
+      'Several 2K/4K downloads are running right now. Please try again in a minute — 1080p HD is instant.',
+      'FAILED',
+    );
   }
 
   if (countRunningJobs() >= config.maxConcurrentJobs) {

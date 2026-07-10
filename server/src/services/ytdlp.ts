@@ -674,12 +674,17 @@ function findOutputFile(dir: string): string | null {
 function downloadTuning(
   url: string,
   fast?: boolean,
+  qualityHeight?: number,
 ): { httpChunkSize: string; concurrentFragments: string } {
   const platform = detectPlatform(url)?.id;
   if (platform === 'instagram' || platform === 'facebook') {
     return fast
       ? { httpChunkSize: '5M', concurrentFragments: '6' }
       : { httpChunkSize: '4M', concurrentFragments: '4' };
+  }
+  if (!config.lowMemoryMode && (qualityHeight ?? 0) > 1080) {
+    const frags = Math.min(8, Math.max(5, config.cpuCount));
+    return { httpChunkSize: '10M', concurrentFragments: String(frags) };
   }
   return fast
     ? { httpChunkSize: '8M', concurrentFragments: '6' }
@@ -728,7 +733,7 @@ export function startDownload(
   const cachedInfoJson = getFreshInfoJson(url, currentProxy() ?? '');
   const usedCache = Boolean(cachedInfoJson);
   if (usedCache) logger.info('Download reusing cached info (skipping re-extraction)');
-  const tuning = downloadTuning(url, fast);
+  const tuning = downloadTuning(url, fast, quality.height);
   const igFbMaxHeight =
     platformId === 'instagram' || platformId === 'facebook' ? quality.height : undefined;
 

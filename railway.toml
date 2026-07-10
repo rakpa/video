@@ -7,6 +7,14 @@
 #      (or REDIS_PRIVATE_URL for internal networking)
 #
 # The API reads REDIS_PRIVATE_URL or REDIS_URL automatically.
+#
+# Railway Hobby (8 GB / 8 vCPU) — recommended API variables (auto-tuned if omitted):
+#   LOW_MEMORY_MODE=false
+#   MAX_CONCURRENT_JOBS=12
+#   MAX_CONCURRENT_HIGH_RES_JOBS=6
+#   MAX_CONCURRENT_TRANSCODES=3
+#   MAX_CONCURRENT_JOBS_PER_IP=3
+#   NODE_OPTIONS=--max-old-space-size=1024
 
 [build]
 builder = "DOCKERFILE"
