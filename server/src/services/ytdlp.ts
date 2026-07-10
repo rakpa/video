@@ -123,6 +123,73 @@ export function pickBestSocialFormat(
   return null;
 }
 
+/**
+ * Highest H.264 at or below maxHeight for YouTube. Single-file progressive MP4
+ * is often only 360p/720p even when 1080p H.264 DASH exists — prefer DASH when
+ * it delivers more pixels (fixes 4K requests saving as 640×360).
+ */
+export function pickBestYoutubeH264Format(
+  infoJsonPath: string,
+  maxHeight: number,
+): { selector: string; singleFileH264: boolean } | null {
+  let raw: RawDump;
+  try {
+    raw = JSON.parse(fs.readFileSync(infoJsonPath, 'utf8'));
+  } catch {
+    return null;
+  }
+
+  const formats = raw.formats ?? [];
+  const sizeOf = (f: RawFormat) => f.filesize ?? f.filesize_approx ?? (f.tbr ?? 0) * 1000;
+
+  const progressive = formats
+    .filter((f) => {
+      if (!f.format_id || !f.url) return false;
+      const h = f.height ?? 0;
+      if (h <= 0 || h > maxHeight) return false;
+      if (!isH264Vcodec(f.vcodec)) return false;
+      if ((f.acodec ?? 'none') === 'none') return false;
+      return true;
+    })
+    .sort((a, b) => (b.height ?? 0) - (a.height ?? 0) || sizeOf(a) - sizeOf(b));
+
+  const videos = formats
+    .filter(
+      (f) =>
+        f.format_id &&
+        isH264Vcodec(f.vcodec) &&
+        (f.height ?? 0) > 0 &&
+        (f.height ?? 0) <= maxHeight,
+    )
+    .sort((a, b) => (b.height ?? 0) - (a.height ?? 0) || sizeOf(a) - sizeOf(b));
+  const audios = formats
+    .filter((f) => f.format_id && (f.acodec ?? 'none') !== 'none')
+    .sort((a, b) => sizeOf(a) - sizeOf(b));
+
+  const bestDash =
+    videos.length > 0 && audios.length > 0 ? { video: videos[0], audio: audios[0] } : null;
+  const bestProg = progressive[0];
+  const dashH = bestDash?.video.height ?? 0;
+  const progH = bestProg?.height ?? 0;
+
+  if (bestDash && dashH >= progH) {
+    return {
+      selector: `${bestDash.video.format_id!}+${bestDash.audio.format_id!}`,
+      singleFileH264: false,
+    };
+  }
+  if (bestProg) {
+    return { selector: String(bestProg.format_id), singleFileH264: true };
+  }
+  if (bestDash) {
+    return {
+      selector: `${bestDash.video.format_id!}+${bestDash.audio.format_id!}`,
+      singleFileH264: false,
+    };
+  }
+  return null;
+}
+
 class YtDlpError extends Error {
   constructor(message: string, public readonly code: 'UNAVAILABLE' | 'TOO_LONG' | 'NO_BINARY' | 'FAILED' | 'BLOCKED') {
     super(message);
@@ -630,9 +697,8 @@ export function startDownload(
       logger.info(`IG/FB cached format ${formatArg} (single H.264=${singleFileH264})`);
     }
   } else if (cachedInfoJson && platformId === 'youtube' && galleryMaxHeight) {
-    // Mobile 2K/4K → 1080p: pick a single progressive H.264 file when available.
-    // Avoids DASH video+audio (progress sits ~30% while stream 1 crawls) and merge stalls.
-    const picked = pickBestSocialFormat(cachedInfoJson, galleryMaxHeight, true);
+    // Optional phone cap: highest H.264 DASH up to galleryMaxHeight (not tiny progressive).
+    const picked = pickBestYoutubeH264Format(cachedInfoJson, galleryMaxHeight);
     if (picked) {
       formatArg = picked.selector;
       singleFileH264 = picked.singleFileH264;
