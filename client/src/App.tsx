@@ -298,8 +298,19 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
     setShowLimitSection(true);
     setError(null);
     setPhase('ready');
-    scrollToLimitSection();
+    requestAnimationFrame(() => scrollToLimitSection());
   }, [scrollToLimitSection]);
+
+  /** Dismiss limit UI and restore the normal clip + quality panel in view. */
+  const closeLimitSection = useCallback(() => {
+    setShowLimitSection(false);
+    requestAnimationFrame(() => {
+      const el = document.getElementById('video-preview-card');
+      if (!el) return;
+      const top = el.getBoundingClientRect().top + window.scrollY - 24;
+      window.scrollTo({ top: Math.max(0, top), behavior: 'smooth' });
+    });
+  }, []);
 
   const shouldGateHighRes = useCallback(
     () => !isPro() && (limitReached || isHighResCacheExhausted() || !canStartHighResDownload()),
@@ -341,13 +352,13 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
       setSelected(quality);
       const fmt = info?.formats.find((f) => f.id === quality);
       if (fmt && fmt.height < HIGH_RES_MIN_PX) {
-        setShowLimitSection(false);
+        closeLimitSection();
       } else if (fmt && fmt.height >= HIGH_RES_MIN_PX) {
         pingApiWarmup();
         void syncHighResLimit();
       }
     },
-    [info, syncHighResLimit, gateHighResQuality],
+    [info, syncHighResLimit, gateHighResQuality, closeLimitSection],
   );
 
   const pickDefault = (formats: AvailableFormat[], sourceMaxHeight?: number | null): QualityId => {
@@ -710,6 +721,7 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
   const qualityLabel = info?.formats.find((f) => f.id === activeQuality)?.label ?? '';
   const selectedFmt = info?.formats.find((f) => f.id === selected);
   const showProUpgrade = !limitReached && Boolean(selectedFmt && selectedFmt.premium && !isPro());
+  const showInlineLimit = showLimitSection && Boolean(selectedFmt && selectedFmt.height >= HIGH_RES_MIN_PX);
 
   const dismissProUpgrade = useCallback(() => {
     if (!info) return;
@@ -723,9 +735,9 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
       formats.find((f) => f.height <= maxHeight);
     if (freeFmt) {
       setSelected(freeFmt.id);
-      setShowLimitSection(false);
+      closeLimitSection();
     }
-  }, [info, maxHeight]);
+  }, [info, maxHeight, closeLimitSection]);
   const isBusy = phase === 'fetching' || phase === 'preview' || phase === 'downloading';
   const isSocialPreview = info?.platform === 'instagram' || info?.platform === 'facebook';
   const previewCardReady = isSocialPreview
@@ -829,28 +841,6 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
           </AnimatePresence>
 
           <AnimatePresence mode="popLayout">
-            {showLimitSection && (
-              <motion.div
-                key="highres-limit"
-                id={HIGH_RES_LIMIT_ID}
-                ref={highResLimitRef}
-                initial={{ opacity: 0, y: -8 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -8 }}
-                className="scroll-mt-24 space-y-4"
-              >
-                <div className="flex items-start gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800 shadow-card">
-                  <svg viewBox="0 0 24 24" className="mt-0.5 h-5 w-5 shrink-0 text-amber-500" fill="currentColor" aria-hidden="true">
-                    <path d="M12 1a5 5 0 0 0-5 5v3H6a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-9a2 2 0 0 0-2-2h-1V6a5 5 0 0 0-5-5Zm3 8H9V6a3 3 0 0 1 6 0v3Z" />
-                  </svg>
-                  <p className="font-semibold leading-relaxed">{HIGH_RES_LIMIT_MSG}</p>
-                </div>
-                <ProUpgradeCard />
-              </motion.div>
-            )}
-          </AnimatePresence>
-
-          <AnimatePresence mode="popLayout">
             {(info || phase === 'preview') && (
               <motion.div
                 key="downloader-card"
@@ -929,6 +919,27 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
                         freeHighResRemaining={!shouldGateHighRes()}
                       />
                     </div>
+                    <AnimatePresence mode="popLayout">
+                      {showInlineLimit && (
+                        <motion.div
+                          key="highres-limit"
+                          id={HIGH_RES_LIMIT_ID}
+                          ref={highResLimitRef}
+                          initial={{ opacity: 0, y: -8 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          exit={{ opacity: 0, y: -8 }}
+                          className="scroll-mt-6 space-y-4"
+                        >
+                          <div className="flex items-start gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800 shadow-card">
+                            <svg viewBox="0 0 24 24" className="mt-0.5 h-5 w-5 shrink-0 text-amber-500" fill="currentColor" aria-hidden="true">
+                              <path d="M12 1a5 5 0 0 0-5 5v3H6a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-9a2 2 0 0 0-2-2h-1V6a5 5 0 0 0-5-5Zm3 8H9V6a3 3 0 0 1 6 0v3Z" />
+                            </svg>
+                            <p className="font-semibold leading-relaxed">{HIGH_RES_LIMIT_MSG}</p>
+                          </div>
+                          <ProUpgradeCard />
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
                     <AnimatePresence>
                       {showProUpgrade && (
                         <motion.div
