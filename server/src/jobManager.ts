@@ -44,6 +44,8 @@ export interface Job {
   requestedHeight?: number;
   /** Native app requested H.264 gallery prep — mobile browsers skip this. */
   galleryPrep?: boolean;
+  /** Cap source download + transcode height (mobile browser 2K/4K → 1080p for speed). */
+  galleryMaxHeight?: number;
   /** Dedupe key for prefetch / reuse. */
   cacheKey?: string;
   /** Verified output height (ffprobe) after download completes. */
@@ -104,8 +106,21 @@ function findRunningJobByIp(ip: string): Job | undefined {
   return undefined;
 }
 
-/** Respect the user's quality choice — fast mode only tunes chunk parallelism. */
-function effectiveQuality(_url: string, quality: QualityDef, _fast?: boolean): QualityDef {
+/** Respect the user's quality choice; optional cap for phone-optimized 2K/4K. */
+function effectiveQuality(
+  _url: string,
+  quality: QualityDef,
+  _fast?: boolean,
+  galleryMaxHeight?: number,
+): QualityDef {
+  if (!galleryMaxHeight || quality.height <= galleryMaxHeight) return quality;
+  for (const id of ['1080', '720'] as const) {
+    const capped = getQuality(id);
+    if (capped && capped.height <= galleryMaxHeight) {
+      logger.info(`Mobile optimize: ${quality.label} source → ${capped.label} (faster phone download)`);
+      return capped;
+    }
+  }
   return quality;
 }
 
@@ -155,9 +170,16 @@ export async function createJob(
   url: string,
   quality: QualityDef,
   mode: CodecMode,
-  options?: { fast?: boolean; reuse?: boolean; clip?: ClipRange | null; ip?: string; galleryPrep?: boolean },
+  options?: {
+    fast?: boolean;
+    reuse?: boolean;
+    clip?: ClipRange | null;
+    ip?: string;
+    galleryPrep?: boolean;
+    galleryMaxHeight?: number;
+  },
 ): Promise<Job> {
-  const q = effectiveQuality(url, quality, options?.fast);
+  const q = effectiveQuality(url, quality, options?.fast, options?.galleryMaxHeight);
   const clip = options?.clip ?? null;
   const cacheKey = jobCacheKey(url, q, mode, options?.fast, clip);
 
@@ -205,8 +227,9 @@ export async function createJob(
     createdAt: Date.now(),
     platformId: detectPlatform(url)?.id,
     fast: options?.fast ?? false,
-    requestedHeight: q.height,
+    requestedHeight: quality.height,
     galleryPrep: options?.galleryPrep ?? false,
+    galleryMaxHeight: options?.galleryMaxHeight,
     clip,
     ip: options?.ip,
     cacheKey,

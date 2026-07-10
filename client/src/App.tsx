@@ -684,7 +684,16 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
           quality,
           effectiveMode,
           licenseToken(),
-          { fast: isIgFb || mobile, reuse: !mobile && !clip, clip, galleryPrep },
+          {
+            fast: isIgFb || mobile,
+            reuse: !mobile && !clip,
+            clip,
+            galleryPrep,
+            // iPhone Chrome can't play 4K VP9 — fetch 1080p H.264 source instead of
+            // a huge 4K download + multi-minute re-encode (same playable result).
+            galleryMaxHeight:
+              mobile && highRes && !isNativeMobileApp() ? MOBILE_GALLERY_MAX_HEIGHT : undefined,
+          },
         );
 
         lastJobId.current = jobId;

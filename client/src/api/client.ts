@@ -159,7 +159,13 @@ export async function startDownloadJob(
   quality: QualityId,
   mode: CodecMode,
   license?: string,
-  options?: { fast?: boolean; reuse?: boolean; clip?: ClipRange | null; galleryPrep?: boolean },
+  options?: {
+    fast?: boolean;
+    reuse?: boolean;
+    clip?: ClipRange | null;
+    galleryPrep?: boolean;
+    galleryMaxHeight?: number;
+  },
 ): Promise<string> {
   const { jobId } = await postJson<{ jobId: string }>('/api/download', {
     url,
@@ -169,6 +175,7 @@ export async function startDownloadJob(
     fast: options?.fast ?? false,
     reuse: options?.reuse ?? false,
     galleryPrep: options?.galleryPrep ?? false,
+    ...(options?.galleryMaxHeight != null ? { galleryMaxHeight: options.galleryMaxHeight } : {}),
     ...(options?.clip
       ? { startTime: options.clip.startTime, endTime: options.clip.endTime }
       : {}),

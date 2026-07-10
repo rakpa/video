@@ -141,6 +141,31 @@ async function verifyH264Mp4(filePath: string): Promise<boolean> {
   return (await probeVideoCodec(filePath)) === 'h264';
 }
 
+async function probeAudioIsAac(filePath: string): Promise<boolean> {
+  const ffprobe = config.ffmpegPath.replace(/ffmpeg$/i, 'ffprobe');
+  try {
+    const { stdout } = await exec(
+      ffprobe,
+      [
+        '-v',
+        'error',
+        '-select_streams',
+        'a:0',
+        '-show_entries',
+        'stream=codec_name',
+        '-of',
+        'csv=p=0',
+        filePath,
+      ],
+      { windowsHide: true, timeout: 15_000 },
+    );
+    const name = stdout.trim().toLowerCase();
+    return name.includes('aac') || name.includes('mp4a');
+  } catch {
+    return false;
+  }
+}
+
 async function runFfmpeg(args: string[], timeoutMs: number): Promise<void> {
   await exec(config.ffmpegPath, ['-nostdin', '-hide_banner', '-loglevel', 'error', ...args], {
     windowsHide: true,
@@ -223,12 +248,12 @@ export interface GalleryNormalizeOptions {
 }
 
 /** H.264 transcode args that cap output height (not width) so 2K/4K stay sharp. */
-function buildH264HeightScaleArgs(maxHeight: number, crf = 20): string[] {
+function buildH264HeightScaleArgs(maxHeight: number, crf = 20, copyAudio = false): string[] {
   const level = maxHeight >= 2160 ? '5.1' : maxHeight >= 1440 ? '4.1' : maxHeight >= 1080 ? '4.0' : '3.1';
   const profile = maxHeight >= 1080 ? 'high' : 'main';
-  // 'veryfast' over 'fast': ~2x quicker and lower peak RAM, so a 2K/4K
-  // VP9/AV1 → H.264 convert (the mobile "can't play this codec" fix) finishes
-  // in a couple of minutes instead of stalling the job at 99%.
+  const audioArgs = copyAudio
+    ? (['-c:a', 'copy'] as const)
+    : (['-c:a', 'aac', '-b:a', '128k', '-ar', '48000', '-ac', '2'] as const);
   return [
     '-map',
     '0:v:0',
@@ -239,7 +264,9 @@ function buildH264HeightScaleArgs(maxHeight: number, crf = 20): string[] {
     '-c:v',
     'libx264',
     '-preset',
-    'veryfast',
+    'ultrafast',
+    '-tune',
+    'fastdecode',
     '-crf',
     String(crf),
     '-profile:v',
@@ -250,25 +277,20 @@ function buildH264HeightScaleArgs(maxHeight: number, crf = 20): string[] {
     'yuv420p',
     '-tag:v',
     'avc1',
-    '-c:a',
-    'aac',
-    '-b:a',
-    '192k',
-    '-ar',
-    '48000',
-    '-ac',
-    '2',
+    '-x264-params',
+    'ref=1:bframes=0:weightp=0',
+    ...audioArgs,
   ];
 }
 
 /** High-res mobile gallery prep — try requested height, then 1080p / 720p fallbacks. */
-function buildHighResGalleryStrategies(requestedHeight: number): TranscodeStrategy[] {
+function buildHighResGalleryStrategies(requestedHeight: number, copyAudio = false): TranscodeStrategy[] {
   const tiers = [requestedHeight, 1080, 720].filter((h, i, arr) => h <= requestedHeight && arr.indexOf(h) === i);
   return tiers.map((h, idx) => ({
     label: `H.264 ${h}p gallery`,
     outputName: idx === 0 ? 'gallery-ready.mp4' : `gallery-ready-${h}.mp4`,
-    timeoutMs: h >= 2160 ? 25 * 60_000 : h >= 1440 ? 18 * 60_000 : 12 * 60_000,
-    extraArgs: buildH264HeightScaleArgs(h, h >= 1440 ? 20 : 22),
+    timeoutMs: h >= 2160 ? 20 * 60_000 : h >= 1440 ? 14 * 60_000 : 10 * 60_000,
+    extraArgs: buildH264HeightScaleArgs(h, h >= 1440 ? 22 : 23, copyAudio),
   }));
 }
 
@@ -276,20 +298,26 @@ function galleryNormalizeOptions(job: {
   platformId?: string;
   fast?: boolean;
   requestedHeight?: number;
+  galleryMaxHeight?: number;
 }): GalleryNormalizeOptions {
   if (needsGalleryNormalize(job.platformId)) {
     return { fast: job.fast };
   }
-  return { targetHeight: job.requestedHeight };
+  let target = job.requestedHeight;
+  if (target != null && job.galleryMaxHeight != null) {
+    target = Math.min(target, job.galleryMaxHeight);
+  }
+  return { targetHeight: target };
 }
 
 /**
- * Memory-safe ffmpeg flags. Thread count is tunable via FFMPEG_THREADS so a
- * bigger host (Railway) can convert 2K/4K faster; default 1 keeps Render's
- * 512 MB free tier from OOMing. '0' lets ffmpeg use all cores.
+ * Memory-safe ffmpeg flags. On Railway / non–low-memory hosts default to all
+ * cores ('0') so a 2K/4K VP9→H.264 convert finishes in minutes not tens of minutes.
  */
-const FFMPEG_THREADS = (process.env.FFMPEG_THREADS ?? '1').trim() || '1';
-const FFMPEG_LOW_MEM = ['-threads', FFMPEG_THREADS, '-max_muxing_queue_size', '256'];
+const FFMPEG_THREADS = (
+  process.env.FFMPEG_THREADS ?? (config.lowMemoryMode ? '1' : '0')
+).trim() || (config.lowMemoryMode ? '1' : '0');
+const FFMPEG_LOW_MEM = ['-threads', FFMPEG_THREADS, '-max_muxing_queue_size', '512'];
 
 const TRANSCODE_STRATEGIES: TranscodeStrategy[] = config.lowMemoryMode
   ? [
@@ -473,17 +501,18 @@ async function transcodeForGallery(
   }
 
   const { fast = false, targetHeight } = options;
+  const copyAudio = await probeAudioIsAac(inputPath);
   const errors: string[] = [];
   let strategies: TranscodeStrategy[];
   if (targetHeight != null && targetHeight > MOBILE_GALLERY_HEIGHT_THRESHOLD) {
-    strategies = buildHighResGalleryStrategies(targetHeight);
+    strategies = buildHighResGalleryStrategies(targetHeight, copyAudio);
   } else if (targetHeight != null) {
     strategies = [
       {
         label: `H.264 ${targetHeight}p gallery`,
         outputName: 'gallery-ready.mp4',
-        timeoutMs: 12 * 60_000,
-        extraArgs: buildH264HeightScaleArgs(targetHeight, 22),
+        timeoutMs: 10 * 60_000,
+        extraArgs: buildH264HeightScaleArgs(targetHeight, 22, copyAudio),
       },
     ];
   } else if (fast) {

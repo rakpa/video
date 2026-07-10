@@ -45,7 +45,7 @@ downloadRouter.get('/download/quota', async (req, res) => {
  */
 downloadRouter.post('/download', async (req, res) => {
   const body = readJsonBody(req);
-  const { url, quality, mode, license, fast, reuse, galleryPrep } = body;
+  const { url, quality, mode, license, fast, reuse, galleryPrep, galleryMaxHeight } = body;
 
   const v = validateUrl(url);
   if (!v.ok) return res.status(400).json({ error: v.message });
@@ -104,6 +104,8 @@ downloadRouter.post('/download', async (req, res) => {
       clip: clipResult.clip,
       ip: clientIp,
       galleryPrep: Boolean(galleryPrep),
+      galleryMaxHeight:
+        typeof galleryMaxHeight === 'number' && galleryMaxHeight > 0 ? galleryMaxHeight : undefined,
     });
     return res.status(202).json({ jobId: job.id });
   } catch (err) {

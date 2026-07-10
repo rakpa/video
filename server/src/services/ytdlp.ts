@@ -568,7 +568,9 @@ function downloadTuning(
       ? { httpChunkSize: '5M', concurrentFragments: '6' }
       : { httpChunkSize: '4M', concurrentFragments: '4' };
   }
-  return { httpChunkSize: '5M', concurrentFragments: '6' };
+  return fast
+    ? { httpChunkSize: '10M', concurrentFragments: '10' }
+    : { httpChunkSize: '8M', concurrentFragments: '8' };
 }
 
 function safeSize(p: string): number {
