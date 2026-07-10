@@ -153,6 +153,9 @@ const FILE_RETRY_MS = 150;
 const STATUS_404_GRACE_MS = 3_000;
 const STATUS_404_RETRIES = 15;
 
+export const MOBILE_GALLERY_CODEC_MSG =
+  'This 2K/4K file uses VP9/HEVC (not H.264). Phones can only save H.264 to the gallery — pick 1080p or 720p on mobile, or use a desktop browser for 4K.';
+
 async function readVideoPayloadFromResponse(res: Response): Promise<VideoFilePayload> {
   const blob = await res.blob();
   const head = await blob.slice(0, Math.min(blob.size, 512 * 1024)).arrayBuffer();
@@ -166,9 +169,7 @@ async function readVideoPayloadFromResponse(res: Response): Promise<VideoFilePay
     throw new Error('Video file is too small — the download may have failed.');
   }
   if (!isH264Mp4(head)) {
-    throw new Error(
-      'This video is not in a gallery-compatible format (H.264). Try again or pick 720p.',
-    );
+    throw new Error(MOBILE_GALLERY_CODEC_MSG);
   }
 
   parseFilename(res.headers.get('Content-Disposition'));
@@ -401,6 +402,29 @@ async function fetchDesktopVideoBytes(jobId: string): Promise<VideoFilePayload> 
 /** Fetch the finished file after the job reports ready (mobile gallery path). */
 export async function fetchReadyVideoFile(jobId: string): Promise<VideoFilePayload> {
   return fetchVideoBytes(jobId);
+}
+
+function isGalleryCodecError(err: unknown): boolean {
+  return err instanceof Error && err.message === MOBILE_GALLERY_CODEC_MSG;
+}
+
+/**
+ * Mobile delivery: gallery save when the file is H.264; otherwise fall back to a
+ * browser download (VP9/HEVC 2K/4K from YouTube cannot be saved to the camera roll).
+ */
+export async function deliverMobileVideo(
+  jobId: string,
+): Promise<{ kind: 'gallery'; payload: VideoFilePayload } | { kind: 'browser' }> {
+  try {
+    const payload = await fetchReadyVideoFile(jobId);
+    return { kind: 'gallery', payload };
+  } catch (err) {
+    if (isGalleryCodecError(err)) {
+      await downloadFileToDevice(jobId);
+      return { kind: 'browser' };
+    }
+    throw err;
+  }
 }
 
 function isCrossOriginApiUrl(url: string): boolean {

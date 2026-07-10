@@ -39,7 +39,7 @@ import {
 import {
   cancelMobileGalleryGestureFallback,
   downloadFileToDevice,
-  fetchReadyVideoFile,
+  deliverMobileVideo,
   formatDownloadError,
   type ShareResult,
   type VideoFilePayload,
@@ -675,9 +675,13 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
               try {
                 setProgress((p) => ({ ...p, percent: 100, stage: 'done', speed: null, eta: null }));
                 if (mobile) {
-                  const payload = await fetchReadyVideoFile(jobId);
-                  setMobileSavePayload(payload);
-                  setPhase('ready');
+                  const delivery = await deliverMobileVideo(jobId);
+                  if (delivery.kind === 'gallery') {
+                    setMobileSavePayload(delivery.payload);
+                    setPhase('ready');
+                  } else {
+                    setPhase('success');
+                  }
                 } else {
                   setDelivering(true);
                   await downloadFileToDevice(jobId);
