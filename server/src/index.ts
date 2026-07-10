@@ -16,6 +16,7 @@ import { thumbRouter } from './routes/thumb.js';
 import { billingRouter, handleWebhook } from './routes/billing.js';
 import statsRouter from './routes/stats.js';
 import adminRouter from './routes/admin.js';
+import { getQuotaHealth, logQuotaStoreStatus } from './utils/highResQuota.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const clientDist = path.resolve(__dirname, '../../client/dist');
@@ -110,6 +111,7 @@ app.get('/api/health', (_req, res) => {
       count: config.proxies.length,
       hosts: config.proxies.map(maskProxy),
     },
+    quota: getQuotaHealth(),
   });
 });
 
@@ -141,6 +143,8 @@ if (serveClient) {
 }
 
 startSweeper();
+
+void logQuotaStoreStatus();
 
 app.listen(config.port, () => {
   logger.info(`VidCliply API listening on port ${config.port}`);
