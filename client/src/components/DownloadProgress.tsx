@@ -12,11 +12,14 @@ interface Props {
   processingOnly?: boolean;
   /** Mobile gallery save flow — different copy from desktop download. */
   mobileSave?: boolean;
+  /** Mobile 2K/4K: server is re-encoding VP9/AV1 → H.264 so the phone can play it. */
+  converting?: boolean;
 }
 
-function stageLabel(p: ProgressUpdate, mobileSave?: boolean): string {
+function stageLabel(p: ProgressUpdate, mobileSave?: boolean, converting?: boolean): string {
   if (p.percent < 1) return 'Connecting';
   if (p.stage === 'trimming') return 'Trimming clip';
+  if (converting && (p.stage === 'merging' || p.percent >= 99)) return 'Converting';
   if (mobileSave && p.stage === 'merging') return 'Preparing for Photos';
   if (p.stage === 'done' || p.percent >= 99) return mobileSave ? 'Almost ready' : 'Finishing up';
   if (p.stage === 'merging') return mobileSave ? 'Preparing for Photos' : 'Finishing up';
@@ -24,7 +27,10 @@ function stageLabel(p: ProgressUpdate, mobileSave?: boolean): string {
   return 'Downloading';
 }
 
-export function DownloadProgress({ progress, qualityLabel, clipLabel, delivering, processingOnly, mobileSave }: Props) {
+export function DownloadProgress({ progress, qualityLabel, clipLabel, delivering, processingOnly, mobileSave, converting }: Props) {
+  // 2K/4K on a phone: the server is transcoding to an iPhone-playable H.264 file.
+  // This can take a minute or two, so tell the user rather than sit at "99%".
+  const convertingNow = converting && !delivering && (progress.stage === 'merging' || progress.percent >= 99);
   const pct = Math.max(0, Math.min(100, progress.percent));
   const showPercent = !processingOnly && pct > 0;
   const displayPct = delivering ? 100 : pct > 0 && pct < 1 ? 1 : Math.round(pct);
@@ -80,20 +86,29 @@ export function DownloadProgress({ progress, qualityLabel, clipLabel, delivering
             transition={{ duration: 1.2, repeat: Infinity }}
           />
           <span className="font-semibold text-slate-900">
-            {clipLabel
-              ? showPercent
-                ? `Clipping ${clipLabel}`
-                : 'Preparing your clip…'
-              : showPercent
-                ? 'Downloading your video'
-                : 'Connecting to server…'}
+            {convertingNow
+              ? 'Converting for your phone…'
+              : clipLabel
+                ? showPercent
+                  ? `Clipping ${clipLabel}`
+                  : 'Preparing your clip…'
+                : showPercent
+                  ? 'Downloading your video'
+                  : 'Connecting to server…'}
           </span>
           {qualityLabel && (
             <span className="rounded-md bg-slate-100 px-1.5 py-0.5 text-xs font-medium text-slate-600">{qualityLabel}</span>
           )}
         </div>
-        <span className="text-sm font-medium text-slate-500">{stageLabel(progress, mobileSave)}</span>
+        <span className="text-sm font-medium text-slate-500">{stageLabel(progress, mobileSave, converting)}</span>
       </div>
+
+      {convertingNow && (
+        <p className="mt-3 text-sm leading-relaxed text-slate-500">
+          Making this {qualityLabel || '2K/4K'} video playable on your phone (H.264). This can take a
+          minute or two — hang tight.
+        </p>
+      )}
 
       <div className="mt-5 flex items-end justify-between">
         {showPercent ? (

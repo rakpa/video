@@ -40,7 +40,6 @@ import {
   cancelMobileGalleryGestureFallback,
   downloadFileToDevice,
   deliverMobileVideo,
-  fetchRawShareFile,
   formatDownloadError,
   isNativeMobileApp,
   type ShareResult,
@@ -199,6 +198,8 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
   const [mobileSavePayload, setMobileSavePayload] = useState<VideoFilePayload | null>(null);
   /** Desktop: finished file is being handed off to the browser download manager. */
   const [delivering, setDelivering] = useState(false);
+  /** Mobile 2K/4K: server is converting VP9/AV1 → H.264 so the phone can play it. */
+  const [convertingForPhone, setConvertingForPhone] = useState(false);
   const [clipMode, setClipMode] = useState<ClipMode>('full');
   const [clipStart, setClipStart] = useState('0:00');
   const [clipEnd, setClipEnd] = useState('');
@@ -648,21 +649,22 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
 
       const platform = detectPlatform(fetchedUrl.current || url);
       const mobile = isMobileDevice();
-      // Server-side H.264 gallery transcode is only viable at ≤1080p — a 2K/4K
-      // transcode hangs the job at 99% ("merging"). Gate it to ≤1080p on mobile
-      // browsers; the native app keeps it at every resolution (Capacitor media
-      // plugin, not a browser transcode).
-      const useGalleryTranscode =
-        mobile && (isNativeMobileApp() || !fmt || fmt.height <= MOBILE_GALLERY_MAX_HEIGHT);
-      // 2K/4K on a mobile browser: no transcode (no hang) — fetch the finished
-      // file and open the Save-to-Gallery share sheet with it, so the user still
-      // gets the gallery option instead of a silent Files-only download.
-      const useRawGalleryShare = mobile && !useGalleryTranscode;
+      const highRes = Boolean(fmt && fmt.height > MOBILE_GALLERY_MAX_HEIGHT);
+      // Phones can't play YouTube's VP9/AV1 2K/4K, and iOS Photos only accepts
+      // H.264 — so every mobile download goes through the server's H.264 prep
+      // (fast remux at ≤1080p, a real convert at 2K/4K). galleryPrep drives that.
+      const galleryPrep = mobile;
+      // ≤1080p (and the native app at any res) → Save-to-Gallery share sheet.
+      // 2K/4K on a mobile browser → download the converted (playable) H.264 file
+      // to Files: it's too large for the Photos share sheet and iOS Photos won't
+      // take 4K anyway, but it now actually plays.
+      const useGallerySheet = mobile && (isNativeMobileApp() || !highRes);
       const isIgFb = platform?.id === 'instagram' || platform?.id === 'facebook';
       const currentUrl = fetchedUrl.current || url;
 
       setMobileSavePayload(null);
       setDelivering(false);
+      setConvertingForPhone(mobile && highRes);
       setProgress(INITIAL_PROGRESS);
       setOutputHeight(null);
       setPhase('downloading');
@@ -682,7 +684,7 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
           quality,
           effectiveMode,
           licenseToken(),
-          { fast: isIgFb || mobile, reuse: !mobile && !clip, clip, galleryPrep: useGalleryTranscode },
+          { fast: isIgFb || mobile, reuse: !mobile && !clip, clip, galleryPrep },
         );
 
         lastJobId.current = jobId;
@@ -694,19 +696,17 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
             void (async () => {
               try {
                 setProgress((p) => ({ ...p, percent: 100, stage: 'done', speed: null, eta: null }));
-                if (useGalleryTranscode) {
+                setConvertingForPhone(false);
+                if (useGallerySheet) {
                   setDelivering(true);
                   const delivery = await deliverMobileVideo(jobId);
                   setDelivering(false);
                   setMobileSavePayload(delivery.payload);
                   setPhase('ready');
-                } else if (useRawGalleryShare) {
-                  setDelivering(true);
-                  const payload = await fetchRawShareFile(jobId);
-                  setDelivering(false);
-                  setMobileSavePayload(payload);
-                  setPhase('ready');
                 } else {
+                  // Desktop, or 2K/4K on a mobile browser: the job only emits
+                  // "done" once the H.264 file is ready, so this download is now
+                  // a playable file. Save it to the device (Files on mobile).
                   setDelivering(true);
                   await downloadFileToDevice(jobId);
                   setDelivering(false);
@@ -714,12 +714,14 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
                 }
               } catch (e) {
                 setDelivering(false);
+                setConvertingForPhone(false);
                 setError(formatDownloadError(e));
                 setPhase('error');
               }
             })();
           },
           onError: (message) => {
+            setConvertingForPhone(false);
             setError(message);
             setPhase('error');
           },
@@ -891,6 +893,7 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
                       progress={progress}
                       qualityLabel={qualityLabel}
                       delivering={delivering}
+                      converting={convertingForPhone}
                       mobileSave={isMobileDevice()}
                       clipLabel={
                         clipMode === 'clip' && clipReady

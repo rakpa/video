@@ -226,6 +226,9 @@ export interface GalleryNormalizeOptions {
 function buildH264HeightScaleArgs(maxHeight: number, crf = 20): string[] {
   const level = maxHeight >= 2160 ? '5.1' : maxHeight >= 1440 ? '4.1' : maxHeight >= 1080 ? '4.0' : '3.1';
   const profile = maxHeight >= 1080 ? 'high' : 'main';
+  // 'veryfast' over 'fast': ~2x quicker and lower peak RAM, so a 2K/4K
+  // VP9/AV1 → H.264 convert (the mobile "can't play this codec" fix) finishes
+  // in a couple of minutes instead of stalling the job at 99%.
   return [
     '-map',
     '0:v:0',
@@ -236,7 +239,7 @@ function buildH264HeightScaleArgs(maxHeight: number, crf = 20): string[] {
     '-c:v',
     'libx264',
     '-preset',
-    'fast',
+    'veryfast',
     '-crf',
     String(crf),
     '-profile:v',
@@ -280,8 +283,13 @@ function galleryNormalizeOptions(job: {
   return { targetHeight: job.requestedHeight };
 }
 
-/** Memory-safe ffmpeg flags for Render's 512 MB free tier. */
-const FFMPEG_LOW_MEM = ['-threads', '1', '-max_muxing_queue_size', '256'];
+/**
+ * Memory-safe ffmpeg flags. Thread count is tunable via FFMPEG_THREADS so a
+ * bigger host (Railway) can convert 2K/4K faster; default 1 keeps Render's
+ * 512 MB free tier from OOMing. '0' lets ffmpeg use all cores.
+ */
+const FFMPEG_THREADS = (process.env.FFMPEG_THREADS ?? '1').trim() || '1';
+const FFMPEG_LOW_MEM = ['-threads', FFMPEG_THREADS, '-max_muxing_queue_size', '256'];
 
 const TRANSCODE_STRATEGIES: TranscodeStrategy[] = config.lowMemoryMode
   ? [
