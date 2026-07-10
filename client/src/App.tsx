@@ -105,6 +105,12 @@ const HIGH_RES_LIMIT_MSG =
   'You have exceeded the free limit of 2K/4K downloads. Please upgrade to the Premium plan for $20 per year to enjoy unlimited 2K/4K downloads. You can still download 720p and 1080p HD for free — switch to a lower quality to continue.';
 
 const HIGH_RES_MIN_PX = 1440;
+// Above this height, the server-side H.264 "Save to gallery" transcode is too
+// slow to be viable on the shared host (single-threaded 2K/4K → many minutes),
+// which used to freeze mobile-browser downloads at 99% ("merging"). For 2K/4K
+// on a mobile browser we skip gallery prep and stream the raw file directly,
+// exactly like desktop — ≤1080p still gets the fast remux + Save-to-Photos flow.
+const MOBILE_GALLERY_MAX_HEIGHT = 1080;
 const HIGH_RES_LIMIT_ID = 'highres-limit-section';
 
 /** Top-level router: legal pages vs. the main downloader app. */
@@ -639,6 +645,13 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
 
       const platform = detectPlatform(fetchedUrl.current || url);
       const mobile = isMobileDevice();
+      // Only route through the server H.264 gallery transcode + Save-to-Photos
+      // prompt when it can finish quickly (≤1080p). For 2K/4K on a mobile browser
+      // this transcode hangs the job at 99%, so fall back to a direct download.
+      // The installed native app keeps the gallery flow at every resolution — it
+      // saves via the Capacitor media plugin, not a hanging browser transcode.
+      const useGalleryShare =
+        mobile && (isNativeMobileApp() || !fmt || fmt.height <= MOBILE_GALLERY_MAX_HEIGHT);
       const isIgFb = platform?.id === 'instagram' || platform?.id === 'facebook';
       const currentUrl = fetchedUrl.current || url;
 
@@ -663,7 +676,7 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
           quality,
           effectiveMode,
           licenseToken(),
-          { fast: isIgFb || mobile, reuse: !mobile && !clip, clip, galleryPrep: mobile },
+          { fast: isIgFb || mobile, reuse: !mobile && !clip, clip, galleryPrep: useGalleryShare },
         );
 
         lastJobId.current = jobId;
@@ -675,7 +688,7 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
             void (async () => {
               try {
                 setProgress((p) => ({ ...p, percent: 100, stage: 'done', speed: null, eta: null }));
-                if (mobile) {
+                if (useGalleryShare) {
                   setDelivering(true);
                   const delivery = await deliverMobileVideo(jobId);
                   setDelivering(false);
