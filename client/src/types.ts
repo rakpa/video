@@ -42,11 +42,15 @@ export interface ProgressUpdate {
   percent: number;
   speed: string | null;
   eta: string | null;
-  stage: 'downloading' | 'merging' | 'trimming' | 'done';
+  stage: 'queued' | 'downloading' | 'merging' | 'trimming' | 'done';
   /** 1-based index of the stream currently downloading (video=1, audio=2…). */
   streamIndex: number;
   /** Total streams to download (1 = progressive, 2 = video+audio). */
   streamTotal: number;
+  /** Position in the server wait queue (when stage === 'queued'). */
+  queuePosition?: number;
+  /** Total jobs waiting ahead of workers (when stage === 'queued'). */
+  queueTotal?: number;
 }
 
 /** Top-level UI phases driving what the app renders. */

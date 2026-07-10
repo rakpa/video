@@ -629,11 +629,15 @@ export interface ProgressUpdate {
   percent: number;
   speed: string | null; // e.g. "2.41MiB/s"
   eta: string | null; // e.g. "00:12"
-  stage: 'downloading' | 'merging' | 'trimming' | 'done';
+  stage: 'queued' | 'downloading' | 'merging' | 'trimming' | 'done';
   /** 1-based index of the stream currently downloading (video=1, audio=2…). */
   streamIndex: number;
   /** Total streams to download (1 = progressive, 2 = video+audio). */
   streamTotal: number;
+  /** Position in the server wait queue (when stage === 'queued'). */
+  queuePosition?: number;
+  /** Total jobs waiting ahead of workers (when stage === 'queued'). */
+  queueTotal?: number;
 }
 
 /** `[download]  23.4% of ~12.34MiB at  2.41MiB/s ETA 00:07` */

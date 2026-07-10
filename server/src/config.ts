@@ -113,10 +113,13 @@ export const config = {
     process.env.LOW_MEMORY_MODE !== 'false' &&
     (process.env.LOW_MEMORY_MODE === 'true' || process.env.RENDER === 'true'),
 
-  /** Max simultaneous download jobs across all visitors (auto-scales with RAM). */
+  /** Parallel worker slots on this server (NOT a user limit — extra users wait in queue). */
   get maxConcurrentJobs(): number {
     return inferMaxConcurrentJobs(this.lowMemoryMode);
   },
+
+  /** Max jobs waiting in line on this server (1k–50k+ visitors can queue). */
+  maxQueueSize: Math.max(100, Number(process.env.MAX_QUEUE_SIZE ?? 50_000)),
 
   /** Max simultaneous downloads per visitor IP (web + phone + spare tab). */
   maxConcurrentJobsPerIp: Math.max(1, Number(process.env.MAX_CONCURRENT_JOBS_PER_IP ?? 3)),
@@ -126,7 +129,7 @@ export const config = {
     return inferMaxConcurrentTranscodes(this.lowMemoryMode);
   },
 
-  /** Simultaneous 2K/4K downloads across all visitors. */
+  /** Simultaneous 2K/4K worker slots (others queue — HD gets priority). */
   get maxConcurrentHighResJobs(): number {
     return inferMaxConcurrentHighResJobs(this.lowMemoryMode);
   },

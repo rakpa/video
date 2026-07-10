@@ -17,6 +17,12 @@ interface Props {
 }
 
 function stageLabel(p: ProgressUpdate, mobileSave?: boolean, converting?: boolean): string {
+  if (p.stage === 'queued') {
+    if (p.queuePosition != null && p.queueTotal != null && p.queueTotal > 0) {
+      return `In line · #${p.queuePosition} of ${p.queueTotal}`;
+    }
+    return 'Waiting in line';
+  }
   if (p.percent < 1) return 'Connecting';
   if (p.stage === 'trimming') return 'Trimming clip';
   if (converting && (p.stage === 'merging' || p.percent >= 99)) return 'Converting';
@@ -31,8 +37,9 @@ export function DownloadProgress({ progress, qualityLabel, clipLabel, delivering
   // 2K/4K on a phone: the server is transcoding to an iPhone-playable H.264 file.
   // This can take a minute or two, so tell the user rather than sit at "99%".
   const convertingNow = converting && !delivering && (progress.stage === 'merging' || progress.percent >= 99);
+  const queued = progress.stage === 'queued';
   const pct = Math.max(0, Math.min(100, progress.percent));
-  const showPercent = !processingOnly && pct > 0;
+  const showPercent = !processingOnly && !queued && pct > 0;
   const displayPct = delivering ? 100 : pct > 0 && pct < 1 ? 1 : Math.round(pct);
   const display = useCountUp(showPercent ? displayPct : 0);
 
@@ -86,15 +93,17 @@ export function DownloadProgress({ progress, qualityLabel, clipLabel, delivering
             transition={{ duration: 1.2, repeat: Infinity }}
           />
           <span className="font-semibold text-slate-900">
-            {convertingNow
-              ? 'Converting for your phone…'
-              : clipLabel
-                ? showPercent
-                  ? `Clipping ${clipLabel}`
-                  : 'Preparing your clip…'
-                : showPercent
-                  ? 'Downloading your video'
-                  : 'Connecting to server…'}
+            {queued
+              ? 'Waiting in queue…'
+              : convertingNow
+                ? 'Converting for your phone…'
+                : clipLabel
+                  ? showPercent
+                    ? `Clipping ${clipLabel}`
+                    : 'Preparing your clip…'
+                  : showPercent
+                    ? 'Downloading your video'
+                    : 'Connecting to server…'}
           </span>
           {qualityLabel && (
             <span className="rounded-md bg-slate-100 px-1.5 py-0.5 text-xs font-medium text-slate-600">{qualityLabel}</span>
@@ -102,6 +111,13 @@ export function DownloadProgress({ progress, qualityLabel, clipLabel, delivering
         </div>
         <span className="text-sm font-medium text-slate-500">{stageLabel(progress, mobileSave, converting)}</span>
       </div>
+
+      {queued && (
+        <p className="mt-3 text-sm leading-relaxed text-slate-500">
+          Your download is queued — it will start automatically when a slot opens. HD downloads are
+          prioritized so they finish faster during busy times.
+        </p>
+      )}
 
       {convertingNow && (
         <p className="mt-3 text-sm leading-relaxed text-slate-500">
@@ -115,6 +131,12 @@ export function DownloadProgress({ progress, qualityLabel, clipLabel, delivering
           <span className="text-4xl font-bold tabular-nums text-slate-900">
             {Math.round(display)}<span className="text-2xl font-semibold text-slate-400">%</span>
           </span>
+        ) : queued ? (
+          <p className="text-base text-slate-500">
+            {progress.queuePosition != null && progress.queueTotal != null
+              ? `Position ${progress.queuePosition} of ${progress.queueTotal} in queue`
+              : 'Waiting for an open slot…'}
+          </p>
         ) : (
           <p className="text-base text-slate-500">Getting your video ready…</p>
         )}

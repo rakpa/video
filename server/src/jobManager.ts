@@ -19,7 +19,7 @@ import { getFreshInfoJson } from './services/infoJsonCache.js';
 import { logger } from './utils/logger.js';
 import { logDownload, HIGH_RES_MIN_HEIGHT } from './utils/downloadLogger.js';
 
-type JobStatus = 'running' | 'ready' | 'error';
+type JobStatus = 'queued' | 'running' | 'ready' | 'error';
 
 export interface Job {
   id: string;
@@ -30,6 +30,10 @@ export interface Job {
   errorMessage?: string;
   createdAt: number;
   cancel: () => void;
+  /** Download target — kept on queued jobs until a worker slot opens. */
+  url?: string;
+  quality?: QualityDef;
+  mode?: CodecMode;
   /** Source platform — used when serving the file (gallery normalize). */
   platformId?: PlatformId;
   /** Cached H.264 path after gallery normalize (Instagram/Facebook). */
@@ -110,6 +114,103 @@ function countRunningHighResJobs(): number {
     if (job.status === 'running' && (job.requestedHeight ?? 0) >= HIGH_RES_MIN_HEIGHT) n += 1;
   }
   return n;
+}
+
+function countQueuedJobs(): number {
+  let n = 0;
+  for (const job of jobs.values()) {
+    if (job.status === 'queued') n += 1;
+  }
+  return n;
+}
+
+function sortedQueuedJobs(): Job[] {
+  return [...jobs.values()]
+    .filter((j) => j.status === 'queued')
+    .sort((a, b) => {
+      const ah = a.requestedHeight ?? 0;
+      const bh = b.requestedHeight ?? 0;
+      if (ah !== bh) return ah - bh;
+      return a.createdAt - b.createdAt;
+    });
+}
+
+function canStartJob(quality: QualityDef): boolean {
+  if (countRunningJobs() >= config.maxConcurrentJobs) return false;
+  if (
+    quality.height >= HIGH_RES_MIN_HEIGHT &&
+    countRunningHighResJobs() >= config.maxConcurrentHighResJobs
+  ) {
+    return false;
+  }
+  return true;
+}
+
+function queuedProgress(position: number, total: number): ProgressUpdate {
+  return {
+    percent: 0,
+    speed: null,
+    eta: null,
+    stage: 'queued',
+    streamIndex: 1,
+    streamTotal: 1,
+    queuePosition: position,
+    queueTotal: total,
+  };
+}
+
+function updateQueuePositions(): void {
+  const queued = sortedQueuedJobs();
+  const total = queued.length;
+  queued.forEach((job, idx) => {
+    const next = queuedProgress(idx + 1, total);
+    if (
+      job.progress.stage !== 'queued' ||
+      job.progress.queuePosition !== next.queuePosition ||
+      job.progress.queueTotal !== next.queueTotal
+    ) {
+      job.progress = next;
+      emit(job, job.progress);
+    }
+  });
+}
+
+function startJob(job: Job): void {
+  if (!job.url || !job.quality || !job.mode || job.status !== 'running') return;
+  if (inflightJobs.has(job.id)) return;
+  inflightJobs.add(job.id);
+  void runWithRetry(job, job.url, job.quality, job.mode).finally(() => {
+    inflightJobs.delete(job.id);
+    dispatchQueue();
+  });
+}
+
+const inflightJobs = new Set<string>();
+
+/** Fill idle worker slots from the wait queue (HD jobs jump ahead of 2K/4K). */
+function dispatchQueue(): void {
+  let started = true;
+  while (started) {
+    started = false;
+    for (const job of sortedQueuedJobs()) {
+      if (!job.quality || !job.url || !job.mode) continue;
+      if (!canStartJob(job.quality)) continue;
+      job.status = 'running';
+      job.progress = {
+        percent: 1,
+        speed: null,
+        eta: null,
+        stage: 'downloading',
+        streamIndex: 1,
+        streamTotal: 1,
+      };
+      emit(job, job.progress);
+      startJob(job);
+      started = true;
+      break;
+    }
+  }
+  updateQueuePositions();
 }
 
 /** Respect the user's quality choice; optional cap for phone-optimized 2K/4K. */
@@ -212,18 +313,9 @@ export async function createJob(
     }
   }
 
-  if (q.height >= HIGH_RES_MIN_HEIGHT && countRunningHighResJobs() >= config.maxConcurrentHighResJobs) {
+  if (countQueuedJobs() >= config.maxQueueSize) {
     throw new YtDlpError(
-      'Several 2K/4K downloads are running right now. Please try again in a minute — 1080p HD is instant.',
-      'FAILED',
-    );
-  }
-
-  if (countRunningJobs() >= config.maxConcurrentJobs) {
-    const existing = findReusableJob(url, q, mode, options?.fast, clip);
-    if (existing) return existing;
-    throw new YtDlpError(
-      'Our servers are handling many downloads right now. Please try again in a minute.',
+      'Too many downloads are waiting right now. Please try again in a few minutes.',
       'FAILED',
     );
   }
@@ -237,12 +329,16 @@ export async function createJob(
   const dir = path.join(config.tmpRoot, id);
   await fsp.mkdir(dir, { recursive: true });
 
+  const startNow = canStartJob(q);
   const job: Job = {
     id,
     dir,
-    status: 'running',
-    progress: { ...FRESH_PROGRESS },
+    status: startNow ? 'running' : 'queued',
+    progress: startNow ? { ...FRESH_PROGRESS } : queuedProgress(1, 1),
     createdAt: Date.now(),
+    url: url.trim(),
+    quality: q,
+    mode,
     platformId: detectPlatform(url)?.id,
     fast: options?.fast ?? false,
     requestedHeight: quality.height,
@@ -257,7 +353,12 @@ export async function createJob(
   jobs.set(id, job);
   jobsByKey.set(cacheKey, id);
 
-  void runWithRetry(job, url, q, mode);
+  if (startNow) {
+    startJob(job);
+  } else {
+    logger.info(`Job ${id} queued (${countQueuedJobs()} waiting, ${countRunningJobs()} active workers)`);
+    dispatchQueue();
+  }
   return job;
 }
 
@@ -453,6 +554,7 @@ export async function destroyJob(id: string): Promise<void> {
     /* already exited */
   }
   await fsp.rm(job.dir, { recursive: true, force: true }).catch(() => undefined);
+  dispatchQueue();
 }
 
 /** Keep failed jobs alive briefly so /status can return the real error (not 404). */

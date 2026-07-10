@@ -35,6 +35,9 @@ fileRouter.get('/file/:jobId/status', (req, res) => {
   const job = getJob(req.params.jobId);
   if (!job) return res.status(404).json({ error: 'That download session has expired.' });
   if (job.status === 'error') return res.status(500).json({ status: 'error', message: job.errorMessage });
+  if (job.status === 'queued') {
+    return res.status(409).json({ status: 'queued', progress: job.progress });
+  }
   if (job.status !== 'ready' || !job.filePath) {
     return res.status(409).json({ status: 'running', progress: job.progress });
   }
