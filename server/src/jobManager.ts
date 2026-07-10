@@ -72,7 +72,7 @@ function jobCacheKey(
   return `${url.trim()}|${quality.id}|${mode}|${fast ? 'fast' : 'normal'}|${clipPart}`;
 }
 
-/** Return an in-flight or finished prefetch job for the same url/settings. */
+/** Return a finished prefetch job for the same url/settings (ready to serve). */
 export function findReusableJob(
   url: string,
   quality: QualityDef,
@@ -87,6 +87,8 @@ export function findReusableJob(
     jobsByKey.delete(jobCacheKey(url, quality, mode, fast, clip));
     return undefined;
   }
+  // Re-attaching to a stalled "running" job (common at 1% on 4K) freezes the UI.
+  if (job.status !== 'ready') return undefined;
   return job;
 }
 
@@ -269,12 +271,24 @@ async function runWithRetry(job: Job, url: string, quality: QualityDef, mode: Co
     const hasCachedInfo = Boolean(getFreshInfoJson(url, proxy));
 
     if (!hasCachedInfo) {
-      job.progress = { percent: 1, speed: null, eta: null, stage: 'downloading', streamIndex: 1, streamTotal: 1 };
+      job.progress = { percent: 2, speed: null, eta: null, stage: 'downloading', streamIndex: 1, streamTotal: 1 };
       emit(job, job.progress);
+      const prepPulse = setInterval(() => {
+        const j = jobs.get(job.id);
+        if (!j || j.progress.percent > 5) return;
+        j.progress = {
+          ...j.progress,
+          percent: Math.min(5, j.progress.percent + 0.5),
+          stage: 'downloading',
+        };
+        emit(j, j.progress);
+      }, 10_000);
       try {
         await ensureInfoJsonCache(url);
       } catch (err) {
         logger.warn('Info-json warm failed — download will extract inline:', (err as Error).message);
+      } finally {
+        clearInterval(prepPulse);
       }
     } else {
       logger.info('Download skipping info-json warm — cache hit');

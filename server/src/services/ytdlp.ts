@@ -190,6 +190,52 @@ export function pickBestYoutubeH264Format(
   return null;
 }
 
+/** Highest DASH video+audio at or below maxHeight — skips slow yt-dlp format re-sort on 4K. */
+export function pickBestYoutubeDashFormat(
+  infoJsonPath: string,
+  maxHeight: number,
+): { selector: string } | null {
+  let raw: RawDump;
+  try {
+    raw = JSON.parse(fs.readFileSync(infoJsonPath, 'utf8'));
+  } catch {
+    return null;
+  }
+
+  const formats = raw.formats ?? [];
+  const sizeOf = (f: RawFormat) => f.filesize ?? f.filesize_approx ?? (f.tbr ?? 0) * 1000;
+  const codecScore = (vcodec: string | undefined) => {
+    const v = (vcodec ?? '').toLowerCase();
+    if (v.includes('vp9')) return 3;
+    if (v.includes('av01') || v.includes('av1')) return 2;
+    if (isH264Vcodec(v)) return 1;
+    return 0;
+  };
+
+  const videos = formats
+    .filter((f) => {
+      if (!f.format_id) return false;
+      const h = f.height ?? 0;
+      if (h <= 0 || h > maxHeight) return false;
+      if ((f.vcodec ?? 'none') === 'none') return false;
+      if ((f.acodec ?? 'none') !== 'none') return false;
+      return codecScore(f.vcodec) > 0;
+    })
+    .sort(
+      (a, b) =>
+        (b.height ?? 0) - (a.height ?? 0) ||
+        codecScore(b.vcodec) - codecScore(a.vcodec) ||
+        sizeOf(a) - sizeOf(b),
+    );
+
+  const audios = formats
+    .filter((f) => f.format_id && (f.acodec ?? 'none') !== 'none' && (f.vcodec ?? 'none') === 'none')
+    .sort((a, b) => sizeOf(a) - sizeOf(b));
+
+  if (!videos.length || !audios.length) return null;
+  return { selector: `${videos[0].format_id!}+${audios[0].format_id!}` };
+}
+
 class YtDlpError extends Error {
   constructor(message: string, public readonly code: 'UNAVAILABLE' | 'TOO_LONG' | 'NO_BINARY' | 'FAILED' | 'BLOCKED') {
     super(message);
@@ -704,6 +750,14 @@ export function startDownload(
       singleFileH264 = picked.singleFileH264;
       logger.info(`YouTube mobile format ${formatArg} (single H.264=${singleFileH264})`);
     }
+  } else if (cachedInfoJson && platformId === 'youtube' && quality.height > 1080) {
+    // 2K/4K: pin exact DASH ids from the info-json cache so yt-dlp starts transferring
+    // immediately instead of re-sorting formats (UI sat at 1% for minutes).
+    const picked = pickBestYoutubeDashFormat(cachedInfoJson, quality.height);
+    if (picked) {
+      formatArg = picked.selector;
+      logger.info(`YouTube high-res cached DASH format ${formatArg}`);
+    }
   }
 
   const skipMergePost = fast && singleFileH264;
@@ -831,6 +885,28 @@ export function startDownload(
   const done = new Promise<string>((resolve, reject) => {
     let settled = false;
     let idleTimer: NodeJS.Timeout;
+    let heartbeat: NodeJS.Timeout;
+
+    const clearWatchers = () => {
+      clearTimeout(idleTimer);
+      clearInterval(heartbeat);
+    };
+
+    // yt-dlp can be quiet for 30s+ on large 4K DASH before the first % line.
+    heartbeat = setInterval(() => {
+      if (merging || settled || lastPercent > 6) return;
+      const bumped = Math.min(6, lastPercent + 0.5);
+      if (bumped <= lastPercent) return;
+      lastPercent = bumped;
+      onProgress({
+        percent: lastPercent,
+        speed: null,
+        eta: null,
+        stage: 'downloading',
+        streamIndex: Math.max(1, streamsStarted),
+        streamTotal,
+      });
+    }, 12_000);
 
     // Re-arm on every line of yt-dlp output. If it goes silent for the timeout
     // (and we're not merging), the connection has stalled — kill it so the user
@@ -841,6 +917,7 @@ export function startDownload(
         if (merging) return armIdle(); // ffmpeg merge can be legitimately quiet
         if (settled) return;
         settled = true;
+        clearWatchers();
         logger.warn('yt-dlp download stalled (no output for 90s) — killing process');
         try {
           child.kill('SIGKILL');
@@ -870,7 +947,7 @@ export function startDownload(
     child.on('error', (err) => {
       if (settled) return;
       settled = true;
-      clearTimeout(idleTimer);
+      clearWatchers();
       if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
         reject(new YtDlpError('yt-dlp binary not found. Is it installed and on PATH?', 'NO_BINARY'));
       } else {
@@ -881,7 +958,7 @@ export function startDownload(
     child.on('close', (code) => {
       if (settled) return;
       settled = true;
-      clearTimeout(idleTimer);
+      clearWatchers();
       const finalPath = code === 0 ? findOutputFile(outputDir) : null;
       if (code === 0 && finalPath) {
         onProgress({ percent: 100, speed: null, eta: null, stage: 'done', streamIndex: streamTotal, streamTotal });

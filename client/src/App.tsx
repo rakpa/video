@@ -685,8 +685,8 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
           effectiveMode,
           licenseToken(),
           {
-            fast: isIgFb || mobile,
-            reuse: !mobile && !clip,
+            fast: isIgFb || (mobile && !highRes),
+            reuse: !mobile && !clip && !highRes,
             clip,
             galleryPrep,
           },

@@ -383,43 +383,40 @@ export function subscribeProgress(jobId: string, handlers: ProgressHandlers): ()
     }
   });
 
-  // iPhone Chrome often drops SSE mid-download while the job keeps running.
-  // Poll status when the stream goes quiet so the bar doesn't freeze at ~30%.
-  if (isMobileDevice()) {
-    backupTimer = setInterval(() => {
-      if (settled || polling) return;
-      if (Date.now() - lastProgressAt < 4000) return;
-      void (async () => {
-        try {
-          const res = await fetch(apiUrl(`/api/file/${jobId}/status`));
-          const data = (await res.json().catch(() => ({}))) as {
-            status?: string;
-            progress?: ProgressUpdate;
-            galleryReady?: boolean;
-            galleryFailed?: boolean;
-            message?: string;
-          };
-          if (res.status === 404) {
-            settle(() => handlers.onError('That download session expired. Please try again.'));
-            return;
-          }
-          if (res.status === 500 || data.status === 'error' || data.galleryFailed) {
-            settle(() => handlers.onError(data.message ?? 'The download failed. Please try again.'));
-            return;
-          }
-          if (res.ok && data.status === 'ready' && data.galleryReady !== false) {
-            settle(() => handlers.onDone());
-            return;
-          }
-          if (data.progress && typeof data.progress.percent === 'number') {
-            applyProgress(data.progress);
-          }
-        } catch {
-          /* ignore transient poll errors */
+  // SSE can drop on desktop too (Railway proxies). Poll when the stream goes quiet.
+  backupTimer = setInterval(() => {
+    if (settled || polling) return;
+    if (Date.now() - lastProgressAt < 4000) return;
+    void (async () => {
+      try {
+        const res = await fetch(apiUrl(`/api/file/${jobId}/status`));
+        const data = (await res.json().catch(() => ({}))) as {
+          status?: string;
+          progress?: ProgressUpdate;
+          galleryReady?: boolean;
+          galleryFailed?: boolean;
+          message?: string;
+        };
+        if (res.status === 404) {
+          settle(() => handlers.onError('That download session expired. Please try again.'));
+          return;
         }
-      })();
-    }, 3000);
-  }
+        if (res.status === 500 || data.status === 'error' || data.galleryFailed) {
+          settle(() => handlers.onError(data.message ?? 'The download failed. Please try again.'));
+          return;
+        }
+        if (res.ok && data.status === 'ready' && data.galleryReady !== false) {
+          settle(() => handlers.onDone());
+          return;
+        }
+        if (data.progress && typeof data.progress.percent === 'number') {
+          applyProgress(data.progress);
+        }
+      } catch {
+        /* ignore transient poll errors */
+      }
+    })();
+  }, 3000);
 
   es.addEventListener('done', (e) => {
     let outputHeight: number | null | undefined;
