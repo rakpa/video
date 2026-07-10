@@ -340,7 +340,9 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
       if (gateHighResQuality(quality)) return;
       setSelected(quality);
       const fmt = info?.formats.find((f) => f.id === quality);
-      if (fmt && fmt.height >= HIGH_RES_MIN_PX) {
+      if (fmt && fmt.height < HIGH_RES_MIN_PX) {
+        setShowLimitSection(false);
+      } else if (fmt && fmt.height >= HIGH_RES_MIN_PX) {
         pingApiWarmup();
         void syncHighResLimit();
       }
@@ -719,7 +721,10 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
       formats.find((f) => f.id === '1080') ??
       formats.find((f) => f.id === '720') ??
       formats.find((f) => f.height <= maxHeight);
-    if (freeFmt) setSelected(freeFmt.id);
+    if (freeFmt) {
+      setSelected(freeFmt.id);
+      setShowLimitSection(false);
+    }
   }, [info, maxHeight]);
   const isBusy = phase === 'fetching' || phase === 'preview' || phase === 'downloading';
   const isSocialPreview = info?.platform === 'instagram' || info?.platform === 'facebook';
