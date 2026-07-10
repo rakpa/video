@@ -26,7 +26,7 @@ function stageLabel(p: ProgressUpdate, mobileSave?: boolean): string {
 
 export function DownloadProgress({ progress, qualityLabel, clipLabel, delivering, processingOnly, mobileSave }: Props) {
   const pct = Math.max(0, Math.min(100, progress.percent));
-  const showPercent = !processingOnly && !mobileSave && pct > 0;
+  const showPercent = !processingOnly && pct > 0;
   const displayPct = delivering ? 100 : pct > 0 && pct < 1 ? 1 : Math.round(pct);
   const display = useCountUp(showPercent ? displayPct : 0);
 
@@ -43,54 +43,23 @@ export function DownloadProgress({ progress, qualityLabel, clipLabel, delivering
             animate={{ opacity: [1, 0.3, 1] }}
             transition={{ duration: 1.2, repeat: Infinity }}
           />
-          <span className="font-semibold text-slate-900">Saving to your device…</span>
+          <span className="font-semibold text-slate-900">
+            {mobileSave ? 'Preparing Save to Gallery…' : 'Saving to your device…'}
+          </span>
           {qualityLabel && (
             <span className="rounded-md bg-slate-100 px-1.5 py-0.5 text-xs font-medium text-slate-600">{qualityLabel}</span>
           )}
         </div>
         <p className="mt-3 text-sm text-slate-500">
-          Your file should appear in your browser&apos;s downloads any moment now.
+          {mobileSave
+            ? 'Your save button will appear in a moment.'
+            : "Your file should appear in your browser's downloads any moment now."}
         </p>
         <div className="relative mt-5 h-2.5 w-full overflow-hidden rounded-full bg-slate-100">
           <motion.div
             className="btn-gradient absolute inset-y-0 left-0 rounded-full"
             animate={{ width: '100%' }}
             transition={{ ease: 'easeOut', duration: 0.4 }}
-          />
-        </div>
-      </motion.div>
-    );
-  }
-
-  if ((processingOnly || mobileSave) && pct < 1) {
-    return (
-      <motion.div
-        initial={{ opacity: 0, y: 14 }}
-        animate={{ opacity: 1, y: 0 }}
-        className="glass relative overflow-hidden rounded-3xl p-6 shadow-card"
-      >
-        <div className="flex items-center gap-2.5">
-          <motion.span
-            className="h-2.5 w-2.5 rounded-full bg-accent"
-            animate={{ opacity: [1, 0.3, 1] }}
-            transition={{ duration: 1.2, repeat: Infinity }}
-          />
-          <span className="font-semibold text-slate-900">
-            {mobileSave ? 'We are processing your download' : 'Download is in progress'}
-          </span>
-        </div>
-        <p className="mt-3 text-sm text-slate-500">
-          {mobileSave
-            ? 'Your save menu will open automatically when the video is ready.'
-            : "Your file will appear in your browser's downloads when ready."}
-        </p>
-        <div className="relative mt-5 h-2 w-full overflow-hidden rounded-full bg-slate-100">
-          <motion.div
-            className="btn-gradient absolute inset-y-0 rounded-full"
-            initial={{ width: '30%', x: '-100%' }}
-            animate={{ x: ['-100%', '350%'] }}
-            transition={{ duration: 1.4, repeat: Infinity, ease: 'easeInOut' }}
-            style={{ width: '30%' }}
           />
         </div>
       </motion.div>

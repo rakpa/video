@@ -867,7 +867,6 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
                       qualityLabel={qualityLabel}
                       delivering={delivering}
                       mobileSave={isMobileDevice()}
-                      processingOnly={isMobileDevice() && delivering}
                       clipLabel={
                         clipMode === 'clip' && clipReady
                           ? formatClipRangeLabel(clipStart, clipEnd)
