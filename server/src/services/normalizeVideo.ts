@@ -213,6 +213,71 @@ interface TranscodeStrategy {
   timeoutMs: number;
 }
 
+export interface GalleryNormalizeOptions {
+  /** IG/FB mobile — smallest/fastest transcode tiers. */
+  fast?: boolean;
+  /** User-selected height (1440/2160) — mobile YouTube VP9/HEVC → H.264 at this cap. */
+  targetHeight?: number;
+}
+
+/** H.264 transcode args that cap output height (not width) so 2K/4K stay sharp. */
+function buildH264HeightScaleArgs(maxHeight: number, crf = 20): string[] {
+  const level = maxHeight >= 2160 ? '5.1' : maxHeight >= 1440 ? '4.1' : maxHeight >= 1080 ? '4.0' : '3.1';
+  const profile = maxHeight >= 1080 ? 'high' : 'main';
+  return [
+    '-map',
+    '0:v:0',
+    '-map',
+    '0:a:0?',
+    '-vf',
+    `scale=-2:'min(${maxHeight},ih)':force_original_aspect_ratio=decrease,format=yuv420p,setsar=1`,
+    '-c:v',
+    'libx264',
+    '-preset',
+    'fast',
+    '-crf',
+    String(crf),
+    '-profile:v',
+    profile,
+    '-level',
+    level,
+    '-pix_fmt',
+    'yuv420p',
+    '-tag:v',
+    'avc1',
+    '-c:a',
+    'aac',
+    '-b:a',
+    '192k',
+    '-ar',
+    '48000',
+    '-ac',
+    '2',
+  ];
+}
+
+/** High-res mobile gallery prep — try requested height, then 1080p / 720p fallbacks. */
+function buildHighResGalleryStrategies(requestedHeight: number): TranscodeStrategy[] {
+  const tiers = [requestedHeight, 1080, 720].filter((h, i, arr) => h <= requestedHeight && arr.indexOf(h) === i);
+  return tiers.map((h, idx) => ({
+    label: `H.264 ${h}p gallery`,
+    outputName: idx === 0 ? 'gallery-ready.mp4' : `gallery-ready-${h}.mp4`,
+    timeoutMs: h >= 2160 ? 25 * 60_000 : h >= 1440 ? 18 * 60_000 : 12 * 60_000,
+    extraArgs: buildH264HeightScaleArgs(h, h >= 1440 ? 20 : 22),
+  }));
+}
+
+function galleryNormalizeOptions(job: {
+  platformId?: string;
+  fast?: boolean;
+  requestedHeight?: number;
+}): GalleryNormalizeOptions {
+  if (needsGalleryNormalize(job.platformId)) {
+    return { fast: job.fast };
+  }
+  return { targetHeight: job.requestedHeight };
+}
+
 /** Memory-safe ffmpeg flags for Render's 512 MB free tier. */
 const FFMPEG_LOW_MEM = ['-threads', '1', '-max_muxing_queue_size', '256'];
 
@@ -385,7 +450,11 @@ const TRANSCODE_STRATEGIES: TranscodeStrategy[] = config.lowMemoryMode
       },
     ];
 
-async function transcodeForGallery(inputPath: string, jobDir: string, fast = false): Promise<string> {
+async function transcodeForGallery(
+  inputPath: string,
+  jobDir: string,
+  options: GalleryNormalizeOptions = {},
+): Promise<string> {
   await fsp.mkdir(jobDir, { recursive: true });
   try {
     await fsp.access(inputPath);
@@ -393,11 +462,17 @@ async function transcodeForGallery(inputPath: string, jobDir: string, fast = fal
     throw new Error(`Gallery transcode input missing: ${inputPath}`);
   }
 
+  const { fast = false, targetHeight } = options;
   const errors: string[] = [];
-  // Mobile fast path: smallest/fastest only. Quality downloads skip 360p tier.
-  const strategies = fast
-    ? TRANSCODE_STRATEGIES.slice(0, 1)
-    : TRANSCODE_STRATEGIES.filter((s) => !s.outputName.includes('tiny'));
+  let strategies: TranscodeStrategy[];
+  if (targetHeight != null && targetHeight > MOBILE_GALLERY_HEIGHT_THRESHOLD) {
+    strategies = buildHighResGalleryStrategies(targetHeight);
+  } else if (fast) {
+    // IG/FB mobile — smallest/fastest only.
+    strategies = TRANSCODE_STRATEGIES.slice(0, 1);
+  } else {
+    strategies = TRANSCODE_STRATEGIES.filter((s) => !s.outputName.includes('tiny'));
+  }
 
   for (const strategy of strategies) {
     const outputPath = path.join(jobDir, strategy.outputName);
@@ -453,24 +528,33 @@ async function transcodeForGallery(inputPath: string, jobDir: string, fast = fal
 }
 
 /**
- * Make an Instagram/Facebook video iOS-Photos-compatible. (Only ever called for
- * IG/FB — gated by needsGalleryNormalize.)
+ * Make a video iOS/Android-Photos-compatible (H.264 + faststart MP4).
+ * IG/FB use the fast tiny tiers; mobile YouTube 2K/4K keep the requested height.
  */
-export function normalizeForGallery(inputPath: string, jobDir: string, fast = false): Promise<string> {
+export function normalizeForGallery(
+  inputPath: string,
+  jobDir: string,
+  options: GalleryNormalizeOptions = {},
+): Promise<string> {
+  const fast = options.fast ?? false;
   return enqueueNormalize(async () => {
     const codec = await probeVideoCodec(inputPath);
-    logger.info(`Gallery normalize probe=${codec} file=${path.basename(inputPath)} fast=${fast}`);
+    logger.info(
+      `Gallery normalize probe=${codec} file=${path.basename(inputPath)} fast=${fast} target=${options.targetHeight ?? 'n/a'}`,
+    );
     if (codec === 'h264') {
       try {
         return await remuxForGallery(inputPath, jobDir, fast);
       } catch (remuxErr) {
         logger.warn('Gallery remux failed, falling back to transcode:', (remuxErr as Error).message);
-        return transcodeForGallery(inputPath, jobDir, fast);
+        return transcodeForGallery(inputPath, jobDir, options);
       }
     }
-    return transcodeForGallery(inputPath, jobDir, fast);
+    return transcodeForGallery(inputPath, jobDir, options);
   });
 }
+
+export { galleryNormalizeOptions };
 
 /** Cut a segment from a downloaded MP4 — stream copy preserves original quality. */
 export async function trimVideo(

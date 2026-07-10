@@ -9,6 +9,7 @@ import { detectPlatform, type PlatformId } from './services/platform.js';
 import {
   needsGalleryNormalizeForJob,
   normalizeForGallery,
+  galleryNormalizeOptions,
   canServeDirectToGallery,
   probeVideoHeight,
   trimVideo,
@@ -123,7 +124,7 @@ export function warmGalleryNormalize(job: Job): void {
 
   const input = job.filePath;
   job.galleryNormalizeFailed = false;
-  job.galleryNormalize = normalizeForGallery(input, job.dir, job.fast)
+  job.galleryNormalize = normalizeForGallery(input, job.dir, galleryNormalizeOptions(job))
     .then((normalized) => {
       job.galleryPath = normalized;
       job.filePath = normalized;
