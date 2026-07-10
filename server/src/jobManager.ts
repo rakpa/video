@@ -100,12 +100,8 @@ function countRunningJobs(): number {
   return n;
 }
 
-/** The running job (if any) belonging to a given visitor IP. */
-function findRunningJobByIp(ip: string): Job | undefined {
-  for (const job of jobs.values()) {
-    if (job.status === 'running' && job.ip === ip) return job;
-  }
-  return undefined;
+function runningJobsByIp(ip: string): Job[] {
+  return [...jobs.values()].filter((j) => j.status === 'running' && j.ip === ip);
 }
 
 /** Respect the user's quality choice; optional cap for phone-optimized 2K/4K. */
@@ -185,6 +181,21 @@ export async function createJob(
   const clip = options?.clip ?? null;
   const cacheKey = jobCacheKey(url, q, mode, options?.fast, clip);
 
+  // Each visitor may run several downloads at once (laptop + phone). Only retire
+  // their oldest job when they exceed the per-IP cap — never block other users.
+  if (options?.ip) {
+    let mine = runningJobsByIp(options.ip);
+    while (mine.length >= config.maxConcurrentJobsPerIp) {
+      const oldest = [...mine].sort((a, b) => a.createdAt - b.createdAt)[0];
+      if (!oldest) break;
+      logger.info(
+        `Per-IP limit (${config.maxConcurrentJobsPerIp}): superseding job ${oldest.id} for ${options.ip}`,
+      );
+      await destroyJob(oldest.id);
+      mine = runningJobsByIp(options.ip);
+    }
+  }
+
   if (options?.reuse) {
     const existing = findReusableJob(url, q, mode, options.fast, clip);
     if (existing) {
@@ -196,20 +207,10 @@ export async function createJob(
   if (countRunningJobs() >= config.maxConcurrentJobs) {
     const existing = findReusableJob(url, q, mode, options?.fast, clip);
     if (existing) return existing;
-    // A new download request from the same visitor supersedes their previous,
-    // still-running one (they've moved on) — this frees the single free-tier
-    // slot instead of making them wait out an abandoned/stuck job.
-    const mine = options?.ip ? findRunningJobByIp(options.ip) : undefined;
-    if (mine) {
-      logger.info(`Superseding running job ${mine.id} for same visitor (new download requested)`);
-      await destroyJob(mine.id);
-    }
-    if (countRunningJobs() >= config.maxConcurrentJobs) {
-      throw new YtDlpError(
-        'The server is busy with another download. Wait a moment and try again.',
-        'FAILED',
-      );
-    }
+    throw new YtDlpError(
+      'Our servers are handling many downloads right now. Please try again in a minute.',
+      'FAILED',
+    );
   }
 
   if (q.id !== quality.id) {

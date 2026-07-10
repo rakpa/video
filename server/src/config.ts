@@ -40,6 +40,20 @@ function normalizeProxy(entry: string): string | null {
   return null;
 }
 
+/** Global download slots — scales with host RAM unless MAX_CONCURRENT_JOBS is set. */
+function inferMaxConcurrentJobs(lowMemoryMode: boolean): number {
+  const raw = process.env.MAX_CONCURRENT_JOBS?.trim();
+  if (raw) return Math.max(1, Number(raw) || 1);
+  if (lowMemoryMode) return 1;
+
+  const memGb = os.totalmem() / 1024 ** 3;
+  if (memGb < 0.6) return 2;
+  if (memGb < 1.2) return 4;
+  if (memGb < 2.5) return 8;
+  if (memGb < 5) return 12;
+  return 16;
+}
+
 /**
  * Centralised, typed configuration sourced from environment variables.
  * Every value has a sensible default so the app runs with zero config.
@@ -69,8 +83,13 @@ export const config = {
     process.env.LOW_MEMORY_MODE !== 'false' &&
     (process.env.LOW_MEMORY_MODE === 'true' || process.env.RENDER === 'true'),
 
-  /** Max simultaneous download jobs (1 on free tier keeps RAM under 512 MB). */
-  maxConcurrentJobs: Number(process.env.MAX_CONCURRENT_JOBS ?? (process.env.RENDER === 'true' ? 1 : 3)),
+  /** Max simultaneous download jobs across all visitors (auto-scales with RAM). */
+  get maxConcurrentJobs(): number {
+    return inferMaxConcurrentJobs(this.lowMemoryMode);
+  },
+
+  /** Max simultaneous downloads per visitor IP (web + phone + spare tab). */
+  maxConcurrentJobsPerIp: Math.max(1, Number(process.env.MAX_CONCURRENT_JOBS_PER_IP ?? 3)),
 
   // --- yt-dlp hardening for cloud hosts (YouTube bot-detection) ---
   // Path to a Netscape-format cookies.txt so yt-dlp can authenticate. This is

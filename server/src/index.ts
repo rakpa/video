@@ -1,5 +1,6 @@
 import express from 'express';
 import cors from 'cors';
+import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { existsSync } from 'node:fs';
@@ -165,5 +166,10 @@ app.listen(config.port, () => {
   }
   if (config.lowMemoryMode) {
     logger.info(`Low-memory mode ON — max ${config.maxConcurrentJobs} concurrent job(s), serialized ffmpeg`);
+  } else {
+    const memGb = (os.totalmem() / 1024 ** 3).toFixed(1);
+    logger.info(
+      `Download capacity: ${config.maxConcurrentJobs} global, ${config.maxConcurrentJobsPerIp} per visitor (${memGb} GB RAM)`,
+    );
   }
 });
