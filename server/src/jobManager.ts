@@ -6,7 +6,13 @@ import { config, currentProxy } from './config.js';
 import { startDownload, ensureInfoJsonCache, YtDlpError, type ProgressUpdate } from './services/ytdlp.js';
 import { getQuality, type CodecMode, type QualityDef } from './services/formats.js';
 import { detectPlatform, type PlatformId } from './services/platform.js';
-import { needsGalleryNormalize, normalizeForGallery, canServeDirectToGallery, probeVideoHeight, trimVideo } from './services/normalizeVideo.js';
+import {
+  needsGalleryNormalizeForJob,
+  normalizeForGallery,
+  canServeDirectToGallery,
+  probeVideoHeight,
+  trimVideo,
+} from './services/normalizeVideo.js';
 import type { ClipRange } from './utils/clip.js';
 import { getFreshInfoJson } from './services/infoJsonCache.js';
 import { logger } from './utils/logger.js';
@@ -33,6 +39,8 @@ export interface Job {
   galleryNormalizeFailed?: boolean;
   /** Mobile fast path — smaller IG/FB file, skip normalize retry. */
   fast?: boolean;
+  /** Requested output height (720–2160) — drives mobile VP9/HEVC gallery prep. */
+  requestedHeight?: number;
   /** Dedupe key for prefetch / reuse. */
   cacheKey?: string;
   /** Verified output height (ffprobe) after download completes. */
@@ -102,15 +110,15 @@ function emit(job: Job, payload: ProgressUpdate | { done: true; outputHeight?: n
   for (const fn of job.listeners) fn(payload);
 }
 
-/** True when an Instagram/Facebook file is ready to serve for "Save Video". */
+/** True when the file is ready to serve for mobile "Save to gallery". */
 export function isGalleryReady(job: Job): boolean {
-  if (!needsGalleryNormalize(job.platformId)) return true;
+  if (!needsGalleryNormalizeForJob(job.platformId, job.fast, job.requestedHeight)) return true;
   return Boolean(job.galleryPath);
 }
 
 /** Start H.264 transcode in the background — never block the download progress UI. */
 export function warmGalleryNormalize(job: Job): void {
-  if (!job.filePath || !needsGalleryNormalize(job.platformId)) return;
+  if (!job.filePath || !needsGalleryNormalizeForJob(job.platformId, job.fast, job.requestedHeight)) return;
   if (job.galleryNormalize || job.galleryPath) return;
 
   const input = job.filePath;
@@ -194,6 +202,7 @@ export async function createJob(
     createdAt: Date.now(),
     platformId: detectPlatform(url)?.id,
     fast: options?.fast ?? false,
+    requestedHeight: q.height,
     clip,
     ip: options?.ip,
     cacheKey,
@@ -286,7 +295,7 @@ async function runWithRetry(job: Job, url: string, quality: QualityDef, mode: Co
 
       const servePath = job.filePath!;
 
-      if (needsGalleryNormalize(job.platformId)) {
+      if (needsGalleryNormalizeForJob(job.platformId, job.fast, quality.height)) {
         if (await canServeDirectToGallery(servePath)) {
           job.galleryPath = servePath;
           logger.info('Gallery skip remux — H.264 + faststart already present');

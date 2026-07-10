@@ -676,12 +676,8 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
                 setProgress((p) => ({ ...p, percent: 100, stage: 'done', speed: null, eta: null }));
                 if (mobile) {
                   const delivery = await deliverMobileVideo(jobId);
-                  if (delivery.kind === 'gallery') {
-                    setMobileSavePayload(delivery.payload);
-                    setPhase('ready');
-                  } else {
-                    setPhase('success');
-                  }
+                  setMobileSavePayload(delivery.payload);
+                  setPhase('ready');
                 } else {
                   setDelivering(true);
                   await downloadFileToDevice(jobId);

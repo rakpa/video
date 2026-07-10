@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import fsp from 'node:fs/promises';
 import path from 'node:path';
 import { getJob, destroyJob, isGalleryReady, warmGalleryNormalize, type Job } from '../jobManager.js';
-import { needsGalleryNormalize } from '../services/normalizeVideo.js';
+import { needsGalleryNormalizeForJob } from '../services/normalizeVideo.js';
 import { logger } from '../utils/logger.js';
 
 export const fileRouter = Router();
@@ -19,7 +19,7 @@ function safeName(name: string): string {
  */
 function resolveServePath(job: Job): string | null {
   const raw = job.filePath!;
-  if (!needsGalleryNormalize(job.platformId)) return raw;
+  if (!needsGalleryNormalizeForJob(job.platformId, job.fast, job.requestedHeight)) return raw;
   if (job.galleryPath) return job.galleryPath;
 
   if (!job.galleryNormalize && !job.galleryNormalizeFailed) {
@@ -40,7 +40,11 @@ fileRouter.get('/file/:jobId/status', (req, res) => {
     return res.status(409).json({ status: 'running', progress: job.progress });
   }
 
-  if (needsGalleryNormalize(job.platformId) && !job.galleryPath && !job.galleryNormalize) {
+  if (
+    needsGalleryNormalizeForJob(job.platformId, job.fast, job.requestedHeight) &&
+    !job.galleryPath &&
+    !job.galleryNormalize
+  ) {
     warmGalleryNormalize(job);
   }
 

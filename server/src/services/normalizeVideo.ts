@@ -14,6 +14,20 @@ export function needsGalleryNormalize(platformId: string | undefined): boolean {
   return platformId != null && GALLERY_NORMALIZE_PLATFORMS.has(platformId);
 }
 
+/** Mobile fast downloads above 1080p are often VP9/HEVC — Photos/gallery need H.264. */
+const MOBILE_GALLERY_HEIGHT_THRESHOLD = 1080;
+
+export function needsGalleryNormalizeForJob(
+  platformId: string | undefined,
+  fast?: boolean,
+  requestedHeight?: number,
+): boolean {
+  if (needsGalleryNormalize(platformId)) return true;
+  return Boolean(
+    fast && requestedHeight != null && requestedHeight > MOBILE_GALLERY_HEIGHT_THRESHOLD,
+  );
+}
+
 /** Only one ffmpeg transcode at a time — prevents OOM on 512 MB Render free tier. */
 let normalizeChain: Promise<unknown> = Promise.resolve();
 

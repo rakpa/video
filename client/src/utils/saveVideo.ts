@@ -404,27 +404,15 @@ export async function fetchReadyVideoFile(jobId: string): Promise<VideoFilePaylo
   return fetchVideoBytes(jobId);
 }
 
-function isGalleryCodecError(err: unknown): boolean {
-  return err instanceof Error && err.message === MOBILE_GALLERY_CODEC_MSG;
-}
-
 /**
- * Mobile delivery: gallery save when the file is H.264; otherwise fall back to a
- * browser download (VP9/HEVC 2K/4K from YouTube cannot be saved to the camera roll).
+ * Mobile delivery: wait for server H.264 gallery prep (IG/FB + mobile 2K/4K), then
+ * fetch the file for the native save prompt.
  */
 export async function deliverMobileVideo(
   jobId: string,
-): Promise<{ kind: 'gallery'; payload: VideoFilePayload } | { kind: 'browser' }> {
-  try {
-    const payload = await fetchReadyVideoFile(jobId);
-    return { kind: 'gallery', payload };
-  } catch (err) {
-    if (isGalleryCodecError(err)) {
-      await downloadFileToDevice(jobId);
-      return { kind: 'browser' };
-    }
-    throw err;
-  }
+): Promise<{ kind: 'gallery'; payload: VideoFilePayload }> {
+  const payload = await waitForMobileGalleryPayload(jobId);
+  return { kind: 'gallery', payload };
 }
 
 function isCrossOriginApiUrl(url: string): boolean {
