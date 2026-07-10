@@ -639,7 +639,6 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
 
       const platform = detectPlatform(fetchedUrl.current || url);
       const mobile = isMobileDevice();
-      const nativeApp = isNativeMobileApp();
       const isIgFb = platform?.id === 'instagram' || platform?.id === 'facebook';
       const currentUrl = fetchedUrl.current || url;
 
@@ -664,7 +663,7 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
           quality,
           effectiveMode,
           licenseToken(),
-          { fast: isIgFb || mobile, reuse: !mobile && !clip, clip, galleryPrep: nativeApp },
+          { fast: isIgFb || mobile, reuse: !mobile && !clip, clip, galleryPrep: mobile },
         );
 
         lastJobId.current = jobId;
@@ -676,8 +675,10 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
             void (async () => {
               try {
                 setProgress((p) => ({ ...p, percent: 100, stage: 'done', speed: null, eta: null }));
-                if (nativeApp) {
+                if (mobile) {
+                  setDelivering(true);
                   const delivery = await deliverMobileVideo(jobId);
+                  setDelivering(false);
                   setMobileSavePayload(delivery.payload);
                   setPhase('ready');
                 } else {
@@ -865,6 +866,8 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
                       progress={progress}
                       qualityLabel={qualityLabel}
                       delivering={delivering}
+                      mobileSave={isMobileDevice()}
+                      processingOnly={isMobileDevice() && delivering}
                       clipLabel={
                         clipMode === 'clip' && clipReady
                           ? formatClipRangeLabel(clipStart, clipEnd)
@@ -880,7 +883,7 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
                       mobileBrowser={isMobileDevice() && !isNativeMobileApp()}
                     />
                   </div>
-                ) : info && isNativeMobileApp() && mobileSavePayload ? (
+                ) : info && isMobileDevice() && mobileSavePayload ? (
                   <MobileSavePrompt
                     payload={mobileSavePayload}
                     author={info.author}

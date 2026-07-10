@@ -469,6 +469,15 @@ async function transcodeForGallery(
   let strategies: TranscodeStrategy[];
   if (targetHeight != null && targetHeight > MOBILE_GALLERY_HEIGHT_THRESHOLD) {
     strategies = buildHighResGalleryStrategies(targetHeight);
+  } else if (targetHeight != null) {
+    strategies = [
+      {
+        label: `H.264 ${targetHeight}p gallery`,
+        outputName: 'gallery-ready.mp4',
+        timeoutMs: 12 * 60_000,
+        extraArgs: buildH264HeightScaleArgs(targetHeight, 22),
+      },
+    ];
   } else if (fast) {
     // IG/FB mobile — smallest/fastest only.
     strategies = TRANSCODE_STRATEGIES.slice(0, 1);

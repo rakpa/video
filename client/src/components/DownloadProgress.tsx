@@ -14,11 +14,12 @@ interface Props {
   mobileSave?: boolean;
 }
 
-function stageLabel(p: ProgressUpdate): string {
+function stageLabel(p: ProgressUpdate, mobileSave?: boolean): string {
   if (p.percent < 1) return 'Connecting';
   if (p.stage === 'trimming') return 'Trimming clip';
-  if (p.stage === 'done' || p.percent >= 99) return 'Finishing up';
-  if (p.stage === 'merging') return 'Finishing up';
+  if (mobileSave && p.stage === 'merging') return 'Preparing for Photos';
+  if (p.stage === 'done' || p.percent >= 99) return mobileSave ? 'Almost ready' : 'Finishing up';
+  if (p.stage === 'merging') return mobileSave ? 'Preparing for Photos' : 'Finishing up';
   if (p.percent < 3) return 'Starting';
   return 'Downloading';
 }
@@ -122,7 +123,7 @@ export function DownloadProgress({ progress, qualityLabel, clipLabel, delivering
             <span className="rounded-md bg-slate-100 px-1.5 py-0.5 text-xs font-medium text-slate-600">{qualityLabel}</span>
           )}
         </div>
-        <span className="text-sm font-medium text-slate-500">{stageLabel(progress)}</span>
+        <span className="text-sm font-medium text-slate-500">{stageLabel(progress, mobileSave)}</span>
       </div>
 
       <div className="mt-5 flex items-end justify-between">

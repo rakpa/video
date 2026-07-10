@@ -8,7 +8,6 @@ import { getQuality, type CodecMode, type QualityDef } from './services/formats.
 import { detectPlatform, type PlatformId } from './services/platform.js';
 import {
   needsGalleryNormalize,
-  needsGalleryNormalizeForJob,
   normalizeForGallery,
   galleryNormalizeOptions,
   canServeDirectToGallery,
@@ -114,22 +113,15 @@ function emit(job: Job, payload: ProgressUpdate | { done: true; outputHeight?: n
   for (const fn of job.listeners) fn(payload);
 }
 
-/** True when the file is ready to serve for mobile "Save to gallery". */
+/** True when the gallery-ready file can be served (mobile Save to Photos flow). */
 export function isGalleryReady(job: Job): boolean {
-  if (!needsGalleryNormalizeForJob(job.platformId, job.fast, job.requestedHeight, job.galleryPrep)) {
-    return true;
-  }
+  if (!job.galleryPrep) return true;
   return Boolean(job.galleryPath);
 }
 
 /** Start H.264 transcode in the background — never block the download progress UI. */
 export function warmGalleryNormalize(job: Job): void {
-  if (
-    !job.filePath ||
-    !needsGalleryNormalizeForJob(job.platformId, job.fast, job.requestedHeight, job.galleryPrep)
-  ) {
-    return;
-  }
+  if (!job.filePath || !job.galleryPrep) return;
   if (job.galleryNormalize || job.galleryPath) return;
 
   const input = job.filePath;
@@ -307,7 +299,7 @@ async function runWithRetry(job: Job, url: string, quality: QualityDef, mode: Co
 
       const servePath = job.filePath!;
 
-      if (needsGalleryNormalizeForJob(job.platformId, job.fast, quality.height, job.galleryPrep)) {
+      if (job.galleryPrep) {
         if (await canServeDirectToGallery(servePath)) {
           job.galleryPath = servePath;
           logger.info('Gallery skip remux — H.264 + faststart already present');
