@@ -569,8 +569,8 @@ function downloadTuning(
       : { httpChunkSize: '4M', concurrentFragments: '4' };
   }
   return fast
-    ? { httpChunkSize: '10M', concurrentFragments: '10' }
-    : { httpChunkSize: '8M', concurrentFragments: '8' };
+    ? { httpChunkSize: '8M', concurrentFragments: '6' }
+    : { httpChunkSize: '6M', concurrentFragments: '4' };
 }
 
 function safeSize(p: string): number {
@@ -591,7 +591,7 @@ export function startDownload(
   mode: CodecMode,
   outputDir: string,
   onProgress: (p: ProgressUpdate) => void,
-  options?: { fast?: boolean; clip?: ClipRange },
+  options?: { fast?: boolean; clip?: ClipRange; galleryMaxHeight?: number },
 ): DownloadHandle {
   const outTemplate = path.join(outputDir, '%(title).80s.%(ext)s');
   const cookies = getCookiesStatus();
@@ -600,6 +600,7 @@ export function startDownload(
   const platformId = detectPlatform(url)?.id;
   const fast = options?.fast ?? false;
   const clip = options?.clip;
+  const galleryMaxHeight = options?.galleryMaxHeight;
   // Clips are NOT fetched with yt-dlp's --download-sections. That path forces a
   // libx264 re-encode (--force-keyframes-at-cuts) which fails on this memory-
   // constrained host with a generic "download failed" error (and, when reusing
@@ -627,6 +628,15 @@ export function startDownload(
       formatArg = picked.selector;
       singleFileH264 = picked.singleFileH264;
       logger.info(`IG/FB cached format ${formatArg} (single H.264=${singleFileH264})`);
+    }
+  } else if (cachedInfoJson && platformId === 'youtube' && galleryMaxHeight) {
+    // Mobile 2K/4K → 1080p: pick a single progressive H.264 file when available.
+    // Avoids DASH video+audio (progress sits ~30% while stream 1 crawls) and merge stalls.
+    const picked = pickBestSocialFormat(cachedInfoJson, galleryMaxHeight, true);
+    if (picked) {
+      formatArg = picked.selector;
+      singleFileH264 = picked.singleFileH264;
+      logger.info(`YouTube mobile format ${formatArg} (single H.264=${singleFileH264})`);
     }
   }
 
@@ -665,7 +675,11 @@ export function startDownload(
 
   // Prefer highest resolution when multiple formats match (esp. YouTube DASH).
   if (platformId === 'youtube') {
-    args.push('-S', 'res,quality,vcodec:vp9,vcodec:av1');
+    if (singleFileH264 || galleryMaxHeight) {
+      args.push('-S', 'vcodec:h264,res,quality');
+    } else {
+      args.push('-S', 'res,quality,vcodec:vp9,vcodec:av1');
+    }
   } else if ((platformId === 'instagram' || platformId === 'facebook') && !singleFileH264) {
     args.push('-S', 'vcodec:h264,res,quality');
   }
@@ -720,6 +734,16 @@ export function startDownload(
     }
     if (DEST_RE.test(line)) {
       streamsStarted = Math.min(streamTotal, streamsStarted + 1);
+      const sliceStart = ((streamsStarted - 1) / streamTotal) * DOWNLOAD_BUDGET;
+      lastPercent = Math.max(lastPercent, sliceStart);
+      onProgress({
+        percent: lastPercent,
+        speed: null,
+        eta: null,
+        stage: 'downloading',
+        streamIndex: streamsStarted,
+        streamTotal,
+      });
       return;
     }
     if (MERGE_RE.test(line)) {

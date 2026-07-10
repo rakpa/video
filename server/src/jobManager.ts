@@ -285,7 +285,7 @@ async function runWithRetry(job: Job, url: string, quality: QualityDef, mode: Co
       if (!j) return;
       j.progress = p;
       emit(j, p);
-    }, { fast: job.fast, clip: job.clip ?? undefined });
+    }, { fast: job.fast, clip: job.clip ?? undefined, galleryMaxHeight: job.galleryMaxHeight });
     job.cancel = handle.cancel;
 
     try {
