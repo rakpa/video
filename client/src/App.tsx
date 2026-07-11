@@ -39,6 +39,7 @@ import {
 import {
   cancelMobileGalleryGestureFallback,
   downloadFileToDevice,
+  downloadDirectUrl,
   deliverMobileVideo,
   formatDownloadError,
   isNativeMobileApp,
@@ -679,7 +680,7 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
         }
 
         const effectiveMode: CodecMode = isIgFb ? 'compatible' : mode;
-        const jobId = await startDownloadJob(
+        const startResult = await startDownloadJob(
           currentUrl,
           quality,
           effectiveMode,
@@ -691,6 +692,19 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
             galleryPrep,
           },
         );
+
+        if (startResult.kind === 'direct') {
+          setProgress((p) => ({ ...p, percent: 100, stage: 'done', speed: null, eta: null }));
+          if (typeof startResult.height === 'number') setOutputHeight(startResult.height);
+          setConvertingForPhone(false);
+          setDelivering(true);
+          await downloadDirectUrl(startResult.url, startResult.filename);
+          setDelivering(false);
+          setPhase('success');
+          return;
+        }
+
+        const jobId = startResult.jobId;
 
         lastJobId.current = jobId;
         unsubscribe.current?.();

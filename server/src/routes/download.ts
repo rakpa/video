@@ -4,6 +4,7 @@ import { readJsonBody } from '../utils/body.js';
 import { getQuality, isCodecMode } from '../services/formats.js';
 import { createJob } from '../jobManager.js';
 import { YtDlpError, readCachedVideoInfo } from '../services/ytdlp.js';
+import { canDirectPassthrough, resolveDirectDownload } from '../services/directPassthrough.js';
 import { detectPlatform } from '../services/platform.js';
 import { maxAllowedHeight, isPro } from '../services/license.js';
 import { parseClipRange } from '../utils/clip.js';
@@ -11,6 +12,7 @@ import { config } from '../config.js';
 import { HIGH_RES_MIN_HEIGHT } from '../utils/downloadLogger.js';
 import { getClientIp } from '../utils/clientIp.js';
 import { getHighResCount, reserveHighResSlot, quotaStoreKind } from '../utils/highResQuota.js';
+import { logDownload } from '../utils/downloadLogger.js';
 import { logger } from '../utils/logger.js';
 
 export const downloadRouter = Router();
@@ -40,9 +42,8 @@ downloadRouter.get('/download/quota', async (req, res) => {
 });
 
 /**
- * POST /api/download { url, quality } → { jobId }
- * Kicks off the download immediately and returns a job id. The client then
- * subscribes to /api/progress/:jobId and finally GETs /api/file/:jobId.
+ * POST /api/download { url, quality } → { jobId } | { direct, url, filename }
+ * Direct passthrough (SaveFrom-style) when eligible; otherwise job + SSE progress.
  */
 downloadRouter.post('/download', async (req, res) => {
   const body = readJsonBody(req);
@@ -98,8 +99,41 @@ downloadRouter.post('/download', async (req, res) => {
         ? mode
         : 'best';
 
+  const trimmedUrl = url.trim();
+
+  // SaveFrom-style: browser downloads straight from YouTube CDN (no worker slot).
+  if (
+    canDirectPassthrough({
+      url: trimmedUrl,
+      quality: q,
+      galleryPrep: Boolean(galleryPrep),
+      clip: clipResult.clip,
+    })
+  ) {
+    try {
+      const direct = await resolveDirectDownload(trimmedUrl, q.height);
+      if (direct) {
+        logDownload({
+          platform: platform?.id ?? 'youtube',
+          quality: q.label,
+          outputHeight: direct.height,
+          requestedHeight: q.height,
+          ip: clientIp,
+        });
+        return res.status(200).json({
+          direct: true,
+          url: direct.url,
+          filename: direct.filename,
+          height: direct.height,
+        });
+      }
+    } catch (err) {
+      logger.warn('Direct passthrough skipped:', (err as Error).message);
+    }
+  }
+
   try {
-    const job = await createJob(url.trim(), q, codecMode, {
+    const job = await createJob(trimmedUrl, q, codecMode, {
       fast: Boolean(fast),
       reuse: Boolean(reuse),
       clip: clipResult.clip,

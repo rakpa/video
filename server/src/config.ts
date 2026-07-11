@@ -209,6 +209,9 @@ export const config = {
     cacheTtlSec: Number(process.env.R2_CACHE_TTL_DAYS ?? 7) * 86_400,
     presignTtlSec: Number(process.env.R2_PRESIGN_TTL_SEC ?? 3600),
   },
+
+  /** SaveFrom-style direct CDN passthrough for desktop YouTube HD (no server download). */
+  directPassthrough: process.env.DIRECT_PASSTHROUGH !== 'false',
 } as const;
 
 // Start on a random proxy so restarts spread load across the pool, then stay put.

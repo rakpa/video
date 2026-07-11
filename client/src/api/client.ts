@@ -153,7 +153,11 @@ export async function fetchVideoPreview(url: string): Promise<VideoInfo | null> 
   return mergeSocialPreview(client, api);
 }
 
-/** Kick off a download job; returns the job id. `license` unlocks premium qualities. */
+/** Kick off a download — job pipeline or SaveFrom-style direct CDN URL. */
+export type DownloadStartResult =
+  | { kind: 'job'; jobId: string }
+  | { kind: 'direct'; url: string; filename: string; height?: number };
+
 export async function startDownloadJob(
   url: string,
   quality: QualityId,
@@ -166,8 +170,14 @@ export async function startDownloadJob(
     galleryPrep?: boolean;
     galleryMaxHeight?: number;
   },
-): Promise<string> {
-  const { jobId } = await postJson<{ jobId: string }>('/api/download', {
+): Promise<DownloadStartResult> {
+  const data = await postJson<{
+    jobId?: string;
+    direct?: boolean;
+    url?: string;
+    filename?: string;
+    height?: number;
+  }>('/api/download', {
     url,
     quality,
     mode,
@@ -180,7 +190,21 @@ export async function startDownloadJob(
       ? { startTime: options.clip.startTime, endTime: options.clip.endTime }
       : {}),
   });
-  return jobId;
+
+  if (data.direct && data.url) {
+    return {
+      kind: 'direct',
+      url: data.url,
+      filename: data.filename ?? 'video.mp4',
+      height: data.height,
+    };
+  }
+
+  if (!data.jobId) {
+    throw new ApiError('Could not start the download.');
+  }
+
+  return { kind: 'job', jobId: data.jobId };
 }
 
 /* ------------------------------- billing ------------------------------- */

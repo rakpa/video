@@ -179,4 +179,9 @@ app.listen(config.port, () => {
   } else {
     logger.info('R2 download-once cache: OFF (set R2_ACCOUNT_ID + keys to enable)');
   }
+  if (config.directPassthrough) {
+    logger.info('Direct CDN passthrough: ON (desktop YouTube 720p/1080p progressive H.264)');
+  } else {
+    logger.info('Direct CDN passthrough: OFF');
+  }
 });

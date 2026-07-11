@@ -190,6 +190,54 @@ export function pickBestYoutubeH264Format(
   return null;
 }
 
+export interface ProgressiveDirectUrl {
+  url: string;
+  height: number;
+  formatId: string;
+  title: string;
+}
+
+/**
+ * Progressive H.264 + audio in one file with a direct CDN URL — SaveFrom-style
+ * passthrough. Returns null when merge/transcode would be required (DASH, etc.).
+ */
+export function pickProgressiveDirectUrl(
+  infoJsonPath: string,
+  maxHeight: number,
+): ProgressiveDirectUrl | null {
+  const pick = pickBestYoutubeH264Format(infoJsonPath, maxHeight);
+  if (!pick?.singleFileH264) return null;
+
+  let raw: RawDump;
+  try {
+    raw = JSON.parse(fs.readFileSync(infoJsonPath, 'utf8'));
+  } catch {
+    return null;
+  }
+
+  const format = (raw.formats ?? []).find((f) => f.format_id === pick.selector);
+  if (!format?.url?.startsWith('http')) return null;
+  if ((format.protocol ?? '').includes('m3u8')) return null;
+  if ((format.acodec ?? 'none') === 'none') return null;
+  if (!isH264Vcodec(format.vcodec)) return null;
+
+  const height = format.height ?? 0;
+  if (height <= 0 || height > maxHeight) return null;
+
+  const title =
+    (raw.title ?? 'video')
+      .replace(/[^\w.\- ]+/g, '_')
+      .trim()
+      .slice(0, 100) || 'video';
+
+  return {
+    url: format.url,
+    height,
+    formatId: pick.selector,
+    title,
+  };
+}
+
 /** Highest DASH video+audio at or below maxHeight — skips slow yt-dlp format re-sort on 4K. */
 export function pickBestYoutubeDashFormat(
   infoJsonPath: string,

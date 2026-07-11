@@ -479,6 +479,23 @@ export function formatDownloadError(err: unknown): string {
 }
 
 /**
+ * SaveFrom-style delivery — browser pulls straight from the source CDN (googlevideo.com).
+ * Cross-origin: the download attribute may be ignored; the browser still saves the file.
+ */
+export async function downloadDirectUrl(cdnUrl: string, filename: string): Promise<void> {
+  const safe = filename.replace(/[^\w.\- ]+/g, '_').slice(0, 120) || 'video.mp4';
+  const a = document.createElement('a');
+  a.href = cdnUrl;
+  a.download = safe;
+  a.rel = 'noopener noreferrer';
+  a.style.display = 'none';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  await new Promise((r) => window.setTimeout(r, 400));
+}
+
+/**
  * Deliver a finished job to the user's downloads folder.
  * Cross-origin APIs use a hidden iframe (no full-file blob read).
  * Same-origin deploys still use blob download when possible.
