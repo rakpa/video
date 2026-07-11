@@ -669,7 +669,7 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
       setProgress(INITIAL_PROGRESS);
       setOutputHeight(null);
       setPhase('downloading');
-      setProgress({ ...INITIAL_PROGRESS, percent: 1 });
+      setProgress({ ...INITIAL_PROGRESS, stage: 'preparing', percent: 0 });
 
       try {
         if (isIgFb && !infoWarmRef.current) {

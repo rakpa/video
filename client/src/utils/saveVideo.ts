@@ -154,7 +154,8 @@ interface FileStatus {
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 const GALLERY_POLL_MS = 100;
-const FILE_RETRY_MS = 150;
+const FILE_RETRY_MS = 400;
+const FILE_FETCH_ATTEMPTS = 12;
 const STATUS_404_GRACE_MS = 3_000;
 const STATUS_404_RETRIES = 15;
 
@@ -200,19 +201,17 @@ async function readDesktopVideoPayloadFromResponse(res: Response): Promise<Video
 }
 
 async function fetchVideoBytes(jobId: string): Promise<VideoFilePayload> {
-  const maxAttempts = 8;
+  const maxAttempts = FILE_FETCH_ATTEMPTS;
   let lastError: Error | null = null;
 
   for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
     let res: Response;
     try {
-      res = await fetch(apiUrl(`/api/file/${jobId}`));
+      res = await fetch(apiUrl(`/api/file/${jobId}`), { redirect: 'follow' });
     } catch {
-      // Network dropped while fetching the file — retry a few times before
-      // surfacing an error, so a brief blip doesn't fail a finished download.
       lastError = new Error('Lost connection while downloading the file. Please try again.');
       if (attempt < maxAttempts) {
-        await sleep(FILE_RETRY_MS);
+        await sleep(FILE_RETRY_MS * attempt);
         continue;
       }
       throw lastError;
@@ -232,13 +231,22 @@ async function fetchVideoBytes(jobId: string): Promise<VideoFilePayload> {
         lastError = new Error('Could not fetch the video file.');
       }
       if (attempt < maxAttempts) {
-        await sleep(FILE_RETRY_MS);
+        await sleep(FILE_RETRY_MS * attempt);
         continue;
       }
       throw lastError;
     }
 
-    return readVideoPayloadFromResponse(res);
+    try {
+      return await readVideoPayloadFromResponse(res);
+    } catch (err) {
+      lastError = err instanceof Error ? err : new Error('Could not fetch the video file.');
+      if (attempt < maxAttempts) {
+        await sleep(FILE_RETRY_MS * attempt);
+        continue;
+      }
+      throw lastError;
+    }
   }
 
   throw lastError ?? new Error('Could not fetch the video file.');

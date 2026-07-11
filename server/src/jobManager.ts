@@ -528,18 +528,26 @@ async function runWithRetry(job: Job, url: string, quality: QualityDef, mode: Co
     const hasCachedInfo = Boolean(getFreshInfoJson(url, proxy));
 
     if (!hasCachedInfo) {
-      job.progress = { percent: 2, speed: null, eta: null, stage: 'downloading', streamIndex: 1, streamTotal: 1 };
+      job.progress = {
+        percent: 2,
+        speed: null,
+        eta: null,
+        stage: 'preparing',
+        streamIndex: 1,
+        streamTotal: 1,
+      };
       emit(job, job.progress);
+      const prepStarted = Date.now();
       const prepPulse = setInterval(() => {
         const j = jobs.get(job.id);
-        if (!j || j.progress.percent > 5) return;
+        if (!j || j.progress.stage !== 'preparing') return;
+        const elapsed = Date.now() - prepStarted;
         j.progress = {
           ...j.progress,
-          percent: Math.min(5, j.progress.percent + 0.5),
-          stage: 'downloading',
+          percent: Math.min(12, 2 + elapsed / 4000),
         };
         emit(j, j.progress);
-      }, 10_000);
+      }, 2000);
       try {
         await ensureInfoJsonCache(url);
       } catch (err) {

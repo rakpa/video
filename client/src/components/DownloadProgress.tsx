@@ -23,6 +23,7 @@ function stageLabel(p: ProgressUpdate, mobileSave?: boolean, converting?: boolea
     }
     return 'Waiting in line';
   }
+  if (p.stage === 'preparing') return 'Reading video info';
   if (p.percent < 1) return 'Connecting';
   if (p.stage === 'trimming') return 'Trimming clip';
   if (converting && (p.stage === 'merging' || p.percent >= 99)) return 'Converting';
@@ -38,8 +39,9 @@ export function DownloadProgress({ progress, qualityLabel, clipLabel, delivering
   // This can take a minute or two, so tell the user rather than sit at "99%".
   const convertingNow = converting && !delivering && (progress.stage === 'merging' || progress.percent >= 99);
   const queued = progress.stage === 'queued';
+  const preparing = progress.stage === 'preparing';
   const pct = Math.max(0, Math.min(100, progress.percent));
-  const showPercent = !processingOnly && !queued && pct > 0;
+  const showPercent = !processingOnly && !queued && !preparing && pct > 0;
   const displayPct = delivering ? 100 : pct > 0 && pct < 1 ? 1 : Math.round(pct);
   const display = useCountUp(showPercent ? displayPct : 0);
 
@@ -95,6 +97,8 @@ export function DownloadProgress({ progress, qualityLabel, clipLabel, delivering
           <span className="font-semibold text-slate-900">
             {queued
               ? 'Waiting in queue…'
+              : preparing
+                ? 'Reading video info…'
               : convertingNow
                 ? 'Converting for your phone…'
                 : clipLabel

@@ -1,8 +1,9 @@
 import fsp from 'node:fs/promises';
 import path from 'node:path';
-import { S3Client, PutObjectCommand, HeadObjectCommand } from '@aws-sdk/client-s3';
+import { Readable } from 'node:stream';
+import type { Response } from 'express';
+import { S3Client, PutObjectCommand, HeadObjectCommand, GetObjectCommand } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
-import { GetObjectCommand } from '@aws-sdk/client-s3';
 import { config } from '../config.js';
 import { logger } from '../utils/logger.js';
 import { artifactHash } from './artifactCache.js';
@@ -117,6 +118,49 @@ export async function presignedDownloadUrl(r2Key: string, filename: string): Pro
   });
 
   return getSignedUrl(c, command, { expiresIn: config.r2.presignTtlSec });
+}
+
+/** Stream an R2 object through our API (same-origin for mobile gallery blob fetch). */
+export async function streamR2Object(
+  r2Key: string,
+  res: Response,
+  filename: string,
+): Promise<void> {
+  const c = client();
+  if (!c) throw new Error('R2 is not configured');
+
+  const obj = await c.send(
+    new GetObjectCommand({
+      Bucket: config.r2.bucket,
+      Key: r2Key,
+      ResponseContentDisposition: `attachment; filename="${filename.replace(/"/g, '')}"`,
+      ResponseContentType: 'video/mp4',
+    }),
+  );
+
+  const body = obj.Body;
+  if (!body) throw new Error('Empty R2 object');
+
+  const safe = filename.replace(/"/g, '');
+  res.setHeader('Content-Type', 'video/mp4');
+  if (obj.ContentLength != null && obj.ContentLength > 0) {
+    res.setHeader('Content-Length', obj.ContentLength);
+  }
+  res.setHeader('Content-Disposition', `attachment; filename="${safe}"`);
+  res.setHeader('Accept-Ranges', 'bytes');
+
+  if (body instanceof Readable) {
+    await new Promise<void>((resolve, reject) => {
+      body.on('error', reject);
+      res.on('error', reject);
+      res.on('finish', resolve);
+      body.pipe(res);
+    });
+    return;
+  }
+
+  const bytes = await body.transformToByteArray();
+  res.end(Buffer.from(bytes));
 }
 
 export function safeFilenameFromPath(filePath: string): string {

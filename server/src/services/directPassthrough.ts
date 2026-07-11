@@ -3,7 +3,7 @@ import { getFreshInfoJson } from './infoJsonCache.js';
 import { detectPlatform } from './platform.js';
 import type { QualityDef } from './formats.js';
 import type { ClipRange } from '../utils/clip.js';
-import { ensureInfoJsonCache, pickProgressiveDirectUrl } from './ytdlp.js';
+import { pickProgressiveDirectUrl } from './ytdlp.js';
 import { logger } from '../utils/logger.js';
 
 export interface DirectDownloadResult {
@@ -38,14 +38,13 @@ function safeFilename(title: string): string {
 }
 
 /**
- * Resolve a direct googlevideo.com URL from cached info-json.
- * Falls back to null so the caller can run the full yt-dlp pipeline.
+ * Resolve a direct googlevideo.com URL from warm info-json only (no blocking extract).
+ * /api/info should have already warmed the cache while the user picked a quality.
  */
-export async function resolveDirectDownload(
+export function resolveDirectDownload(
   url: string,
   maxHeight: number,
-): Promise<DirectDownloadResult | null> {
-  await ensureInfoJsonCache(url.trim());
+): DirectDownloadResult | null {
   const infoPath = getFreshInfoJson(url.trim(), currentProxy() ?? '');
   if (!infoPath) return null;
 

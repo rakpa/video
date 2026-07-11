@@ -677,7 +677,7 @@ export interface ProgressUpdate {
   percent: number;
   speed: string | null; // e.g. "2.41MiB/s"
   eta: string | null; // e.g. "00:12"
-  stage: 'queued' | 'downloading' | 'merging' | 'trimming' | 'done';
+  stage: 'queued' | 'preparing' | 'downloading' | 'merging' | 'trimming' | 'done';
   /** 1-based index of the stream currently downloading (video=1, audio=2…). */
   streamIndex: number;
   /** Total streams to download (1 = progressive, 2 = video+audio). */
