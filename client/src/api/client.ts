@@ -161,6 +161,8 @@ export async function fetchVideoPreview(url: string): Promise<VideoInfo | null> 
 export interface DownloadStart {
   jobId?: string;
   direct?: boolean;
+  /** True when served from the download-once cache (instant, already merged). */
+  cached?: boolean;
   streamUrl?: string;
   filename?: string;
   height?: number;

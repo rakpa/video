@@ -155,6 +155,20 @@ export const config = {
   // provider on its default port (127.0.0.1:4416); set this to point elsewhere.
   ytdlpPotBaseUrl: (process.env.YTDLP_POT_BASE_URL ?? '').trim(),
 
+  // --- Object storage (Cloudflare R2 / any S3-compatible) ---
+  // When configured, finished downloads upload to the bucket and repeat
+  // requests for the same video+quality are served instantly via presigned
+  // URLs (zero egress on R2). Leave empty to serve from local disk as before.
+  r2Endpoint: (
+    process.env.R2_ENDPOINT ??
+    (process.env.R2_ACCOUNT_ID ? `https://${process.env.R2_ACCOUNT_ID}.r2.cloudflarestorage.com` : '')
+  ).trim(),
+  r2AccessKeyId: (process.env.R2_ACCESS_KEY_ID ?? '').trim(),
+  r2SecretAccessKey: (process.env.R2_SECRET_ACCESS_KEY ?? '').trim(),
+  r2Bucket: (process.env.R2_BUCKET ?? '').trim(),
+  /** How long cached videos stay downloadable (align the bucket lifecycle rule). */
+  r2CacheTtlHours: Math.max(1, Number(process.env.R2_CACHE_TTL_HOURS ?? 24)),
+
   // Root directory where per-job temp folders are created.
   tmpRoot: path.join(os.tmpdir(), 'clipvault'),
 

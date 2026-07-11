@@ -16,6 +16,7 @@ import {
 } from './services/normalizeVideo.js';
 import type { ClipRange } from './utils/clip.js';
 import { getFreshInfoJson } from './services/infoJsonCache.js';
+import { objectStoreEnabled, storeVideo } from './services/objectStore.js';
 import { logger } from './utils/logger.js';
 import { logDownload, HIGH_RES_MIN_HEIGHT } from './utils/downloadLogger.js';
 
@@ -52,6 +53,10 @@ export interface Job {
   galleryMaxHeight?: number;
   /** Dedupe key for prefetch / reuse. */
   cacheKey?: string;
+  /** Object-store key once the finished file is uploaded (R2 cache). */
+  storedKey?: string;
+  /** In-flight background upload to the object store. */
+  storeUpload?: Promise<string | null>;
   /** Verified output height (ffprobe) after download completes. */
   outputHeight?: number | null;
   /** Optional clip range applied after the full download. */
@@ -65,7 +70,7 @@ export interface Job {
 const jobs = new Map<string, Job>();
 const jobsByKey = new Map<string, string>();
 
-function jobCacheKey(
+export function jobCacheKey(
   url: string,
   quality: QualityDef,
   mode: CodecMode,
@@ -313,6 +318,22 @@ export async function createJob(
     }
   }
 
+  // Request coalescing (object store mode): while one visitor's download of
+  // this exact video+settings is queued/running, later visitors attach to the
+  // SAME job instead of starting another yt-dlp run — a viral link costs one
+  // source download no matter how many people click at once. Safe only with
+  // the store on: finished files live in R2, so the first client's pickup
+  // doesn't delete the file out from under the others. Mobile gallery jobs
+  // (galleryPrep) keep dedicated jobs — their output differs per device.
+  if (objectStoreEnabled() && !options?.galleryPrep) {
+    const id = jobsByKey.get(cacheKey);
+    const existing = id ? jobs.get(id) : undefined;
+    if (existing && existing.status !== 'error' && !existing.galleryPrep) {
+      logger.info(`Coalescing into download job ${existing.id} (${existing.status})`);
+      return existing;
+    }
+  }
+
   if (countQueuedJobs() >= config.maxQueueSize) {
     throw new YtDlpError(
       'Too many downloads are waiting right now. Please try again in a few minutes.',
@@ -517,6 +538,21 @@ async function runWithRetry(job: Job, url: string, quality: QualityDef, mode: Co
         });
       }
 
+      // Download-once cache: upload in the background (never delays this
+      // user's pickup). Once stored, /api/file redirects to a presigned URL
+      // and repeat requests for this video skip the pipeline entirely.
+      if (finalPath && job.cacheKey && !job.galleryPrep && objectStoreEnabled()) {
+        job.storeUpload = storeVideo(job.cacheKey, finalPath, {
+          filename: path.basename(finalPath),
+          height: job.outputHeight,
+        })
+          .then((key) => {
+            if (key && jobs.has(job.id)) job.storedKey = key;
+            return key;
+          })
+          .catch(() => null);
+      }
+
       emit(job, { done: true, outputHeight: job.outputHeight ?? null });
       return;
     } catch (err) {
@@ -540,6 +576,30 @@ async function runWithRetry(job: Job, url: string, quality: QualityDef, mode: Co
 
 export function getJob(id: string): Job | undefined {
   return jobs.get(id);
+}
+
+/**
+ * Called after a client finished receiving the file. Without the object store
+ * this destroys the job immediately (original behavior — one download, one
+ * serve). With the store on, wait for the background upload, free the temp
+ * dir, and KEEP the job record: coalesced and late clients hitting
+ * /api/file/:jobId get redirected to the stored copy until the sweeper runs.
+ */
+export async function finishServe(id: string): Promise<void> {
+  const job = jobs.get(id);
+  if (!job) return;
+  if (!objectStoreEnabled() || job.galleryPrep || !job.storeUpload) {
+    await destroyJob(id);
+    return;
+  }
+  await job.storeUpload.catch(() => null);
+  if (!jobs.has(job.id)) return; // swept while uploading
+  if (!job.storedKey) {
+    await destroyJob(id);
+    return;
+  }
+  await clearDir(job.dir);
+  dispatchQueue();
 }
 
 /** Removes a job and deletes its temp directory. */

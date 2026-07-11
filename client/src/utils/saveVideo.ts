@@ -501,12 +501,18 @@ export async function downloadFileToDevice(jobId: string): Promise<void> {
 }
 
 /**
- * Start a direct CDN passthrough download (`/api/stream/:id`). The browser's
- * own download manager shows progress — the transfer never buffers in JS.
+ * Start a direct download from a stream endpoint. Accepts an API-relative path
+ * (`/api/stream/:id` CDN passthrough) or an absolute presigned object-store
+ * URL (cache hit). The browser's own download manager shows progress — the
+ * transfer never buffers in JS.
  */
-export function downloadDirectStream(streamPath: string): void {
+export function downloadDirectStream(streamUrl: string): void {
+  if (/^https?:\/\//i.test(streamUrl)) {
+    triggerCrossOriginDownload(streamUrl);
+    return;
+  }
   if (!isApiConfigured()) throw new Error(API_NOT_CONFIGURED_MSG);
-  triggerCrossOriginDownload(apiUrl(streamPath));
+  triggerCrossOriginDownload(apiUrl(streamUrl));
 }
 
 /** @deprecated Use downloadFileToDevice — kept for any legacy imports. */

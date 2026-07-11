@@ -2,7 +2,8 @@ import { Router } from 'express';
 import fs from 'node:fs';
 import fsp from 'node:fs/promises';
 import path from 'node:path';
-import { getJob, destroyJob, isGalleryReady, warmGalleryNormalize, type Job } from '../jobManager.js';
+import { getJob, destroyJob, finishServe, isGalleryReady, warmGalleryNormalize, type Job } from '../jobManager.js';
+import { presignStoredVideo } from '../services/objectStore.js';
 import { logger } from '../utils/logger.js';
 
 export const fileRouter = Router();
@@ -68,6 +69,14 @@ fileRouter.get('/file/:jobId', async (req, res) => {
     return res.status(409).json({ error: 'The file is not ready yet.' });
   }
 
+  // Already uploaded to the object store (coalesced/late pickup after the
+  // local temp dir was freed) — hand the browser a presigned URL instead of
+  // streaming a byte of video through this server.
+  if (job.storedKey) {
+    const url = await presignStoredVideo(job.storedKey, path.basename(job.filePath));
+    if (url) return res.redirect(302, url);
+  }
+
   const servePath = resolveServePath(job);
   if (!servePath) {
     if (job.galleryNormalizeFailed) {
@@ -99,7 +108,7 @@ fileRouter.get('/file/:jobId', async (req, res) => {
   const cleanup = () => {
     if (cleaned) return;
     cleaned = true;
-    void destroyJob(job.id);
+    void finishServe(job.id);
   };
 
   stream.on('end', cleanup);

@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { validateUrl } from '../utils/validate.js';
 import { readJsonBody } from '../utils/body.js';
 import { getQuality, isCodecMode } from '../services/formats.js';
-import { createJob } from '../jobManager.js';
+import { createJob, jobCacheKey } from '../jobManager.js';
 import { YtDlpError, readCachedVideoInfo } from '../services/ytdlp.js';
 import { detectPlatform } from '../services/platform.js';
 import { maxAllowedHeight, isPro } from '../services/license.js';
@@ -12,6 +12,7 @@ import { HIGH_RES_MIN_HEIGHT } from '../utils/downloadLogger.js';
 import { getClientIp } from '../utils/clientIp.js';
 import { getHighResCount, reserveHighResSlot, quotaStoreKind } from '../utils/highResQuota.js';
 import { findDirectStream } from '../services/directStream.js';
+import { findCachedVideo } from '../services/objectStore.js';
 
 export const downloadRouter = Router();
 
@@ -97,6 +98,22 @@ downloadRouter.post('/download', async (req, res) => {
       : isCodecMode(mode)
         ? mode
         : 'best';
+
+  // Fastest path: this exact video+quality was already downloaded and lives in
+  // the object store — hand back a presigned URL, zero work, zero egress.
+  // Mobile gallery flows keep the pipeline (their output differs per device).
+  if (!galleryPrep) {
+    const storeHit = await findCachedVideo(jobCacheKey(url.trim(), q, codecMode, Boolean(fast), clipResult.clip));
+    if (storeHit) {
+      return res.status(200).json({
+        direct: true,
+        cached: true,
+        streamUrl: storeHit.url,
+        filename: storeHit.filename,
+        height: storeHit.height,
+      });
+    }
+  }
 
   // Fast path: pre-muxed MP4 piped straight from the platform CDN (no yt-dlp
   // download, no worker slot). Only taken when it matches the quality the merge
