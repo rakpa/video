@@ -20,7 +20,6 @@ import { logger } from './utils/logger.js';
 import { logDownload, HIGH_RES_MIN_HEIGHT } from './utils/downloadLogger.js';
 import {
   artifactCacheKey,
-  getCachedArtifact,
   saveCachedArtifact,
   markInflight,
   clearInflight,
@@ -30,7 +29,7 @@ import {
 import {
   isR2Enabled,
   uploadToR2,
-  r2ObjectExists,
+  resolveCachedArtifact,
   safeFilenameFromPath,
 } from './services/r2Storage.js';
 
@@ -349,10 +348,7 @@ async function persistToR2Cache(job: Job, localPath: string, cacheKey: string): 
       config.r2.cacheTtlSec,
     );
     jobsByKey.delete(cacheKey);
-    await fsp.rm(job.dir, { recursive: true, force: true }).catch(() => undefined);
-    job.filePath = undefined;
-    job.galleryPath = undefined;
-    logger.info(`Job ${job.id} persisted to R2; local scratch removed`);
+    logger.info(`Job ${job.id} persisted to R2 (${r2Key})`);
   } catch (err) {
     logger.warn('R2 cache upload failed — serving from local disk:', (err as Error).message);
     await clearInflight(cacheKey);
@@ -388,8 +384,8 @@ export async function createJob(
   // R2 download-once cache — instant presigned URL, no yt-dlp.
   if (isR2Enabled()) {
     try {
-      const cached = await getCachedArtifact(cacheKey);
-      if (cached && (await r2ObjectExists(cached.r2Key))) {
+      const cached = await resolveCachedArtifact(cacheKey);
+      if (cached) {
         logger.info(`R2 cache hit for ${cacheKey.slice(0, 80)}…`);
         return createCachedJob(cacheKey, cached, {
           platformId: detectPlatform(url)?.id,
@@ -661,13 +657,15 @@ async function runWithRetry(job: Job, url: string, quality: QualityDef, mode: Co
         });
       }
 
-      if (job.cacheKey && finalPath) {
-        await persistToR2Cache(job, finalPath, job.cacheKey);
+      emit(job, { done: true, outputHeight: job.outputHeight ?? null });
+
+      // Upload to R2 in the background — don't block the user's download on upload time.
+      if (job.cacheKey && finalPath && isR2Enabled()) {
+        void persistToR2Cache(job, finalPath, job.cacheKey);
       } else if (job.cacheKey) {
         await clearInflight(job.cacheKey);
       }
 
-      emit(job, { done: true, outputHeight: job.outputHeight ?? null });
       return;
     } catch (err) {
       const blocked = err instanceof YtDlpError && err.code === 'BLOCKED';

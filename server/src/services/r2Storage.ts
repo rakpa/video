@@ -43,6 +43,41 @@ export async function r2ObjectExists(key: string): Promise<boolean> {
   }
 }
 
+/**
+ * Find a cached artifact — Redis metadata first, then direct R2 HEAD by cache hash.
+ * Works even when Redis is down (file already in bucket from a prior download).
+ */
+export async function resolveCachedArtifact(
+  cacheKey: string,
+): Promise<import('./artifactCache.js').CachedArtifact | null> {
+  const { getCachedArtifact, saveCachedArtifact } = await import(
+    './artifactCache.js'
+  );
+  type CachedArtifact = import('./artifactCache.js').CachedArtifact;
+
+  const r2Key = objectKeyFor(cacheKey);
+
+  let cached = await getCachedArtifact(cacheKey);
+  if (cached && (await r2ObjectExists(cached.r2Key))) {
+    return cached;
+  }
+
+  if (!(await r2ObjectExists(r2Key))) return null;
+
+  cached = {
+    r2Key,
+    outputHeight: null,
+    filename: 'video.mp4',
+    bytes: 0,
+    cachedAt: Date.now(),
+  };
+  logger.info(`R2 direct cache hit (no Redis metadata): ${r2Key}`);
+
+  // Backfill Redis when available so the next lookup is faster.
+  void saveCachedArtifact(cacheKey, cached, config.r2.cacheTtlSec);
+  return cached;
+}
+
 export async function uploadToR2(
   localPath: string,
   cacheKey: string,
