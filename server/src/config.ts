@@ -52,8 +52,9 @@ function inferMaxConcurrentJobs(lowMemoryMode: boolean): number {
   if (memGb < 1.2) return 4;
   if (memGb < 2.5) return Math.min(8, cpus);
   if (memGb < 5) return Math.min(10, cpus + 2);
-  // Railway Hobby (8 GB / 8 vCPU): ~12 parallel HD jobs, with 2K/4K capped separately.
-  return Math.min(16, cpus + 4);
+  // Railway Hobby (8 GB / 8 vCPU): allow many parallel HD jobs — yt-dlp is mostly network I/O.
+  if (memGb >= 7) return Math.min(32, cpus + 16);
+  return Math.min(24, cpus + 8);
 }
 
 /** Parallel VP9/HEVC → H.264 converts (mobile gallery prep). ~2 GB RAM each at 4K. */
@@ -79,6 +80,7 @@ function inferMaxConcurrentHighResJobs(lowMemoryMode: boolean): number {
   const cpus = os.cpus().length;
   if (memGb < 2) return 2;
   if (memGb < 5) return 4;
+  if (memGb >= 7) return Math.min(10, cpus);
   return Math.min(6, Math.max(4, Math.floor(cpus * 0.75)));
 }
 
@@ -121,8 +123,8 @@ export const config = {
   /** Max jobs waiting in line on this server (1k–50k+ visitors can queue). */
   maxQueueSize: Math.max(100, Number(process.env.MAX_QUEUE_SIZE ?? 50_000)),
 
-  /** Max simultaneous downloads per visitor IP (web + phone + spare tab). */
-  maxConcurrentJobsPerIp: Math.max(1, Number(process.env.MAX_CONCURRENT_JOBS_PER_IP ?? 3)),
+  /** Max simultaneous downloads per visitor IP (laptop + phone + tabs at once). */
+  maxConcurrentJobsPerIp: Math.max(1, Number(process.env.MAX_CONCURRENT_JOBS_PER_IP ?? 8)),
 
   /** Parallel ffmpeg gallery transcodes (2K/4K mobile). */
   get maxConcurrentTranscodes(): number {

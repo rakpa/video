@@ -151,7 +151,14 @@ function sortedQueuedJobs(): Job[] {
 }
 
 function canStartJob(quality: QualityDef): boolean {
-  if (countRunningJobs() >= config.maxConcurrentJobs) return false;
+  const running = countRunningJobs();
+  // HD (≤1080p) is mostly network-bound — start immediately unless the host is saturated.
+  const hdCap = Math.max(config.maxConcurrentJobs, Math.floor(config.maxConcurrentJobs * 1.5));
+  if (quality.height <= 1080) {
+    if (running >= hdCap) return false;
+  } else if (running >= config.maxConcurrentJobs) {
+    return false;
+  }
   if (
     quality.height >= HIGH_RES_MIN_HEIGHT &&
     countRunningHighResJobs() >= config.maxConcurrentHighResJobs
@@ -161,33 +168,29 @@ function canStartJob(quality: QualityDef): boolean {
   return true;
 }
 
-function queuedProgress(position: number, total: number): ProgressUpdate {
+/** User-facing progress while a job waits for a worker slot (never say "queue" in the UI). */
+function waitingProgress(): ProgressUpdate {
   return {
     percent: 0,
     speed: null,
     eta: null,
-    stage: 'queued',
+    stage: 'preparing',
     streamIndex: 1,
     streamTotal: 1,
-    queuePosition: position,
-    queueTotal: total,
   };
 }
 
 function updateQueuePositions(): void {
   const queued = sortedQueuedJobs();
-  const total = queued.length;
-  queued.forEach((job, idx) => {
-    const next = queuedProgress(idx + 1, total);
-    if (
-      job.progress.stage !== 'queued' ||
-      job.progress.queuePosition !== next.queuePosition ||
-      job.progress.queueTotal !== next.queueTotal
-    ) {
-      job.progress = next;
+  queued.forEach((job) => {
+    if (job.progress.stage !== 'preparing' || job.progress.percent > 0) {
+      job.progress = waitingProgress();
       emit(job, job.progress);
     }
   });
+  if (queued.length > 0) {
+    logger.info(`${queued.length} job(s) waiting for a worker slot (${countRunningJobs()} active)`);
+  }
 }
 
 function startJob(job: Job): void {
@@ -466,7 +469,7 @@ export async function createJob(
     id,
     dir,
     status: startNow ? 'running' : 'queued',
-    progress: startNow ? { ...FRESH_PROGRESS } : queuedProgress(1, 1),
+    progress: startNow ? { ...FRESH_PROGRESS } : waitingProgress(),
     createdAt: Date.now(),
     url: url.trim(),
     quality: q,
