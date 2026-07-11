@@ -5,7 +5,6 @@ import { useTheme, type Theme } from './hooks/useTheme';
 import { detectPlatform, normalizeUrl } from './utils/platform';
 import { API_NOT_CONFIGURED_MSG, isApiConfigured } from './config/api';
 import { PLACEHOLDER_FORMATS } from './utils/formats';
-import { fetchClientInstagramPreview } from './utils/instagram';
 import { fetchClientYoutubePreview } from './utils/youtube';
 import { preloadThumbnail, warmThumbnailFetch, type PreloadedThumb } from './utils/preloadThumb';
 import { isPro, licenseToken, maxAllowedHeight } from './lib/license';
@@ -193,6 +192,8 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
   const [refining, setRefining] = useState(false);
   /** IG/FB: true once /api/info finished — info-json is warm for instant download start. */
   const [infoWarm, setInfoWarm] = useState(false);
+  /** IG/FB: true when server info-json cache is ready (preview warmed yt-dlp). */
+  const [infoCacheReady, setInfoCacheReady] = useState(false);
   /** IG/FB: decoded thumbnail — card stays on skeleton until this is set. */
   const [preloadedThumb, setPreloadedThumb] = useState<PreloadedThumb | null>(null);
   /** Mobile: gallery-ready file after download completes. */
@@ -211,6 +212,7 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
   const prevUrlLen = useRef(0);
   const infoWarmPromise = useRef<Promise<void> | null>(null);
   const infoWarmRef = useRef(false);
+  const infoCacheReadyRef = useRef(false);
   const socialRevealedRef = useRef(false);
   const proPanelRef = useRef<HTMLDivElement>(null);
   const highResLimitRef = useRef<HTMLDivElement>(null);
@@ -396,6 +398,8 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
     setRefining(true);
     setInfoWarm(false);
     infoWarmRef.current = false;
+    setInfoCacheReady(false);
+    infoCacheReadyRef.current = false;
     infoWarmPromise.current = null;
     socialRevealedRef.current = false;
     cancelMobileGalleryGestureFallback();
@@ -417,18 +421,26 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
     const isSocial = platform.id === 'instagram' || platform.id === 'facebook';
 
     const revealSocialPreview = (card: VideoInfo): boolean => {
-      if (!card.thumbnail || socialRevealedRef.current) return socialRevealedRef.current;
-      socialRevealedRef.current = true;
+      if (!card.thumbnail) return socialRevealedRef.current;
       warmThumbnailFetch(card);
+      const firstReveal = !socialRevealedRef.current;
+      if (firstReveal) {
+        socialRevealedRef.current = true;
+        setPhase('ready');
+      }
       setInfo((prev) => ({
         ...card,
         formats: prev?.formats ?? PLACEHOLDER_FORMATS,
+        title: card.title || prev?.title || 'Untitled video',
+        author: card.author || prev?.author || 'Unknown',
+        thumbnail: card.thumbnail ?? prev?.thumbnail ?? null,
       }));
-      setPhase('ready');
-      void preloadThumbnail(card).then((loaded) => {
-        if (fetchedUrl.current !== normalized) return;
-        if (loaded) setPreloadedThumb(loaded);
-      });
+      if (firstReveal) {
+        void preloadThumbnail(card).then((loaded) => {
+          if (fetchedUrl.current !== normalized) return;
+          if (loaded) setPreloadedThumb(loaded);
+        });
+      }
       return true;
     };
 
@@ -452,7 +464,9 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
     const infoPromise = fetchVideoInfo(normalized).then((data) => {
       if (fetchedUrl.current === normalized) {
         infoWarmRef.current = true;
+        infoCacheReadyRef.current = true;
         setInfoWarm(true);
+        setInfoCacheReady(true);
       }
       return data;
     });
@@ -474,19 +488,13 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
         setPhase((p) => (p === 'preview' ? 'ready' : p));
       });
     } else {
-      if (platform.id === 'instagram') {
-        void fetchClientInstagramPreview(normalized).then((client) => {
-          if (!client.thumbnail || fetchedUrl.current !== normalized) return;
-          revealSocialPreview({
-            ...client,
-            platform: platform.id,
-            formats: PLACEHOLDER_FORMATS,
-          });
-        });
-      }
-
       void previewPromise.then((preview) => {
-        if (!preview?.thumbnail || fetchedUrl.current !== normalized) return;
+        if (!preview || fetchedUrl.current !== normalized) return;
+        if (preview.cacheReady) {
+          infoCacheReadyRef.current = true;
+          setInfoCacheReady(true);
+        }
+        if (!preview.thumbnail) return;
         hasPreview = true;
         revealSocialPreview({
           platform: platform.id,
@@ -672,13 +680,6 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
       setProgress({ ...INITIAL_PROGRESS, stage: 'preparing', percent: 0 });
 
       try {
-        if (isIgFb && !infoWarmRef.current) {
-          await infoWarmPromise.current?.catch(() => undefined);
-          if (!infoWarmRef.current) {
-            throw new Error('Still preparing this video. Wait a moment and try again.');
-          }
-        }
-
         const effectiveMode: CodecMode = isIgFb ? 'compatible' : mode;
         const startResult = await startDownloadJob(
           currentUrl,
@@ -958,7 +959,10 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
                         refining={refining}
                         sourceMaxHeight={info!.sourceMaxHeight}
                         downloadReady={
-                          (info!.platform !== 'instagram' && info!.platform !== 'facebook') || infoWarm
+                          (info!.platform !== 'instagram' && info!.platform !== 'facebook') ||
+                          infoWarm ||
+                          infoCacheReady ||
+                          previewCardReady
                         }
                         onDownload={() => void handleDownload(selected, codecMode)}
                         onUpgrade={() => {

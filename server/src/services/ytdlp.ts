@@ -731,8 +731,8 @@ function downloadTuning(
   const platform = detectPlatform(url)?.id;
   if (platform === 'instagram' || platform === 'facebook') {
     return fast
-      ? { httpChunkSize: '5M', concurrentFragments: '6' }
-      : { httpChunkSize: '4M', concurrentFragments: '4' };
+      ? { httpChunkSize: '8M', concurrentFragments: '8' }
+      : { httpChunkSize: '5M', concurrentFragments: '6' };
   }
   if (!config.lowMemoryMode && (qualityHeight ?? 0) > 1080) {
     const frags = Math.min(8, Math.max(5, config.cpuCount));

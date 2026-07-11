@@ -20,8 +20,8 @@ export class ApiError extends Error {
 /** Enough attempts to survive Render free-tier cold starts (~50s wake). */
 const COLD_START_RETRY = { retries: 8, delayMs: 5000, backoffFactor: 1.4 } as const;
 
-/** Preview is lightweight — shorter backoff so thumbnails appear quickly. */
-const PREVIEW_RETRY = { retries: 4, delayMs: 1500, backoffFactor: 1.4 } as const;
+/** Preview is lightweight — fail fast then retry so thumbnails appear quickly. */
+const PREVIEW_RETRY = { retries: 2, delayMs: 700, backoffFactor: 1.3 } as const;
 
 function apiFailureMessage(res: Response, isJson: boolean): string {
   if (res.status === 502 || res.status === 503 || res.status === 504) {
@@ -87,10 +87,13 @@ export function warmSocialPreview(url: string): void {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ url }),
+    signal: AbortSignal.timeout(12000),
   }).catch(() => undefined);
 }
 
-async function fetchPreviewFromApi(url: string): Promise<VideoInfo | null> {
+export type VideoPreviewResult = VideoInfo & { cacheReady?: boolean };
+
+async function fetchPreviewFromApi(url: string): Promise<VideoPreviewResult | null> {
   let res: Response;
   try {
     res = await retryFetch(
@@ -99,6 +102,7 @@ async function fetchPreviewFromApi(url: string): Promise<VideoInfo | null> {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ url }),
+        signal: AbortSignal.timeout(9000),
       },
       PREVIEW_RETRY,
     );
@@ -109,10 +113,13 @@ async function fetchPreviewFromApi(url: string): Promise<VideoInfo | null> {
   if (!res.ok) return null;
   const isJson = res.headers.get('content-type')?.includes('application/json');
   if (!isJson) return null;
-  return (await res.json()) as VideoInfo;
+  return (await res.json()) as VideoPreviewResult;
 }
 
-function mergeSocialPreview(client: VideoInfo | null, api: VideoInfo | null): VideoInfo | null {
+function mergeSocialPreview(
+  client: VideoPreviewResult | null,
+  api: VideoPreviewResult | null,
+): VideoPreviewResult | null {
   if (!client && !api) return null;
   if (!api) return client;
   if (!client) return api;
@@ -124,7 +131,44 @@ function mergeSocialPreview(client: VideoInfo | null, api: VideoInfo | null): Vi
     author: api.author || client.author,
     thumbnail: api.thumbnail ?? client.thumbnail,
     durationSeconds: api.durationSeconds ?? client.durationSeconds,
+    cacheReady: api.cacheReady ?? client.cacheReady,
   };
+}
+
+/** Resolve as soon as any source returns a thumbnail — don't wait for the slowest. */
+function raceSocialPreviewSources(
+  clientPromise: Promise<VideoPreviewResult | null>,
+  apiPromise: Promise<VideoPreviewResult | null>,
+): Promise<VideoPreviewResult | null> {
+  return new Promise((resolve) => {
+    let pending = 2;
+    let fallback: VideoPreviewResult | null = null;
+    let done = false;
+
+    const finish = (result: VideoPreviewResult | null) => {
+      if (done) return;
+      if (result?.thumbnail) {
+        done = true;
+        resolve(result);
+        return;
+      }
+      if (result) fallback = mergeSocialPreview(fallback, result);
+      pending -= 1;
+      if (pending === 0) {
+        done = true;
+        resolve(fallback);
+      }
+    };
+
+    void clientPromise.then(finish).catch(() => {
+      pending -= 1;
+      if (pending === 0 && !done) resolve(fallback);
+    });
+    void apiPromise.then(finish).catch(() => {
+      pending -= 1;
+      if (pending === 0 && !done) resolve(fallback);
+    });
+  });
 }
 
 /** Fetch metadata + quality options for a URL. */
@@ -132,15 +176,15 @@ export function fetchVideoInfo(url: string): Promise<VideoInfo> {
   return postJson<VideoInfo>('/api/info', { url });
 }
 
-/** Fast preview (title + thumbnail). YouTube uses browser oEmbed; IG/FB race client + API in parallel. */
-export async function fetchVideoPreview(url: string): Promise<VideoInfo | null> {
+/** Fast preview (title + thumbnail). YouTube uses browser oEmbed; IG/FB race client + API. */
+export async function fetchVideoPreview(url: string): Promise<VideoPreviewResult | null> {
   const platformId = detectPlatform(url)?.id;
 
   if (platformId === 'youtube') {
     return fetchClientYoutubePreview(url);
   }
 
-  const clientPromise =
+  const clientPromise: Promise<VideoPreviewResult | null> =
     platformId === 'instagram'
       ? fetchClientInstagramPreview(url)
       : platformId === 'facebook'
@@ -149,8 +193,7 @@ export async function fetchVideoPreview(url: string): Promise<VideoInfo | null> 
 
   if (!isApiConfigured()) return clientPromise;
 
-  const [client, api] = await Promise.all([clientPromise, fetchPreviewFromApi(url)]);
-  return mergeSocialPreview(client, api);
+  return raceSocialPreviewSources(clientPromise, fetchPreviewFromApi(url));
 }
 
 /** Kick off a download — job pipeline or SaveFrom-style direct CDN URL. */

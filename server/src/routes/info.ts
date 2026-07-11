@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { validateUrl } from '../utils/validate.js';
 import { readJsonBody } from '../utils/body.js';
-import { fetchInfo, ensureInfoJsonCache, YtDlpError } from '../services/ytdlp.js';
+import { fetchInfo, ensureInfoJsonCache, readCachedVideoInfo, YtDlpError } from '../services/ytdlp.js';
 import { detectPlatform } from '../services/platform.js';
 import { fetchPreview } from '../services/preview.js';
 import { getCachedInfo, setCachedInfo } from '../services/infoCache.js';
@@ -26,7 +26,8 @@ infoRouter.post('/info/preview', async (req, res) => {
     if (!preview) {
       return res.status(204).end();
     }
-    return res.json({ platform: platform.id, ...preview });
+    const cacheReady = Boolean(readCachedVideoInfo(url.trim()));
+    return res.json({ platform: platform.id, ...preview, cacheReady });
   } catch {
     return res.status(204).end();
   }

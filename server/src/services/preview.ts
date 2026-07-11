@@ -138,7 +138,7 @@ async function fetchInstagramOembed(
   try {
     const res = await fetch(`https://www.instagram.com/oembed/?url=${encodeURIComponent(clean)}`, {
       headers: FETCH_HEADERS,
-      signal: AbortSignal.timeout(3500),
+      signal: AbortSignal.timeout(2500),
     });
     if (!res.ok) return null;
     const data = (await res.json()) as {
@@ -314,18 +314,25 @@ async function fetchInstagramPreview(url: string): Promise<VideoInfo | null> {
       durationSeconds: warm.durationSeconds,
       thumbnail: warm.thumbnail,
       sourceMaxHeight: null,
-    formats: [],
+      formats: [],
     };
   }
 
   void ensureInfoJsonCache(clean).catch(() => undefined);
 
   const hit = await raceSocialPreview([
+    // oEmbed is usually fastest (~300–800 ms) — try it first on its own.
+    async () => {
+      const og = await fetchInstagramOembed(clean);
+      if (!og?.image) return null;
+      notePreviewImage(og.image);
+      ogCache.set(cacheKey, { data: og, expires: Date.now() + OG_CACHE_TTL_MS });
+      return buildInstagramPreview(id, og);
+    },
     async () => {
       const og = await raceForMetadata([
-        () => scrapeOpenGraphOnce(embed, 1500),
-        () => fetchInstagramOembed(clean),
-        () => scrapeOpenGraphOnce(clean, 3000),
+        () => scrapeOpenGraphOnce(embed, 1200),
+        () => scrapeOpenGraphOnce(clean, 2200),
       ]);
       if (!og?.title && !og?.image) return null;
       notePreviewImage(og.image);
@@ -333,7 +340,7 @@ async function fetchInstagramPreview(url: string): Promise<VideoInfo | null> {
       return buildInstagramPreview(id, og);
     },
     async () => {
-      const info = await waitForCachedVideoInfo(clean, 18000);
+      const info = await waitForCachedVideoInfo(clean, 12000);
       if (!info?.thumbnail) return null;
       notePreviewImage(info.thumbnail);
       return {
@@ -343,7 +350,7 @@ async function fetchInstagramPreview(url: string): Promise<VideoInfo | null> {
         durationSeconds: info.durationSeconds,
         thumbnail: info.thumbnail,
         sourceMaxHeight: null,
-    formats: [],
+        formats: [],
       };
     },
   ]);
@@ -407,10 +414,24 @@ async function fetchFacebookPreview(url: string): Promise<VideoInfo | null> {
 
   const hit = await raceSocialPreview([
     async () => {
-      const og = await raceForMetadata([
-        () => fetchFacebookOembed(trimmed),
-        ...scrapeUrls.map((u, i) => () => scrapeOpenGraphOnce(u, i === 0 ? 1500 : 2500)),
-      ]);
+      const og = await fetchFacebookOembed(trimmed);
+      if (!og?.image && !og?.title) return null;
+      notePreviewImage(og.image);
+      ogCache.set(cacheKey, { data: og, expires: Date.now() + OG_CACHE_TTL_MS });
+      return {
+        id: '',
+        title: og.title?.replace(/\s*\|\s*Facebook.*$/i, '').trim() || 'Facebook video',
+        author: og.author || 'Facebook',
+        durationSeconds: null,
+        thumbnail: og.image ?? null,
+        sourceMaxHeight: null,
+        formats: [],
+      };
+    },
+    async () => {
+      const og = await raceForMetadata(
+        scrapeUrls.map((u, i) => () => scrapeOpenGraphOnce(u, i === 0 ? 1200 : 2200)),
+      );
       if (!og?.title && !og?.image) return null;
       notePreviewImage(og.image);
       ogCache.set(cacheKey, { data: og, expires: Date.now() + OG_CACHE_TTL_MS });
@@ -421,11 +442,11 @@ async function fetchFacebookPreview(url: string): Promise<VideoInfo | null> {
         durationSeconds: null,
         thumbnail: og.image ?? null,
         sourceMaxHeight: null,
-    formats: [],
+        formats: [],
       };
     },
     async () => {
-      const info = await waitForCachedVideoInfo(trimmed, 18000);
+      const info = await waitForCachedVideoInfo(trimmed, 12000);
       if (!info?.thumbnail) return null;
       notePreviewImage(info.thumbnail);
       return {
@@ -435,7 +456,7 @@ async function fetchFacebookPreview(url: string): Promise<VideoInfo | null> {
         durationSeconds: info.durationSeconds,
         thumbnail: info.thumbnail,
         sourceMaxHeight: null,
-    formats: [],
+        formats: [],
       };
     },
   ]);

@@ -67,7 +67,7 @@ export async function fetchClientInstagramPreview(url: string): Promise<VideoInf
 
   try {
     const res = await fetch(`https://www.instagram.com/oembed/?url=${encodeURIComponent(clean)}`, {
-      signal: AbortSignal.timeout(2000),
+      signal: AbortSignal.timeout(2800),
     });
     if (res.ok) {
       const data = (await res.json()) as {
