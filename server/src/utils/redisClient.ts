@@ -34,38 +34,56 @@ export function redisMode(): 'ioredis' | 'upstash' | null {
   return mode;
 }
 
-/** Low-level GET — returns null when Redis is not configured. */
+/** Low-level GET — returns null when Redis is not configured or unreachable. */
 export async function redisGet(key: string): Promise<string | null> {
   if (!client) return null;
-  if (mode === 'ioredis') return (await (client as IORedis).get(key)) as string | null;
-  const v = await (client as UpstashRedis).get<string | null>(key);
-  return v ?? null;
+  try {
+    if (mode === 'ioredis') return (await (client as IORedis).get(key)) as string | null;
+    const v = await (client as UpstashRedis).get<string | null>(key);
+    return v ?? null;
+  } catch (err) {
+    logger.warn(`Redis GET failed: ${(err as Error).message}`);
+    return null;
+  }
 }
 
 export async function redisSet(key: string, value: string, ttlSeconds?: number): Promise<void> {
   if (!client) return;
-  if (mode === 'ioredis') {
-    if (ttlSeconds) await (client as IORedis).set(key, value, 'EX', ttlSeconds);
-    else await (client as IORedis).set(key, value);
-    return;
+  try {
+    if (mode === 'ioredis') {
+      if (ttlSeconds) await (client as IORedis).set(key, value, 'EX', ttlSeconds);
+      else await (client as IORedis).set(key, value);
+      return;
+    }
+    if (ttlSeconds) await (client as UpstashRedis).set(key, value, { ex: ttlSeconds });
+    else await (client as UpstashRedis).set(key, value);
+  } catch (err) {
+    logger.warn(`Redis SET failed: ${(err as Error).message}`);
   }
-  if (ttlSeconds) await (client as UpstashRedis).set(key, value, { ex: ttlSeconds });
-  else await (client as UpstashRedis).set(key, value);
 }
 
 export async function redisDel(key: string): Promise<void> {
   if (!client) return;
-  if (mode === 'ioredis') await (client as IORedis).del(key);
-  else await (client as UpstashRedis).del(key);
+  try {
+    if (mode === 'ioredis') await (client as IORedis).del(key);
+    else await (client as UpstashRedis).del(key);
+  } catch (err) {
+    logger.warn(`Redis DEL failed: ${(err as Error).message}`);
+  }
 }
 
 /** SET key value NX EX ttl — returns true when the lock was acquired. */
 export async function redisSetNx(key: string, value: string, ttlSeconds: number): Promise<boolean> {
   if (!client) return true;
-  if (mode === 'ioredis') {
-    const result = await (client as IORedis).set(key, value, 'EX', ttlSeconds, 'NX');
+  try {
+    if (mode === 'ioredis') {
+      const result = await (client as IORedis).set(key, value, 'EX', ttlSeconds, 'NX');
+      return result === 'OK';
+    }
+    const result = await (client as UpstashRedis).set(key, value, { nx: true, ex: ttlSeconds });
     return result === 'OK';
+  } catch (err) {
+    logger.warn(`Redis SETNX failed: ${(err as Error).message}`);
+    return true;
   }
-  const result = await (client as UpstashRedis).set(key, value, { nx: true, ex: ttlSeconds });
-  return result === 'OK';
 }

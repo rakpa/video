@@ -11,6 +11,7 @@ import { config } from '../config.js';
 import { HIGH_RES_MIN_HEIGHT } from '../utils/downloadLogger.js';
 import { getClientIp } from '../utils/clientIp.js';
 import { getHighResCount, reserveHighResSlot, quotaStoreKind } from '../utils/highResQuota.js';
+import { logger } from '../utils/logger.js';
 
 export const downloadRouter = Router();
 
@@ -115,6 +116,7 @@ downloadRouter.post('/download', async (req, res) => {
     if (err instanceof YtDlpError) {
       return res.status(500).json({ error: err.message });
     }
+    logger.error('createJob failed:', err);
     return res.status(500).json({ error: 'Could not start the download.' });
   }
 });

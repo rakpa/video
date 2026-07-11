@@ -387,15 +387,19 @@ export async function createJob(
 
   // R2 download-once cache — instant presigned URL, no yt-dlp.
   if (isR2Enabled()) {
-    const cached = await getCachedArtifact(cacheKey);
-    if (cached && (await r2ObjectExists(cached.r2Key))) {
-      logger.info(`R2 cache hit for ${cacheKey.slice(0, 80)}…`);
-      return createCachedJob(cacheKey, cached, {
-        platformId: detectPlatform(url)?.id,
-        requestedHeight: quality.height,
-        galleryPrep: options?.galleryPrep ?? false,
-        ip: options?.ip,
-      });
+    try {
+      const cached = await getCachedArtifact(cacheKey);
+      if (cached && (await r2ObjectExists(cached.r2Key))) {
+        logger.info(`R2 cache hit for ${cacheKey.slice(0, 80)}…`);
+        return createCachedJob(cacheKey, cached, {
+          platformId: detectPlatform(url)?.id,
+          requestedHeight: quality.height,
+          galleryPrep: options?.galleryPrep ?? false,
+          ip: options?.ip,
+        });
+      }
+    } catch (err) {
+      logger.warn('R2 cache lookup skipped:', (err as Error).message);
     }
   }
 
@@ -408,13 +412,17 @@ export async function createJob(
 
   // Redis inflight marker (multi-instance coalescing prep for BullMQ).
   if (isR2Enabled()) {
-    const remoteId = await getInflightJobId(cacheKey);
-    if (remoteId) {
-      const remote = getJob(remoteId);
-      if (remote && (remote.status === 'queued' || remote.status === 'running')) {
-        logger.info(`Coalescing onto Redis in-flight job ${remoteId}`);
-        return remote;
+    try {
+      const remoteId = await getInflightJobId(cacheKey);
+      if (remoteId) {
+        const remote = getJob(remoteId);
+        if (remote && (remote.status === 'queued' || remote.status === 'running')) {
+          logger.info(`Coalescing onto Redis in-flight job ${remoteId}`);
+          return remote;
+        }
       }
+    } catch (err) {
+      logger.warn('Redis inflight lookup skipped:', (err as Error).message);
     }
   }
 
@@ -482,7 +490,11 @@ export async function createJob(
   jobsByKey.set(cacheKey, id);
 
   if (isR2Enabled()) {
-    await markInflight(cacheKey, id);
+    try {
+      await markInflight(cacheKey, id);
+    } catch (err) {
+      logger.warn('Redis inflight mark skipped:', (err as Error).message);
+    }
   }
 
   if (startNow) {
