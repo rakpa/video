@@ -174,4 +174,9 @@ app.listen(config.port, () => {
         `(${memGb} GB RAM, ${config.cpuCount} vCPU)`,
     );
   }
+  if (config.r2.enabled) {
+    logger.info(`R2 download-once cache: ON (bucket ${config.r2.bucket})`);
+  } else {
+    logger.info('R2 download-once cache: OFF (set R2_ACCOUNT_ID + keys to enable)');
+  }
 });

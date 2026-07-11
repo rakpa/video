@@ -18,6 +18,21 @@ import type { ClipRange } from './utils/clip.js';
 import { getFreshInfoJson } from './services/infoJsonCache.js';
 import { logger } from './utils/logger.js';
 import { logDownload, HIGH_RES_MIN_HEIGHT } from './utils/downloadLogger.js';
+import {
+  artifactCacheKey,
+  getCachedArtifact,
+  saveCachedArtifact,
+  markInflight,
+  clearInflight,
+  getInflightJobId,
+  type CachedArtifact,
+} from './services/artifactCache.js';
+import {
+  isR2Enabled,
+  uploadToR2,
+  r2ObjectExists,
+  safeFilenameFromPath,
+} from './services/r2Storage.js';
 
 type JobStatus = 'queued' | 'running' | 'ready' | 'error';
 
@@ -50,8 +65,12 @@ export interface Job {
   galleryPrep?: boolean;
   /** Cap source download + transcode height (mobile browser 2K/4K → 1080p for speed). */
   galleryMaxHeight?: number;
-  /** Dedupe key for prefetch / reuse. */
+  /** Dedupe key for prefetch / reuse / R2 cache. */
   cacheKey?: string;
+  /** R2 object key when served from download-once cache. */
+  r2Key?: string;
+  /** Instant cache hit — no yt-dlp run. */
+  fromCache?: boolean;
   /** Verified output height (ffprobe) after download completes. */
   outputHeight?: number | null;
   /** Optional clip range applied after the full download. */
@@ -65,35 +84,32 @@ export interface Job {
 const jobs = new Map<string, Job>();
 const jobsByKey = new Map<string, string>();
 
-function jobCacheKey(
-  url: string,
-  quality: QualityDef,
-  mode: CodecMode,
-  fast?: boolean,
-  clip?: ClipRange | null,
-): string {
-  const clipPart = clip ? `clip:${clip.startTime}-${clip.endTime}` : 'full';
-  return `${url.trim()}|${quality.id}|${mode}|${fast ? 'fast' : 'normal'}|${clipPart}`;
-}
-
-/** Return a finished prefetch job for the same url/settings (ready to serve). */
+/** Return a finished job for the same url/settings on this box. */
 export function findReusableJob(
-  url: string,
-  quality: QualityDef,
-  mode: CodecMode,
-  fast?: boolean,
-  clip?: ClipRange | null,
+  cacheKey: string,
 ): Job | undefined {
-  const id = jobsByKey.get(jobCacheKey(url, quality, mode, fast, clip));
+  const id = jobsByKey.get(cacheKey);
   if (!id) return undefined;
   const job = jobs.get(id);
   if (!job || job.status === 'error') {
-    jobsByKey.delete(jobCacheKey(url, quality, mode, fast, clip));
+    jobsByKey.delete(cacheKey);
     return undefined;
   }
-  // Re-attaching to a stalled "running" job (common at 1% on 4K) freezes the UI.
   if (job.status !== 'ready') return undefined;
   return job;
+}
+
+/** Coalesce concurrent requests onto one in-flight download (same cache key). */
+function findInflightJob(cacheKey: string): Job | undefined {
+  const id = jobsByKey.get(cacheKey);
+  if (!id) return undefined;
+  const job = jobs.get(id);
+  if (!job || job.status === 'error') {
+    jobsByKey.delete(cacheKey);
+    return undefined;
+  }
+  if (job.status === 'queued' || job.status === 'running') return job;
+  return undefined;
 }
 
 function countRunningJobs(): number {
@@ -237,6 +253,7 @@ function emit(job: Job, payload: ProgressUpdate | { done: true; outputHeight?: n
 
 /** True when the gallery-ready file can be served (mobile Save to Photos flow). */
 export function isGalleryReady(job: Job): boolean {
+  if (job.r2Key) return true;
   if (!job.galleryPrep) return true;
   return Boolean(job.galleryPath);
 }
@@ -272,6 +289,76 @@ const FRESH_PROGRESS: ProgressUpdate = {
   streamTotal: 1,
 };
 
+/** Instant job from R2 cache — no queue, no yt-dlp, no egress through our server. */
+async function createCachedJob(
+  cacheKey: string,
+  artifact: CachedArtifact,
+  meta: {
+    platformId?: PlatformId;
+    requestedHeight?: number;
+    galleryPrep?: boolean;
+    ip?: string;
+  },
+): Promise<Job> {
+  await fsp.mkdir(config.tmpRoot, { recursive: true });
+  const id = nanoid();
+  const job: Job = {
+    id,
+    dir: path.join(config.tmpRoot, id),
+    status: 'ready',
+    progress: {
+      percent: 100,
+      speed: null,
+      eta: null,
+      stage: 'done',
+      streamIndex: 1,
+      streamTotal: 1,
+    },
+    createdAt: Date.now(),
+    cacheKey,
+    r2Key: artifact.r2Key,
+    fromCache: true,
+    outputHeight: artifact.outputHeight,
+    platformId: meta.platformId,
+    requestedHeight: meta.requestedHeight,
+    galleryPrep: meta.galleryPrep ?? false,
+    ip: meta.ip,
+    cancel: () => undefined,
+    listeners: new Set(),
+  };
+  await fsp.mkdir(job.dir, { recursive: true });
+  jobs.set(id, job);
+  return job;
+}
+
+async function persistToR2Cache(job: Job, localPath: string, cacheKey: string): Promise<void> {
+  if (!isR2Enabled() || !cacheKey) return;
+  try {
+    const filename = safeFilenameFromPath(localPath);
+    const { r2Key, bytes } = await uploadToR2(localPath, cacheKey, filename);
+    job.r2Key = r2Key;
+    await saveCachedArtifact(
+      cacheKey,
+      {
+        r2Key,
+        outputHeight: job.outputHeight ?? null,
+        filename,
+        bytes,
+        cachedAt: Date.now(),
+      },
+      config.r2.cacheTtlSec,
+    );
+    jobsByKey.delete(cacheKey);
+    await fsp.rm(job.dir, { recursive: true, force: true }).catch(() => undefined);
+    job.filePath = undefined;
+    job.galleryPath = undefined;
+    logger.info(`Job ${job.id} persisted to R2; local scratch removed`);
+  } catch (err) {
+    logger.warn('R2 cache upload failed — serving from local disk:', (err as Error).message);
+    await clearInflight(cacheKey);
+  }
+}
+
 /** Creates a temp dir, spawns the download (with auto-retry), and tracks it as a job. */
 export async function createJob(
   url: string,
@@ -288,7 +375,48 @@ export async function createJob(
 ): Promise<Job> {
   const q = effectiveQuality(url, quality, options?.fast, options?.galleryMaxHeight);
   const clip = options?.clip ?? null;
-  const cacheKey = jobCacheKey(url, q, mode, options?.fast, clip);
+  const cacheKey = artifactCacheKey(
+    url,
+    q,
+    mode,
+    options?.fast,
+    clip,
+    options?.galleryPrep,
+    options?.galleryMaxHeight,
+  );
+
+  // R2 download-once cache — instant presigned URL, no yt-dlp.
+  if (isR2Enabled()) {
+    const cached = await getCachedArtifact(cacheKey);
+    if (cached && (await r2ObjectExists(cached.r2Key))) {
+      logger.info(`R2 cache hit for ${cacheKey.slice(0, 80)}…`);
+      return createCachedJob(cacheKey, cached, {
+        platformId: detectPlatform(url)?.id,
+        requestedHeight: quality.height,
+        galleryPrep: options?.galleryPrep ?? false,
+        ip: options?.ip,
+      });
+    }
+  }
+
+  // Coalesce: same viral video already downloading on this box.
+  const inflight = findInflightJob(cacheKey);
+  if (inflight) {
+    logger.info(`Coalescing onto in-flight job ${inflight.id}`);
+    return inflight;
+  }
+
+  // Redis inflight marker (multi-instance coalescing prep for BullMQ).
+  if (isR2Enabled()) {
+    const remoteId = await getInflightJobId(cacheKey);
+    if (remoteId) {
+      const remote = getJob(remoteId);
+      if (remote && (remote.status === 'queued' || remote.status === 'running')) {
+        logger.info(`Coalescing onto Redis in-flight job ${remoteId}`);
+        return remote;
+      }
+    }
+  }
 
   // Each visitor may run several downloads at once (laptop + phone). Only retire
   // their oldest job when they exceed the per-IP cap — never block other users.
@@ -306,7 +434,7 @@ export async function createJob(
   }
 
   if (options?.reuse) {
-    const existing = findReusableJob(url, q, mode, options.fast, clip);
+    const existing = findReusableJob(cacheKey);
     if (existing) {
       logger.info(`Reusing download job ${existing.id} (${existing.status})`);
       return existing;
@@ -352,6 +480,10 @@ export async function createJob(
   };
   jobs.set(id, job);
   jobsByKey.set(cacheKey, id);
+
+  if (isR2Enabled()) {
+    await markInflight(cacheKey, id);
+  }
 
   if (startNow) {
     startJob(job);
@@ -517,6 +649,12 @@ async function runWithRetry(job: Job, url: string, quality: QualityDef, mode: Co
         });
       }
 
+      if (job.cacheKey && finalPath) {
+        await persistToR2Cache(job, finalPath, job.cacheKey);
+      } else if (job.cacheKey) {
+        await clearInflight(job.cacheKey);
+      }
+
       emit(job, { done: true, outputHeight: job.outputHeight ?? null });
       return;
     } catch (err) {
@@ -531,6 +669,7 @@ async function runWithRetry(job: Job, url: string, quality: QualityDef, mode: Co
       }
       job.status = 'error';
       job.errorMessage = (err as Error).message;
+      if (job.cacheKey) await clearInflight(job.cacheKey);
       emit(job, { error: (err as Error).message });
       scheduleDestroyJob(job.id);
       return;
@@ -546,14 +685,16 @@ export function getJob(id: string): Job | undefined {
 export async function destroyJob(id: string): Promise<void> {
   const job = jobs.get(id);
   if (!job) return;
-  if (job.cacheKey) jobsByKey.delete(job.cacheKey);
+  if (job.cacheKey && !job.fromCache) jobsByKey.delete(job.cacheKey);
   jobs.delete(id);
   try {
     job.cancel();
   } catch {
     /* already exited */
   }
-  await fsp.rm(job.dir, { recursive: true, force: true }).catch(() => undefined);
+  if (!job.r2Key) {
+    await fsp.rm(job.dir, { recursive: true, force: true }).catch(() => undefined);
+  }
   dispatchQueue();
 }
 

@@ -191,6 +191,24 @@ export const config = {
 
   // Secret used to HMAC-sign stateless Pro license tokens. CHANGE IN PRODUCTION.
   licenseSecret: process.env.LICENSE_SECRET ?? 'dev-insecure-license-secret-change-me',
+
+  /** Cloudflare R2 — download-once cache; presigned URLs = $0 egress. */
+  r2: {
+    get enabled(): boolean {
+      return Boolean(
+        process.env.R2_ACCOUNT_ID?.trim() &&
+          process.env.R2_ACCESS_KEY_ID?.trim() &&
+          process.env.R2_SECRET_ACCESS_KEY?.trim() &&
+          process.env.R2_BUCKET?.trim(),
+      );
+    },
+    accountId: (process.env.R2_ACCOUNT_ID ?? '').trim(),
+    accessKeyId: (process.env.R2_ACCESS_KEY_ID ?? '').trim(),
+    secretAccessKey: (process.env.R2_SECRET_ACCESS_KEY ?? '').trim(),
+    bucket: (process.env.R2_BUCKET ?? '').trim(),
+    cacheTtlSec: Number(process.env.R2_CACHE_TTL_DAYS ?? 7) * 86_400,
+    presignTtlSec: Number(process.env.R2_PRESIGN_TTL_SEC ?? 3600),
+  },
 } as const;
 
 // Start on a random proxy so restarts spread load across the pool, then stay put.
