@@ -73,6 +73,33 @@ export function getFreshInfoJson(url: string, proxy: string): string | null {
   return e.path;
 }
 
+/**
+ * Fresh dump for direct CDN passthrough — ignores proxy tag.
+ * googlevideo URLs are consumed by the visitor's browser, not our proxy IP.
+ */
+export function getAnyFreshInfoJson(url: string): string | null {
+  const p = fileFor(url);
+  let e = cache.get(url);
+
+  if (!e && fs.existsSync(p)) {
+    const stat = fs.statSync(p);
+    e = { path: p, createdAt: stat.mtimeMs, proxy: '' };
+    cache.set(url, e);
+  }
+
+  if (!e) return null;
+  if (Date.now() - e.createdAt > TTL_MS) {
+    cache.delete(url);
+    fs.rm(p, { force: true }, () => undefined);
+    return null;
+  }
+  if (!fs.existsSync(e.path)) {
+    cache.delete(url);
+    return null;
+  }
+  return e.path;
+}
+
 /** Drop a cached dump (e.g. after a download fails) so the retry re-extracts. */
 export function invalidateInfoJson(url: string): void {
   const e = cache.get(url);

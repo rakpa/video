@@ -111,7 +111,7 @@ downloadRouter.post('/download', async (req, res) => {
     })
   ) {
     try {
-      const direct = resolveDirectDownload(trimmedUrl, q.height);
+      const direct = await resolveDirectDownload(trimmedUrl, q.height);
       if (direct) {
         logDownload({
           platform: platform?.id ?? 'youtube',

@@ -1,9 +1,9 @@
-import { config, currentProxy } from '../config.js';
-import { getFreshInfoJson } from './infoJsonCache.js';
+import { config } from '../config.js';
+import { getAnyFreshInfoJson } from './infoJsonCache.js';
 import { detectPlatform } from './platform.js';
 import type { QualityDef } from './formats.js';
 import type { ClipRange } from '../utils/clip.js';
-import { pickProgressiveDirectUrl } from './ytdlp.js';
+import { ensureInfoJsonCache, pickProgressiveDirectUrl } from './ytdlp.js';
 import { logger } from '../utils/logger.js';
 
 export interface DirectDownloadResult {
@@ -37,15 +37,8 @@ function safeFilename(title: string): string {
   return `${title.replace(/[^\w.\- ]+/g, '_').slice(0, 120) || 'video'}.mp4`;
 }
 
-/**
- * Resolve a direct googlevideo.com URL from warm info-json only (no blocking extract).
- * /api/info should have already warmed the cache while the user picked a quality.
- */
-export function resolveDirectDownload(
-  url: string,
-  maxHeight: number,
-): DirectDownloadResult | null {
-  const infoPath = getFreshInfoJson(url.trim(), currentProxy() ?? '');
+function resolveFromCache(url: string, maxHeight: number): DirectDownloadResult | null {
+  const infoPath = getAnyFreshInfoJson(url.trim());
   if (!infoPath) return null;
 
   const picked = pickProgressiveDirectUrl(infoPath, maxHeight);
@@ -61,4 +54,31 @@ export function resolveDirectDownload(
     height: picked.height,
     formatId: picked.formatId,
   };
+}
+
+/**
+ * Resolve a direct googlevideo.com URL from warm info-json (no blocking extract).
+ * Falls back to a short info-json warm when /api/info has not finished yet.
+ */
+export async function resolveDirectDownload(
+  url: string,
+  maxHeight: number,
+): Promise<DirectDownloadResult | null> {
+  const trimmed = url.trim();
+  const cached = resolveFromCache(trimmed, maxHeight);
+  if (cached) return cached;
+
+  try {
+    await Promise.race([
+      ensureInfoJsonCache(trimmed),
+      new Promise<void>((_, reject) =>
+        setTimeout(() => reject(new Error('passthrough info warm timeout')), 22_000),
+      ),
+    ]);
+  } catch (err) {
+    logger.warn('Direct passthrough info warm skipped:', (err as Error).message);
+    return null;
+  }
+
+  return resolveFromCache(trimmed, maxHeight);
 }

@@ -198,16 +198,14 @@ export interface ProgressiveDirectUrl {
 }
 
 /**
- * Progressive H.264 + audio in one file with a direct CDN URL — SaveFrom-style
- * passthrough. Returns null when merge/transcode would be required (DASH, etc.).
+ * Best single-file H.264+MP4 with a direct CDN URL — SaveFrom-style passthrough.
+ * Ignores DASH (video+audio separate) even when higher-res DASH exists; the browser
+ * cannot merge streams. Returns the highest progressive file at or below maxHeight.
  */
 export function pickProgressiveDirectUrl(
   infoJsonPath: string,
   maxHeight: number,
 ): ProgressiveDirectUrl | null {
-  const pick = pickBestYoutubeH264Format(infoJsonPath, maxHeight);
-  if (!pick?.singleFileH264) return null;
-
   let raw: RawDump;
   try {
     raw = JSON.parse(fs.readFileSync(infoJsonPath, 'utf8'));
@@ -215,14 +213,21 @@ export function pickProgressiveDirectUrl(
     return null;
   }
 
-  const format = (raw.formats ?? []).find((f) => f.format_id === pick.selector);
-  if (!format?.url?.startsWith('http')) return null;
-  if ((format.protocol ?? '').includes('m3u8')) return null;
-  if ((format.acodec ?? 'none') === 'none') return null;
-  if (!isH264Vcodec(format.vcodec)) return null;
+  const sizeOf = (f: RawFormat) => f.filesize ?? f.filesize_approx ?? (f.tbr ?? 0) * 1000;
 
-  const height = format.height ?? 0;
-  if (height <= 0 || height > maxHeight) return null;
+  const candidates = (raw.formats ?? [])
+    .filter((f) => {
+      if (!f.format_id || !f.url?.startsWith('http')) return false;
+      if ((f.protocol ?? '').includes('m3u8')) return false;
+      if ((f.acodec ?? 'none') === 'none') return false;
+      if (!isH264Vcodec(f.vcodec)) return false;
+      const h = f.height ?? 0;
+      return h > 0 && h <= maxHeight;
+    })
+    .sort((a, b) => (b.height ?? 0) - (a.height ?? 0) || sizeOf(a) - sizeOf(b));
+
+  const format = candidates[0];
+  if (!format?.url) return null;
 
   const title =
     (raw.title ?? 'video')
@@ -232,8 +237,8 @@ export function pickProgressiveDirectUrl(
 
   return {
     url: format.url,
-    height,
-    formatId: pick.selector,
+    height: format.height ?? 0,
+    formatId: String(format.format_id),
     title,
   };
 }
