@@ -38,6 +38,7 @@ import {
 } from './api/client';
 import {
   cancelMobileGalleryGestureFallback,
+  downloadDirectStream,
   downloadFileToDevice,
   deliverMobileVideo,
   formatDownloadError,
@@ -679,7 +680,7 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
         }
 
         const effectiveMode: CodecMode = isIgFb ? 'compatible' : mode;
-        const jobId = await startDownloadJob(
+        const start = await startDownloadJob(
           currentUrl,
           quality,
           effectiveMode,
@@ -691,6 +692,19 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
             galleryPrep,
           },
         );
+
+        // Direct CDN passthrough — the file pipes straight from the platform's
+        // CDN, so the browser's download manager takes over from here.
+        if (start.direct && start.streamUrl) {
+          setConvertingForPhone(false);
+          setProgress((p) => ({ ...p, percent: 100, stage: 'done', speed: null, eta: null }));
+          downloadDirectStream(start.streamUrl);
+          setPhase('success');
+          return;
+        }
+
+        const jobId = start.jobId;
+        if (!jobId) throw new Error('Could not start the download.');
 
         lastJobId.current = jobId;
         unsubscribe.current?.();

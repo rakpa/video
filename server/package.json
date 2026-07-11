@@ -18,6 +18,7 @@
     "ioredis": "^5.11.1",
     "nanoid": "^5.0.7",
     "stripe": "^17.5.0",
+    "undici": "^6.27.0",
     "yt-dlp-wrap": "^2.3.0"
   },
   "devDependencies": {

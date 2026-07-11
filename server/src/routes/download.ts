@@ -11,6 +11,7 @@ import { config } from '../config.js';
 import { HIGH_RES_MIN_HEIGHT } from '../utils/downloadLogger.js';
 import { getClientIp } from '../utils/clientIp.js';
 import { getHighResCount, reserveHighResSlot, quotaStoreKind } from '../utils/highResQuota.js';
+import { findDirectStream } from '../services/directStream.js';
 
 export const downloadRouter = Router();
 
@@ -96,6 +97,22 @@ downloadRouter.post('/download', async (req, res) => {
       : isCodecMode(mode)
         ? mode
         : 'best';
+
+  // Fast path: pre-muxed MP4 piped straight from the platform CDN (no yt-dlp
+  // download, no worker slot). Only taken when it matches the quality the merge
+  // pipeline would deliver; clips and mobile gallery prep always need the full
+  // pipeline. On any stream failure the client retries into `createJob` below.
+  if (!clipResult.clip && !galleryPrep) {
+    const direct = findDirectStream(url.trim(), q, codecMode, { ip: clientIp });
+    if (direct) {
+      return res.status(200).json({
+        direct: true,
+        streamUrl: `/api/stream/${direct.id}`,
+        filename: direct.filename,
+        height: direct.height,
+      });
+    }
+  }
 
   try {
     const job = await createJob(url.trim(), q, codecMode, {

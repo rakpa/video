@@ -153,7 +153,20 @@ export async function fetchVideoPreview(url: string): Promise<VideoInfo | null> 
   return mergeSocialPreview(client, api);
 }
 
-/** Kick off a download job; returns the job id. `license` unlocks premium qualities. */
+/**
+ * Server response to POST /api/download. Either a tracked job (`jobId`, watch
+ * progress via SSE) or a direct CDN passthrough (`direct` + `streamUrl`, start
+ * the browser download immediately — no progress phase).
+ */
+export interface DownloadStart {
+  jobId?: string;
+  direct?: boolean;
+  streamUrl?: string;
+  filename?: string;
+  height?: number;
+}
+
+/** Kick off a download; returns a job id or a direct stream URL. `license` unlocks premium qualities. */
 export async function startDownloadJob(
   url: string,
   quality: QualityId,
@@ -166,8 +179,8 @@ export async function startDownloadJob(
     galleryPrep?: boolean;
     galleryMaxHeight?: number;
   },
-): Promise<string> {
-  const { jobId } = await postJson<{ jobId: string }>('/api/download', {
+): Promise<DownloadStart> {
+  return postJson<DownloadStart>('/api/download', {
     url,
     quality,
     mode,
@@ -180,7 +193,6 @@ export async function startDownloadJob(
       ? { startTime: options.clip.startTime, endTime: options.clip.endTime }
       : {}),
   });
-  return jobId;
 }
 
 /* ------------------------------- billing ------------------------------- */
