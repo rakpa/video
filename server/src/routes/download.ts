@@ -106,7 +106,6 @@ downloadRouter.post('/download', async (req, res) => {
     canDirectPassthrough({
       url: trimmedUrl,
       quality: q,
-      galleryPrep: Boolean(galleryPrep),
       clip: clipResult.clip,
     })
   ) {

@@ -16,7 +16,6 @@ export interface DirectDownloadResult {
 export interface PassthroughOptions {
   url: string;
   quality: QualityDef;
-  galleryPrep?: boolean;
   clip?: ClipRange | null;
 }
 
@@ -26,7 +25,6 @@ export function canDirectPassthrough(options: PassthroughOptions): boolean {
 
   const platform = detectPlatform(options.url);
   if (platform?.id !== 'youtube') return false;
-  if (options.galleryPrep) return false;
   if (options.clip) return false;
   // Only free-tier HD — 2K/4K need server merge/transcode.
   if (options.quality.height > 1080) return false;

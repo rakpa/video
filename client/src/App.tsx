@@ -676,8 +676,6 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
       setConvertingForPhone(mobile && highRes);
       setProgress(INITIAL_PROGRESS);
       setOutputHeight(null);
-      setPhase('downloading');
-      setProgress({ ...INITIAL_PROGRESS, stage: 'preparing', percent: 0 });
 
       try {
         const effectiveMode: CodecMode = isIgFb ? 'compatible' : mode;
@@ -695,15 +693,20 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
         );
 
         if (startResult.kind === 'direct') {
-          setProgress((p) => ({ ...p, percent: 100, stage: 'done', speed: null, eta: null }));
+          // SaveFrom-style: browser pulls straight from YouTube CDN — no server download pass.
           if (typeof startResult.height === 'number') setOutputHeight(startResult.height);
           setConvertingForPhone(false);
           setDelivering(true);
+          setPhase('downloading');
+          setProgress({ ...INITIAL_PROGRESS, stage: 'done', percent: 100, speed: null, eta: null });
           await downloadDirectUrl(startResult.url, startResult.filename);
           setDelivering(false);
           setPhase('success');
           return;
         }
+
+        setPhase('downloading');
+        setProgress({ ...INITIAL_PROGRESS, stage: 'preparing', percent: 0 });
 
         const jobId = startResult.jobId;
 
