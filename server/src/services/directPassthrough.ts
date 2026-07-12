@@ -28,6 +28,9 @@ export function canDirectPassthrough(options: PassthroughOptions): boolean {
   if (options.clip) return false;
   // Only free-tier HD — 2K/4K need server merge/transcode.
   if (options.quality.height > 1080) return false;
+  // YouTube progressive files are capped around 360p on most videos. Our UI offers
+  // 720p/1080p — those require DASH merge on the server for real HD quality.
+  if (options.quality.height >= 720) return false;
   return true;
 }
 
@@ -41,8 +44,7 @@ function safeFilename(title: string): string {
  */
 export function meetsDirectQualityFloor(pickedHeight: number, requestedHeight: number): boolean {
   if (pickedHeight <= 0 || requestedHeight <= 0) return false;
-  const floor = Math.max(360, Math.round(requestedHeight * 0.85));
-  return pickedHeight >= floor;
+  return pickedHeight >= requestedHeight;
 }
 
 function resolveFromCache(url: string, maxHeight: number): DirectDownloadResult | null {

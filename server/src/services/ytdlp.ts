@@ -804,13 +804,16 @@ export function startDownload(
       singleFileH264 = picked.singleFileH264;
       logger.info(`IG/FB cached format ${formatArg} (single H.264=${singleFileH264})`);
     }
-  } else if (cachedInfoJson && platformId === 'youtube' && galleryMaxHeight) {
-    // Optional phone cap: highest H.264 DASH up to galleryMaxHeight (not tiny progressive).
-    const picked = pickBestYoutubeH264Format(cachedInfoJson, galleryMaxHeight);
+  } else if (cachedInfoJson && platformId === 'youtube' && quality.height <= 1080) {
+    // Pin cached DASH ids for 720/1080 so yt-dlp skips format re-sort and delivers true HD.
+    const picked =
+      galleryMaxHeight != null
+        ? pickBestYoutubeH264Format(cachedInfoJson, galleryMaxHeight)
+        : pickBestYoutubeDashFormat(cachedInfoJson, quality.height);
     if (picked) {
       formatArg = picked.selector;
-      singleFileH264 = picked.singleFileH264;
-      logger.info(`YouTube mobile format ${formatArg} (single H.264=${singleFileH264})`);
+      singleFileH264 = 'singleFileH264' in picked ? picked.singleFileH264 : false;
+      logger.info(`YouTube HD cached format ${formatArg} (single H.264=${singleFileH264})`);
     }
   } else if (cachedInfoJson && platformId === 'youtube' && quality.height > 1080) {
     // 2K/4K: pin exact DASH ids from the info-json cache so yt-dlp starts transferring

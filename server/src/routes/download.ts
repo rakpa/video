@@ -4,7 +4,7 @@ import { readJsonBody } from '../utils/body.js';
 import { getQuality, isCodecMode } from '../services/formats.js';
 import { createJob } from '../jobManager.js';
 import { YtDlpError, readCachedVideoInfo } from '../services/ytdlp.js';
-import { canDirectPassthrough, resolveDirectDownload } from '../services/directPassthrough.js';
+import { canDirectPassthrough, meetsDirectQualityFloor, resolveDirectDownload } from '../services/directPassthrough.js';
 import { detectPlatform } from '../services/platform.js';
 import { maxAllowedHeight, isPro } from '../services/license.js';
 import { parseClipRange } from '../utils/clip.js';
@@ -111,7 +111,7 @@ downloadRouter.post('/download', async (req, res) => {
   ) {
     try {
       const direct = await resolveDirectDownload(trimmedUrl, q.height);
-      if (direct) {
+      if (direct && meetsDirectQualityFloor(direct.height, q.height)) {
         logDownload({
           platform: platform?.id ?? 'youtube',
           quality: q.label,

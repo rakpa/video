@@ -693,6 +693,10 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
             reuse: !mobile && !clip && !highRes,
             clip,
             galleryPrep,
+            galleryMaxHeight:
+              mobile && platform?.id === 'youtube' && !highRes && fmt
+                ? fmt.height
+                : undefined,
           },
         );
 
