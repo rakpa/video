@@ -4,7 +4,7 @@ import { readJsonBody } from '../utils/body.js';
 import { getQuality, isCodecMode } from '../services/formats.js';
 import { createJob } from '../jobManager.js';
 import { YtDlpError, readCachedVideoInfo } from '../services/ytdlp.js';
-import { canDirectPassthrough, meetsDirectQualityFloor, resolveDirectDownload } from '../services/directPassthrough.js';
+import { canDirectPassthrough, resolveDirectDownload } from '../services/directPassthrough.js';
 import { detectPlatform } from '../services/platform.js';
 import { maxAllowedHeight, isPro } from '../services/license.js';
 import { parseClipRange } from '../utils/clip.js';
@@ -14,7 +14,6 @@ import { getClientIp } from '../utils/clientIp.js';
 import { getHighResCount, reserveHighResSlot, quotaStoreKind } from '../utils/highResQuota.js';
 import { logDownload } from '../utils/downloadLogger.js';
 import { logger } from '../utils/logger.js';
-import { issueStreamDownloadToken } from '../services/streamDownloadToken.js';
 
 export const downloadRouter = Router();
 
@@ -48,7 +47,7 @@ downloadRouter.get('/download/quota', async (req, res) => {
  */
 downloadRouter.post('/download', async (req, res) => {
   const body = readJsonBody(req);
-  const { url, quality, mode, license, fast, reuse, galleryPrep, galleryMaxHeight, forceServer, clientStream } = body;
+  const { url, quality, mode, license, fast, reuse, galleryPrep, galleryMaxHeight } = body;
 
   const v = validateUrl(url);
   if (!v.ok) return res.status(400).json({ error: v.message });
@@ -102,51 +101,18 @@ downloadRouter.post('/download', async (req, res) => {
 
   const trimmedUrl = url.trim();
 
-  const streamFilename = `${(cached?.title ?? 'video').replace(/[^\w.\- ]+/g, '_').slice(0, 100) || 'video'}.mp4`;
-
-  // Browser-native download: pipe true HD merge straight to the user (no progress UI, no temp file).
-  if (
-    clientStream &&
-    platform?.id === 'youtube' &&
-    !clipResult.clip &&
-    q.height <= 1080
-  ) {
-    const token = issueStreamDownloadToken({
-      url: trimmedUrl,
-      qualityId: q.id,
-      mode: codecMode,
-      filename: streamFilename,
-      targetHeight: q.height,
-      galleryMaxHeight:
-        typeof galleryMaxHeight === 'number' && galleryMaxHeight > 0 ? galleryMaxHeight : undefined,
-    });
-    logDownload({
-      platform: 'youtube',
-      quality: q.label,
-      outputHeight: q.height,
-      requestedHeight: q.height,
-      ip: clientIp,
-    });
-    return res.status(200).json({
-      stream: true,
-      token,
-      filename: streamFilename,
-      height: q.height,
-    });
-  }
-
   // SaveFrom-style: browser downloads straight from YouTube CDN (no worker slot).
   if (
-    !forceServer &&
     canDirectPassthrough({
       url: trimmedUrl,
       quality: q,
+      galleryPrep: Boolean(galleryPrep),
       clip: clipResult.clip,
     })
   ) {
     try {
       const direct = await resolveDirectDownload(trimmedUrl, q.height);
-      if (direct && meetsDirectQualityFloor(direct.height, q.height)) {
+      if (direct) {
         logDownload({
           platform: platform?.id ?? 'youtube',
           quality: q.label,

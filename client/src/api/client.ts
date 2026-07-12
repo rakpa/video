@@ -199,8 +199,7 @@ export async function fetchVideoPreview(url: string): Promise<VideoPreviewResult
 /** Kick off a download — job pipeline or SaveFrom-style direct CDN URL. */
 export type DownloadStartResult =
   | { kind: 'job'; jobId: string }
-  | { kind: 'direct'; url: string; filename: string; height?: number }
-  | { kind: 'stream'; token: string; filename: string; height?: number };
+  | { kind: 'direct'; url: string; filename: string; height?: number };
 
 export async function startDownloadJob(
   url: string,
@@ -213,17 +212,11 @@ export async function startDownloadJob(
     clip?: ClipRange | null;
     galleryPrep?: boolean;
     galleryMaxHeight?: number;
-    /** Skip CDN passthrough — always merge true HD on the server. */
-    forceServer?: boolean;
-    /** Pipe HD merge straight to browser download (no server progress UI). */
-    clientStream?: boolean;
   },
 ): Promise<DownloadStartResult> {
   const data = await postJson<{
     jobId?: string;
     direct?: boolean;
-    stream?: boolean;
-    token?: string;
     url?: string;
     filename?: string;
     height?: number;
@@ -235,22 +228,11 @@ export async function startDownloadJob(
     fast: options?.fast ?? false,
     reuse: options?.reuse ?? false,
     galleryPrep: options?.galleryPrep ?? false,
-    forceServer: options?.forceServer ?? false,
-    clientStream: options?.clientStream ?? false,
     ...(options?.galleryMaxHeight != null ? { galleryMaxHeight: options.galleryMaxHeight } : {}),
     ...(options?.clip
       ? { startTime: options.clip.startTime, endTime: options.clip.endTime }
       : {}),
   });
-
-  if (data.stream && data.token) {
-    return {
-      kind: 'stream',
-      token: data.token,
-      filename: data.filename ?? 'video.mp4',
-      height: data.height,
-    };
-  }
 
   if (data.direct && data.url) {
     return {

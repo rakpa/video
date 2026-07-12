@@ -16,6 +16,7 @@ export interface DirectDownloadResult {
 export interface PassthroughOptions {
   url: string;
   quality: QualityDef;
+  galleryPrep?: boolean;
   clip?: ClipRange | null;
 }
 
@@ -25,26 +26,15 @@ export function canDirectPassthrough(options: PassthroughOptions): boolean {
 
   const platform = detectPlatform(options.url);
   if (platform?.id !== 'youtube') return false;
+  if (options.galleryPrep) return false;
   if (options.clip) return false;
   // Only free-tier HD — 2K/4K need server merge/transcode.
   if (options.quality.height > 1080) return false;
-  // YouTube progressive files are capped around 360p on most videos. Our UI offers
-  // 720p/1080p — those require DASH merge on the server for real HD quality.
-  if (options.quality.height >= 720) return false;
   return true;
 }
 
 function safeFilename(title: string): string {
   return `${title.replace(/[^\w.\- ]+/g, '_').slice(0, 120) || 'video'}.mp4`;
-}
-
-/**
- * Direct CDN only when the progressive file matches what the user asked for.
- * YouTube 1080p is usually DASH-only; substituting 360p progressive is misleading.
- */
-export function meetsDirectQualityFloor(pickedHeight: number, requestedHeight: number): boolean {
-  if (pickedHeight <= 0 || requestedHeight <= 0) return false;
-  return pickedHeight >= requestedHeight;
 }
 
 function resolveFromCache(url: string, maxHeight: number): DirectDownloadResult | null {
@@ -53,13 +43,6 @@ function resolveFromCache(url: string, maxHeight: number): DirectDownloadResult 
 
   const picked = pickProgressiveDirectUrl(infoPath, maxHeight);
   if (!picked) return null;
-
-  if (!meetsDirectQualityFloor(picked.height, maxHeight)) {
-    logger.info(
-      `Direct passthrough skipped: ${picked.height}p below ${Math.max(360, Math.round(maxHeight * 0.85))}p floor for ${maxHeight}p request`,
-    );
-    return null;
-  }
 
   logger.info(
     `Direct passthrough: ${picked.formatId} ${picked.height}p for ${url.slice(0, 60)}…`,

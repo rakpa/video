@@ -8,8 +8,6 @@ interface Props {
   clipLabel?: string;
   /** True while the finished file is being delivered to the browser download manager. */
   delivering?: boolean;
-  /** True when delivery is a direct CDN pull (not a server-processed file). */
-  directCdn?: boolean;
   /** Mobile: hide 0–100% bar — show a simple processing message until share opens. */
   processingOnly?: boolean;
   /** Mobile gallery save flow — different copy from desktop download. */
@@ -34,7 +32,7 @@ function isWarmupStage(p: ProgressUpdate): boolean {
   return p.stage === 'preparing' || p.stage === 'queued' || p.percent < 1;
 }
 
-export function DownloadProgress({ progress, qualityLabel, clipLabel, delivering, directCdn, processingOnly, mobileSave, converting }: Props) {
+export function DownloadProgress({ progress, qualityLabel, clipLabel, delivering, processingOnly, mobileSave, converting }: Props) {
   const convertingNow = converting && !delivering && (progress.stage === 'merging' || progress.percent >= 99);
   const warmup = isWarmupStage(progress);
   const pct = Math.max(0, Math.min(100, progress.percent));
@@ -56,11 +54,7 @@ export function DownloadProgress({ progress, qualityLabel, clipLabel, delivering
             transition={{ duration: 1.2, repeat: Infinity }}
           />
           <span className="font-semibold text-slate-900">
-            {mobileSave
-              ? 'Preparing Save to Gallery…'
-              : directCdn
-                ? 'Starting your download…'
-                : 'Saving to your device…'}
+            {mobileSave ? 'Preparing Save to Gallery…' : 'Saving to your device…'}
           </span>
           {qualityLabel && (
             <span className="rounded-md bg-slate-100 px-1.5 py-0.5 text-xs font-medium text-slate-600">{qualityLabel}</span>
@@ -69,9 +63,7 @@ export function DownloadProgress({ progress, qualityLabel, clipLabel, delivering
         <p className="mt-3 text-sm text-slate-500">
           {mobileSave
             ? 'Your save button will appear in a moment.'
-            : directCdn
-              ? 'Your browser is downloading the file now.'
-              : "Your file should appear in your browser's downloads any moment now."}
+            : "Your file should appear in your browser's downloads any moment now."}
         </p>
         <div className="relative mt-5 h-2.5 w-full overflow-hidden rounded-full bg-slate-100">
           <motion.div

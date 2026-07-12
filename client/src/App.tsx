@@ -39,7 +39,6 @@ import {
   cancelMobileGalleryGestureFallback,
   downloadFileToDevice,
   downloadDirectUrl,
-  streamDownloadToDevice,
   deliverMobileVideo,
   formatDownloadError,
   isNativeMobileApp,
@@ -201,7 +200,6 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
   const [mobileSavePayload, setMobileSavePayload] = useState<VideoFilePayload | null>(null);
   /** Desktop: finished file is being handed off to the browser download manager. */
   const [delivering, setDelivering] = useState(false);
-  const [directCdnDelivery, setDirectCdnDelivery] = useState(false);
   /** Mobile 2K/4K: server is converting VP9/AV1 → H.264 so the phone can play it. */
   const [convertingForPhone, setConvertingForPhone] = useState(false);
   const [clipMode, setClipMode] = useState<ClipMode>('full');
@@ -241,7 +239,6 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
     cancelMobileGalleryGestureFallback();
     setMobileSavePayload(null);
     setDelivering(false);
-    setDirectCdnDelivery(false);
     setUrl('');
     setPhase('idle');
     setInfo(null);
@@ -408,7 +405,6 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
     cancelMobileGalleryGestureFallback();
     setMobileSavePayload(null);
     setDelivering(false);
-    setDirectCdnDelivery(false);
     setPreloadedThumb(null);
     setClipMode('full');
     setClipStart('0:00');
@@ -673,20 +669,19 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
       // take 4K anyway, but it now actually plays.
       const useGallerySheet = mobile && (isNativeMobileApp() || !highRes);
       const isIgFb = platform?.id === 'instagram' || platform?.id === 'facebook';
-      const isYoutubeHd =
-        platform?.id === 'youtube' && !clip && fmt && fmt.height <= MOBILE_GALLERY_MAX_HEIGHT;
       const currentUrl = fetchedUrl.current || url;
 
       setMobileSavePayload(null);
       setDelivering(false);
-      setDirectCdnDelivery(false);
       setConvertingForPhone(mobile && highRes);
       setProgress(INITIAL_PROGRESS);
       setOutputHeight(null);
+      setPhase('downloading');
+      setProgress({ ...INITIAL_PROGRESS, stage: 'preparing', percent: 0 });
 
       try {
         const effectiveMode: CodecMode = isIgFb ? 'compatible' : mode;
-        let startResult = await startDownloadJob(
+        const startResult = await startDownloadJob(
           currentUrl,
           quality,
           effectiveMode,
@@ -695,39 +690,20 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
             fast: isIgFb || (mobile && !highRes),
             reuse: !mobile && !clip && !highRes,
             clip,
-            galleryPrep: isYoutubeHd ? false : galleryPrep,
-            galleryMaxHeight:
-              isYoutubeHd && mobile && fmt ? fmt.height : undefined,
-            clientStream: Boolean(isYoutubeHd),
+            galleryPrep,
           },
         );
 
-        if (startResult.kind === 'stream') {
-          if (typeof startResult.height === 'number') setOutputHeight(startResult.height);
-          setConvertingForPhone(false);
-          streamDownloadToDevice(startResult.token);
-          setPhase('success');
-          return;
-        }
-
         if (startResult.kind === 'direct') {
+          setProgress((p) => ({ ...p, percent: 100, stage: 'done', speed: null, eta: null }));
           if (typeof startResult.height === 'number') setOutputHeight(startResult.height);
           setConvertingForPhone(false);
-          setDirectCdnDelivery(true);
           setDelivering(true);
-          setPhase('downloading');
-          setProgress({ ...INITIAL_PROGRESS, stage: 'done', percent: 100, speed: null, eta: null });
           await downloadDirectUrl(startResult.url, startResult.filename);
           setDelivering(false);
-          setDirectCdnDelivery(false);
           setPhase('success');
           return;
         }
-
-        setDirectCdnDelivery(false);
-
-        setPhase('downloading');
-        setProgress({ ...INITIAL_PROGRESS, stage: 'preparing', percent: 0 });
 
         const jobId = startResult.jobId;
 
@@ -937,7 +913,6 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
                       progress={progress}
                       qualityLabel={qualityLabel}
                       delivering={delivering}
-                      directCdn={directCdnDelivery}
                       converting={convertingForPhone}
                       mobileSave={isMobileDevice()}
                       clipLabel={
