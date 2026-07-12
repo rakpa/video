@@ -35,12 +35,29 @@ function safeFilename(title: string): string {
   return `${title.replace(/[^\w.\- ]+/g, '_').slice(0, 120) || 'video'}.mp4`;
 }
 
+/**
+ * Direct CDN only when the progressive file matches what the user asked for.
+ * YouTube 1080p is usually DASH-only; substituting 360p progressive is misleading.
+ */
+export function meetsDirectQualityFloor(pickedHeight: number, requestedHeight: number): boolean {
+  if (pickedHeight <= 0 || requestedHeight <= 0) return false;
+  const floor = Math.max(360, Math.round(requestedHeight * 0.85));
+  return pickedHeight >= floor;
+}
+
 function resolveFromCache(url: string, maxHeight: number): DirectDownloadResult | null {
   const infoPath = getAnyFreshInfoJson(url.trim());
   if (!infoPath) return null;
 
   const picked = pickProgressiveDirectUrl(infoPath, maxHeight);
   if (!picked) return null;
+
+  if (!meetsDirectQualityFloor(picked.height, maxHeight)) {
+    logger.info(
+      `Direct passthrough skipped: ${picked.height}p below ${Math.max(360, Math.round(maxHeight * 0.85))}p floor for ${maxHeight}p request`,
+    );
+    return null;
+  }
 
   logger.info(
     `Direct passthrough: ${picked.formatId} ${picked.height}p for ${url.slice(0, 60)}…`,

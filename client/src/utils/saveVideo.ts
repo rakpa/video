@@ -1,6 +1,4 @@
 import { API_NOT_CONFIGURED_MSG, apiUrl, isApiConfigured } from '../config/api';
-
-/** True on the installed Capacitor app — not mobile Safari/Chrome. */
 export function isNativeMobileApp(): boolean {
   return false;
 }
@@ -487,11 +485,28 @@ export function formatDownloadError(err: unknown): string {
 }
 
 /**
- * SaveFrom-style delivery — browser pulls straight from the source CDN (googlevideo.com).
- * Cross-origin: the download attribute may be ignored; the browser still saves the file.
+ * SaveFrom-style delivery — browser pulls from source CDN.
+ * Desktop: direct googlevideo link. Mobile: same-origin proxy so iOS saves a file instead of playing inline.
  */
 export async function downloadDirectUrl(cdnUrl: string, filename: string): Promise<void> {
   const safe = filename.replace(/[^\w.\- ]+/g, '_').slice(0, 120) || 'video.mp4';
+
+  if (isMobileDevice() && isApiConfigured()) {
+    const res = await fetch(apiUrl('/api/direct/link'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ url: cdnUrl, filename: safe }),
+    });
+    if (!res.ok) {
+      throw new Error('Could not start the download on your device.');
+    }
+    const data = (await res.json()) as { token?: string };
+    if (!data.token) throw new Error('Could not start the download on your device.');
+    triggerCrossOriginDownload(apiUrl(`/api/direct/${data.token}`));
+    await new Promise((r) => window.setTimeout(r, 400));
+    return;
+  }
+
   const a = document.createElement('a');
   a.href = cdnUrl;
   a.download = safe;

@@ -51,22 +51,20 @@ export function SuccessState({ outputHeight, requestedLabel, mobileBrowser }: Pr
         </motion.svg>
       </motion.div>
 
-      <h3 className="mt-5 text-2xl font-bold text-slate-900">Download Successful! 🎉</h3>
+      <h3 className="mt-5 text-2xl font-bold text-slate-900">Download complete</h3>
       <p className="mx-auto mt-2 max-w-md text-sm leading-relaxed text-slate-500">
-        Your file has been downloaded successfully.
-        {verified && (
+        {verified ? (
           <>
-            <br />
-            <span className="font-medium text-emerald-700">
-              Verified output: {verified}
-              {requestedLabel ? ` (you chose ${requestedLabel})` : ''}
-            </span>
+            Saved at <span className="font-medium text-emerald-700">{verified}</span>
+            {requestedLabel && requestedLabel !== verified ? ` (you chose ${requestedLabel})` : ''}.
           </>
+        ) : (
+          'Your video has been saved.'
         )}
         <br />
         {mobileBrowser
-          ? 'Check your Downloads or Files app to open the video.'
-          : 'You can now access it from your Downloads folder.'}
+          ? 'Open Downloads or Files to watch it.'
+          : 'Check your Downloads folder.'}
       </p>
     </motion.div>
   );

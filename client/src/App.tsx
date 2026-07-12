@@ -200,6 +200,7 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
   const [mobileSavePayload, setMobileSavePayload] = useState<VideoFilePayload | null>(null);
   /** Desktop: finished file is being handed off to the browser download manager. */
   const [delivering, setDelivering] = useState(false);
+  const [directCdnDelivery, setDirectCdnDelivery] = useState(false);
   /** Mobile 2K/4K: server is converting VP9/AV1 → H.264 so the phone can play it. */
   const [convertingForPhone, setConvertingForPhone] = useState(false);
   const [clipMode, setClipMode] = useState<ClipMode>('full');
@@ -239,6 +240,7 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
     cancelMobileGalleryGestureFallback();
     setMobileSavePayload(null);
     setDelivering(false);
+    setDirectCdnDelivery(false);
     setUrl('');
     setPhase('idle');
     setInfo(null);
@@ -405,6 +407,7 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
     cancelMobileGalleryGestureFallback();
     setMobileSavePayload(null);
     setDelivering(false);
+    setDirectCdnDelivery(false);
     setPreloadedThumb(null);
     setClipMode('full');
     setClipStart('0:00');
@@ -673,6 +676,7 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
 
       setMobileSavePayload(null);
       setDelivering(false);
+      setDirectCdnDelivery(false);
       setConvertingForPhone(mobile && highRes);
       setProgress(INITIAL_PROGRESS);
       setOutputHeight(null);
@@ -693,17 +697,20 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
         );
 
         if (startResult.kind === 'direct') {
-          // SaveFrom-style: browser pulls straight from YouTube CDN — no server download pass.
           if (typeof startResult.height === 'number') setOutputHeight(startResult.height);
           setConvertingForPhone(false);
+          setDirectCdnDelivery(true);
           setDelivering(true);
           setPhase('downloading');
           setProgress({ ...INITIAL_PROGRESS, stage: 'done', percent: 100, speed: null, eta: null });
           await downloadDirectUrl(startResult.url, startResult.filename);
           setDelivering(false);
+          setDirectCdnDelivery(false);
           setPhase('success');
           return;
         }
+
+        setDirectCdnDelivery(false);
 
         setPhase('downloading');
         setProgress({ ...INITIAL_PROGRESS, stage: 'preparing', percent: 0 });
@@ -916,6 +923,7 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
                       progress={progress}
                       qualityLabel={qualityLabel}
                       delivering={delivering}
+                      directCdn={directCdnDelivery}
                       converting={convertingForPhone}
                       mobileSave={isMobileDevice()}
                       clipLabel={
