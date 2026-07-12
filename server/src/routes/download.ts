@@ -47,7 +47,7 @@ downloadRouter.get('/download/quota', async (req, res) => {
  */
 downloadRouter.post('/download', async (req, res) => {
   const body = readJsonBody(req);
-  const { url, quality, mode, license, fast, reuse, galleryPrep, galleryMaxHeight } = body;
+  const { url, quality, mode, license, fast, reuse, galleryPrep, galleryMaxHeight, forceServer } = body;
 
   const v = validateUrl(url);
   if (!v.ok) return res.status(400).json({ error: v.message });
@@ -103,6 +103,7 @@ downloadRouter.post('/download', async (req, res) => {
 
   // SaveFrom-style: browser downloads straight from YouTube CDN (no worker slot).
   if (
+    !forceServer &&
     canDirectPassthrough({
       url: trimmedUrl,
       quality: q,

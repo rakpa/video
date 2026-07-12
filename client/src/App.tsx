@@ -683,7 +683,7 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
 
       try {
         const effectiveMode: CodecMode = isIgFb ? 'compatible' : mode;
-        const startResult = await startDownloadJob(
+        let startResult = await startDownloadJob(
           currentUrl,
           quality,
           effectiveMode,
@@ -697,8 +697,29 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
               mobile && platform?.id === 'youtube' && !highRes && fmt
                 ? fmt.height
                 : undefined,
+            forceServer: Boolean(fmt && fmt.height >= 720),
           },
         );
+
+        if (startResult.kind === 'direct' && fmt && (startResult.height ?? 0) < fmt.height * 0.9) {
+          startResult = await startDownloadJob(
+            currentUrl,
+            quality,
+            effectiveMode,
+            licenseToken(),
+            {
+              fast: isIgFb || (mobile && !highRes),
+              reuse: !mobile && !clip && !highRes,
+              clip,
+              galleryPrep,
+              galleryMaxHeight:
+                mobile && platform?.id === 'youtube' && !highRes && fmt
+                  ? fmt.height
+                  : undefined,
+              forceServer: true,
+            },
+          );
+        }
 
         if (startResult.kind === 'direct') {
           if (typeof startResult.height === 'number') setOutputHeight(startResult.height);

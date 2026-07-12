@@ -212,6 +212,8 @@ export async function startDownloadJob(
     clip?: ClipRange | null;
     galleryPrep?: boolean;
     galleryMaxHeight?: number;
+    /** Skip CDN passthrough — always merge true HD on the server. */
+    forceServer?: boolean;
   },
 ): Promise<DownloadStartResult> {
   const data = await postJson<{
@@ -228,6 +230,7 @@ export async function startDownloadJob(
     fast: options?.fast ?? false,
     reuse: options?.reuse ?? false,
     galleryPrep: options?.galleryPrep ?? false,
+    forceServer: options?.forceServer ?? false,
     ...(options?.galleryMaxHeight != null ? { galleryMaxHeight: options.galleryMaxHeight } : {}),
     ...(options?.clip
       ? { startTime: options.clip.startTime, endTime: options.clip.endTime }
