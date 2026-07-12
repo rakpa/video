@@ -484,6 +484,12 @@ export function formatDownloadError(err: unknown): string {
   return 'Could not save the video.';
 }
 
+/** Trigger browser download for a streamed HD merge (same-origin, full quality). */
+export function streamDownloadToDevice(token: string): void {
+  if (!isApiConfigured()) throw new Error(API_NOT_CONFIGURED_MSG);
+  triggerCrossOriginDownload(apiUrl(`/api/stream/${token}`));
+}
+
 /**
  * SaveFrom-style delivery — browser pulls from source CDN.
  * Desktop: direct googlevideo link. Mobile: same-origin proxy so iOS saves a file instead of playing inline.

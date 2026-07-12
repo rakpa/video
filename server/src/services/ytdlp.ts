@@ -1,4 +1,4 @@
-import { spawn } from 'node:child_process';
+import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { config, currentProxy, rotateProxy } from '../config.js';
@@ -812,7 +812,7 @@ export function startDownload(
         : pickBestYoutubeDashFormat(cachedInfoJson, quality.height);
     if (picked) {
       formatArg = picked.selector;
-      singleFileH264 = 'singleFileH264' in picked ? picked.singleFileH264 : false;
+      singleFileH264 = 'singleFileH264' in picked ? Boolean(picked.singleFileH264) : false;
       logger.info(`YouTube HD cached format ${formatArg} (single H.264=${singleFileH264})`);
     }
   } else if (cachedInfoJson && platformId === 'youtube' && quality.height > 1080) {
@@ -1052,4 +1052,72 @@ export function startDownload(
     done,
     sectionDownload,
   };
+}
+
+/**
+ * Stream merged MP4 to stdout for browser attachment download (true HD, no temp file).
+ */
+export function startClientStreamDownload(
+  url: string,
+  quality: QualityDef,
+  mode: CodecMode,
+  options?: { galleryMaxHeight?: number },
+): ChildProcessWithoutNullStreams {
+  const cookies = getCookiesStatus();
+  const [youtubeClient] = youtubeClientsToTry(cookies.exists);
+  const platformId = detectPlatform(url)?.id;
+  const galleryMaxHeight = options?.galleryMaxHeight;
+  const cachedInfoJson = getFreshInfoJson(url, currentProxy() ?? '');
+  const tuning = downloadTuning(url, false, quality.height);
+
+  let formatArg = buildSelector(quality, mode, platformId);
+  let singleFileH264 = false;
+
+  if (cachedInfoJson && platformId === 'youtube' && quality.height <= 1080) {
+    const picked =
+      galleryMaxHeight != null
+        ? pickBestYoutubeH264Format(cachedInfoJson, galleryMaxHeight)
+        : pickBestYoutubeDashFormat(cachedInfoJson, quality.height);
+    if (picked) {
+      formatArg = picked.selector;
+      singleFileH264 = 'singleFileH264' in picked ? Boolean(picked.singleFileH264) : false;
+      logger.info(`Stream HD format ${formatArg} (single H.264=${singleFileH264})`);
+    }
+  } else if (cachedInfoJson && platformId === 'youtube' && quality.height > 1080) {
+    const picked = pickBestYoutubeDashFormat(cachedInfoJson, quality.height);
+    if (picked) formatArg = picked.selector;
+  }
+
+  const skipMergePost = singleFileH264;
+
+  const args = [
+    '-f',
+    formatArg,
+    ...(skipMergePost ? [] : ['--merge-output-format', 'mp4']),
+    ...(/[\\/]/.test(config.ffmpegPath) ? ['--ffmpeg-location', config.ffmpegPath] : []),
+    '--no-playlist',
+    '--no-warnings',
+    '--no-part',
+    '--restrict-filenames',
+    '--postprocessor-args', 'ffmpeg:-movflags +faststart',
+    '--http-chunk-size', tuning.httpChunkSize,
+    '--concurrent-fragments', tuning.concurrentFragments,
+    '--retries', '5',
+    '--fragment-retries', '10',
+    '--retry-sleep', 'linear=1::5',
+    '--socket-timeout', '30',
+    ...youtubeHardeningArgs(youtubeClient ?? config.youtubePlayerClient),
+    '-o', '-',
+    ...(cachedInfoJson ? ['--load-info-json', cachedInfoJson] : [url]),
+  ];
+
+  if (platformId === 'youtube') {
+    if (singleFileH264 || galleryMaxHeight) {
+      args.push('-S', 'vcodec:h264,res,quality');
+    } else {
+      args.push('-S', 'res,quality,vcodec:vp9,vcodec:av1');
+    }
+  }
+
+  return spawn(config.ytdlpPath, args, { windowsHide: true });
 }

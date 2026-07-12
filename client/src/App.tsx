@@ -39,6 +39,7 @@ import {
   cancelMobileGalleryGestureFallback,
   downloadFileToDevice,
   downloadDirectUrl,
+  streamDownloadToDevice,
   deliverMobileVideo,
   formatDownloadError,
   isNativeMobileApp,
@@ -672,6 +673,8 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
       // take 4K anyway, but it now actually plays.
       const useGallerySheet = mobile && (isNativeMobileApp() || !highRes);
       const isIgFb = platform?.id === 'instagram' || platform?.id === 'facebook';
+      const isYoutubeHd =
+        platform?.id === 'youtube' && !clip && fmt && fmt.height <= MOBILE_GALLERY_MAX_HEIGHT;
       const currentUrl = fetchedUrl.current || url;
 
       setMobileSavePayload(null);
@@ -692,33 +695,19 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
             fast: isIgFb || (mobile && !highRes),
             reuse: !mobile && !clip && !highRes,
             clip,
-            galleryPrep,
+            galleryPrep: isYoutubeHd ? false : galleryPrep,
             galleryMaxHeight:
-              mobile && platform?.id === 'youtube' && !highRes && fmt
-                ? fmt.height
-                : undefined,
-            forceServer: Boolean(fmt && fmt.height >= 720),
+              isYoutubeHd && mobile && fmt ? fmt.height : undefined,
+            clientStream: Boolean(isYoutubeHd),
           },
         );
 
-        if (startResult.kind === 'direct' && fmt && (startResult.height ?? 0) < fmt.height * 0.9) {
-          startResult = await startDownloadJob(
-            currentUrl,
-            quality,
-            effectiveMode,
-            licenseToken(),
-            {
-              fast: isIgFb || (mobile && !highRes),
-              reuse: !mobile && !clip && !highRes,
-              clip,
-              galleryPrep,
-              galleryMaxHeight:
-                mobile && platform?.id === 'youtube' && !highRes && fmt
-                  ? fmt.height
-                  : undefined,
-              forceServer: true,
-            },
-          );
+        if (startResult.kind === 'stream') {
+          if (typeof startResult.height === 'number') setOutputHeight(startResult.height);
+          setConvertingForPhone(false);
+          streamDownloadToDevice(startResult.token);
+          setPhase('success');
+          return;
         }
 
         if (startResult.kind === 'direct') {

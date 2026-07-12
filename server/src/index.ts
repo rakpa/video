@@ -16,8 +16,9 @@ import { fileRouter } from './routes/file.js';
 import { thumbRouter } from './routes/thumb.js';
 import { billingRouter, handleWebhook } from './routes/billing.js';
 import statsRouter from './routes/stats.js';
-import { adminRouter } from './routes/admin.js';
+import adminRouter from './routes/admin.js';
 import { directRouter } from './routes/directStream.js';
+import { streamRouter } from './routes/streamDownload.js';
 import { getQuotaHealth, logQuotaStoreStatus } from './utils/highResQuota.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -123,6 +124,7 @@ app.use('/api', downloadRouter);
 app.use('/api', progressRouter);
 app.use('/api', fileRouter);
 app.use('/api', directRouter);
+app.use('/api', streamRouter);
 app.use('/api', thumbRouter);
 app.use('/api', billingRouter);
 app.use('/api/admin', statsRouter);

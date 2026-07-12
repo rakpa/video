@@ -14,6 +14,7 @@ import { getClientIp } from '../utils/clientIp.js';
 import { getHighResCount, reserveHighResSlot, quotaStoreKind } from '../utils/highResQuota.js';
 import { logDownload } from '../utils/downloadLogger.js';
 import { logger } from '../utils/logger.js';
+import { issueStreamDownloadToken } from '../services/streamDownloadToken.js';
 
 export const downloadRouter = Router();
 
@@ -47,7 +48,7 @@ downloadRouter.get('/download/quota', async (req, res) => {
  */
 downloadRouter.post('/download', async (req, res) => {
   const body = readJsonBody(req);
-  const { url, quality, mode, license, fast, reuse, galleryPrep, galleryMaxHeight, forceServer } = body;
+  const { url, quality, mode, license, fast, reuse, galleryPrep, galleryMaxHeight, forceServer, clientStream } = body;
 
   const v = validateUrl(url);
   if (!v.ok) return res.status(400).json({ error: v.message });
@@ -100,6 +101,39 @@ downloadRouter.post('/download', async (req, res) => {
         : 'best';
 
   const trimmedUrl = url.trim();
+
+  const streamFilename = `${(cached?.title ?? 'video').replace(/[^\w.\- ]+/g, '_').slice(0, 100) || 'video'}.mp4`;
+
+  // Browser-native download: pipe true HD merge straight to the user (no progress UI, no temp file).
+  if (
+    clientStream &&
+    platform?.id === 'youtube' &&
+    !clipResult.clip &&
+    q.height <= 1080
+  ) {
+    const token = issueStreamDownloadToken({
+      url: trimmedUrl,
+      qualityId: q.id,
+      mode: codecMode,
+      filename: streamFilename,
+      targetHeight: q.height,
+      galleryMaxHeight:
+        typeof galleryMaxHeight === 'number' && galleryMaxHeight > 0 ? galleryMaxHeight : undefined,
+    });
+    logDownload({
+      platform: 'youtube',
+      quality: q.label,
+      outputHeight: q.height,
+      requestedHeight: q.height,
+      ip: clientIp,
+    });
+    return res.status(200).json({
+      stream: true,
+      token,
+      filename: streamFilename,
+      height: q.height,
+    });
+  }
 
   // SaveFrom-style: browser downloads straight from YouTube CDN (no worker slot).
   if (
