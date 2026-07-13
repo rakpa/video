@@ -212,7 +212,7 @@ export const config = {
     presignTtlSec: Number(process.env.R2_PRESIGN_TTL_SEC ?? 3600),
   },
 
-  /** SaveFrom-style direct CDN passthrough for desktop YouTube HD (no server download). */
+  /** Stream-through downloads for desktop YouTube HD (ffmpeg remux piped to the browser). */
   directPassthrough: process.env.DIRECT_PASSTHROUGH !== 'false',
 } as const;
 

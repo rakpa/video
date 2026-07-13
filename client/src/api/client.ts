@@ -235,9 +235,11 @@ export async function startDownloadJob(
   });
 
   if (data.direct && data.url) {
+    // The server returns an API-relative /api/stream/… path — resolve it
+    // against the API host (the frontend is on a different origin).
     return {
       kind: 'direct',
-      url: data.url,
+      url: data.url.startsWith('/') ? apiUrl(data.url) : data.url,
       filename: data.filename ?? 'video.mp4',
       height: data.height,
     };

@@ -13,6 +13,7 @@ import { infoRouter } from './routes/info.js';
 import { downloadRouter } from './routes/download.js';
 import { progressRouter } from './routes/progress.js';
 import { fileRouter } from './routes/file.js';
+import { streamRouter } from './routes/stream.js';
 import { thumbRouter } from './routes/thumb.js';
 import { billingRouter, handleWebhook } from './routes/billing.js';
 import statsRouter from './routes/stats.js';
@@ -121,6 +122,7 @@ app.use('/api', infoRouter);
 app.use('/api', downloadRouter);
 app.use('/api', progressRouter);
 app.use('/api', fileRouter);
+app.use('/api', streamRouter);
 app.use('/api', thumbRouter);
 app.use('/api', billingRouter);
 app.use('/api/admin', statsRouter);
@@ -180,7 +182,7 @@ app.listen(config.port, () => {
     logger.info('R2 download-once cache: OFF (set R2_ACCOUNT_ID + keys to enable)');
   }
   if (config.directPassthrough) {
-    logger.info('Direct CDN passthrough: ON (desktop YouTube 720p/1080p progressive H.264)');
+    logger.info('Stream-through downloads: ON (desktop YouTube 720p/1080p, ffmpeg remux to browser)');
   } else {
     logger.info('Direct CDN passthrough: OFF');
   }

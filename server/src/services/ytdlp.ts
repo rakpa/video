@@ -190,22 +190,27 @@ export function pickBestYoutubeH264Format(
   return null;
 }
 
-export interface ProgressiveDirectUrl {
-  url: string;
+export interface StreamMergeSelection {
+  /** 'progressive' = one muxed file; 'merge' = separate video+audio remuxed on the fly. */
+  kind: 'progressive' | 'merge';
+  videoUrl: string;
+  audioUrl: string | null;
   height: number;
-  formatId: string;
   title: string;
+  formatIds: string;
 }
 
 /**
- * Best single-file H.264+MP4 with a direct CDN URL — SaveFrom-style passthrough.
- * Ignores DASH (video+audio separate) even when higher-res DASH exists; the browser
- * cannot merge streams. Returns the highest progressive file at or below maxHeight.
+ * Formats for the stream-through download (/api/stream). YouTube only serves
+ * progressive (muxed) files at 360p — real HD lives in video-only DASH streams —
+ * so this picks the best H.264 DASH video ≤ maxHeight plus the best AAC audio
+ * for a copy-only ffmpeg remux, falling back to progressive when it is at least
+ * as tall (e.g. a 360p request). Both must be plain HTTPS URLs (no HLS).
  */
-export function pickProgressiveDirectUrl(
+export function pickStreamMergeFormats(
   infoJsonPath: string,
   maxHeight: number,
-): ProgressiveDirectUrl | null {
+): StreamMergeSelection | null {
   let raw: RawDump;
   try {
     raw = JSON.parse(fs.readFileSync(infoJsonPath, 'utf8'));
@@ -213,12 +218,14 @@ export function pickProgressiveDirectUrl(
     return null;
   }
 
+  const formats = raw.formats ?? [];
   const sizeOf = (f: RawFormat) => f.filesize ?? f.filesize_approx ?? (f.tbr ?? 0) * 1000;
+  const usable = (f: RawFormat) =>
+    Boolean(f.format_id && f.url?.startsWith('http')) && !(f.protocol ?? '').includes('m3u8');
 
-  const candidates = (raw.formats ?? [])
+  const progressive = formats
     .filter((f) => {
-      if (!f.format_id || !f.url?.startsWith('http')) return false;
-      if ((f.protocol ?? '').includes('m3u8')) return false;
+      if (!usable(f)) return false;
       if ((f.acodec ?? 'none') === 'none') return false;
       if (!isH264Vcodec(f.vcodec)) return false;
       const h = f.height ?? 0;
@@ -226,8 +233,26 @@ export function pickProgressiveDirectUrl(
     })
     .sort((a, b) => (b.height ?? 0) - (a.height ?? 0) || sizeOf(a) - sizeOf(b));
 
-  const format = candidates[0];
-  if (!format?.url) return null;
+  const videos = formats
+    .filter((f) => {
+      if (!usable(f)) return false;
+      if ((f.acodec ?? 'none') !== 'none') return false;
+      if (!isH264Vcodec(f.vcodec)) return false;
+      const h = f.height ?? 0;
+      return h > 0 && h <= maxHeight;
+    })
+    .sort((a, b) => (b.height ?? 0) - (a.height ?? 0) || sizeOf(a) - sizeOf(b));
+
+  // AAC only — Opus cannot be copy-muxed into a broadly playable MP4. Largest
+  // first so quality is not silently reduced to the 48kbps low-bitrate track.
+  const audios = formats
+    .filter(
+      (f) =>
+        usable(f) &&
+        (f.vcodec ?? 'none') === 'none' &&
+        (f.acodec ?? '').toLowerCase().includes('mp4a'),
+    )
+    .sort((a, b) => sizeOf(b) - sizeOf(a));
 
   const title =
     (raw.title ?? 'video')
@@ -235,12 +260,33 @@ export function pickProgressiveDirectUrl(
       .trim()
       .slice(0, 100) || 'video';
 
-  return {
-    url: format.url,
-    height: format.height ?? 0,
-    formatId: String(format.format_id),
-    title,
-  };
+  const bestProg = progressive[0];
+  const bestVideo = videos[0];
+  const bestAudio = audios[0];
+  const dashHeight = bestVideo?.height ?? 0;
+  const progHeight = bestProg?.height ?? 0;
+
+  if (bestVideo?.url && bestAudio?.url && dashHeight > progHeight) {
+    return {
+      kind: 'merge',
+      videoUrl: bestVideo.url,
+      audioUrl: bestAudio.url,
+      height: dashHeight,
+      title,
+      formatIds: `${bestVideo.format_id}+${bestAudio.format_id}`,
+    };
+  }
+  if (bestProg?.url) {
+    return {
+      kind: 'progressive',
+      videoUrl: bestProg.url,
+      audioUrl: null,
+      height: progHeight,
+      title,
+      formatIds: String(bestProg.format_id),
+    };
+  }
+  return null;
 }
 
 /** Highest DASH video+audio at or below maxHeight — skips slow yt-dlp format re-sort on 4K. */

@@ -3,10 +3,12 @@ import { getAnyFreshInfoJson } from './infoJsonCache.js';
 import { detectPlatform } from './platform.js';
 import type { QualityDef } from './formats.js';
 import type { ClipRange } from '../utils/clip.js';
-import { ensureInfoJsonCache, pickProgressiveDirectUrl } from './ytdlp.js';
+import { ensureInfoJsonCache, pickStreamMergeFormats } from './ytdlp.js';
+import { createStreamTicket, hasStreamCapacity } from './streamTickets.js';
 import { logger } from '../utils/logger.js';
 
 export interface DirectDownloadResult {
+  /** API-relative /api/stream/:ticket URL — the client resolves it against the API host. */
   url: string;
   filename: string;
   height: number;
@@ -20,7 +22,11 @@ export interface PassthroughOptions {
   clip?: ClipRange | null;
 }
 
-/** True when the browser can pull the file straight from the source CDN (SaveFrom-style). */
+/**
+ * True when the download can be streamed straight through /api/stream: ffmpeg
+ * copy-remuxes the CDN video+audio into the response, so the browser download
+ * starts immediately at full quality with no server-side temp file.
+ */
 export function canDirectPassthrough(options: PassthroughOptions): boolean {
   if (!config.directPassthrough) return false;
 
@@ -28,36 +34,41 @@ export function canDirectPassthrough(options: PassthroughOptions): boolean {
   if (platform?.id !== 'youtube') return false;
   if (options.galleryPrep) return false;
   if (options.clip) return false;
-  // Only free-tier HD — 2K/4K need server merge/transcode.
+  // Only free-tier HD — 2K/4K are VP9/AV1 and need the server merge/transcode.
   if (options.quality.height > 1080) return false;
+  // Saturated stream slots → let the request queue through the job pipeline.
+  if (!hasStreamCapacity()) return false;
   return true;
 }
 
-function safeFilename(title: string): string {
-  return `${title.replace(/[^\w.\- ]+/g, '_').slice(0, 120) || 'video'}.mp4`;
+function safeFilename(base: string): string {
+  return `${base.replace(/[^\w.\- ]+/g, '_').slice(0, 120) || 'video'}.mp4`;
 }
 
 function resolveFromCache(url: string, maxHeight: number): DirectDownloadResult | null {
   const infoPath = getAnyFreshInfoJson(url.trim());
   if (!infoPath) return null;
 
-  const picked = pickProgressiveDirectUrl(infoPath, maxHeight);
+  const picked = pickStreamMergeFormats(infoPath, maxHeight);
   if (!picked) return null;
 
+  const filename = safeFilename(`${picked.title}_${picked.height}p`);
+  const ticket = createStreamTicket(picked, filename, url.trim());
+
   logger.info(
-    `Direct passthrough: ${picked.formatId} ${picked.height}p for ${url.slice(0, 60)}…`,
+    `Direct stream ready: ${picked.formatIds} ${picked.height}p (${picked.kind}) for ${url.slice(0, 60)}…`,
   );
 
   return {
-    url: picked.url,
-    filename: safeFilename(picked.title),
+    url: `/api/stream/${ticket.id}`,
+    filename,
     height: picked.height,
-    formatId: picked.formatId,
+    formatId: picked.formatIds,
   };
 }
 
 /**
- * Resolve a direct googlevideo.com URL from warm info-json (no blocking extract).
+ * Resolve a stream-through ticket from warm info-json (no blocking extract).
  * Falls back to a short info-json warm when /api/info has not finished yet.
  */
 export async function resolveDirectDownload(
@@ -76,7 +87,7 @@ export async function resolveDirectDownload(
       ),
     ]);
   } catch (err) {
-    logger.warn('Direct passthrough info warm skipped:', (err as Error).message);
+    logger.warn('Direct stream info warm skipped:', (err as Error).message);
     return null;
   }
 

@@ -101,7 +101,8 @@ downloadRouter.post('/download', async (req, res) => {
 
   const trimmedUrl = url.trim();
 
-  // SaveFrom-style: browser downloads straight from YouTube CDN (no worker slot).
+  // Stream-through: /api/stream remuxes the CDN stream(s) straight into the
+  // browser's download at full selected quality (no temp file, no worker slot).
   if (
     canDirectPassthrough({
       url: trimmedUrl,

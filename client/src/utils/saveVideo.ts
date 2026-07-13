@@ -487,13 +487,14 @@ export function formatDownloadError(err: unknown): string {
 }
 
 /**
- * SaveFrom-style delivery — browser pulls straight from the source CDN (googlevideo.com).
- * Cross-origin: the download attribute may be ignored; the browser still saves the file.
+ * Stream-through delivery — the API remuxes the CDN stream(s) and answers with
+ * Content-Disposition: attachment, so this click starts the browser download
+ * immediately without navigating away (no black video page).
  */
-export async function downloadDirectUrl(cdnUrl: string, filename: string): Promise<void> {
+export async function downloadDirectUrl(streamUrl: string, filename: string): Promise<void> {
   const safe = filename.replace(/[^\w.\- ]+/g, '_').slice(0, 120) || 'video.mp4';
   const a = document.createElement('a');
-  a.href = cdnUrl;
+  a.href = streamUrl;
   a.download = safe;
   a.rel = 'noopener noreferrer';
   a.style.display = 'none';
