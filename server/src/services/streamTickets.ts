@@ -13,6 +13,8 @@ export interface StreamTicket {
   selection: StreamMergeSelection;
   filename: string;
   sourceUrl: string;
+  /** Proxy URL that extracted the CDN URLs ('' = none) — relay fetches must use it. */
+  proxy: string;
   createdAt: number;
 }
 
@@ -32,6 +34,7 @@ export function createStreamTicket(
   selection: StreamMergeSelection,
   filename: string,
   sourceUrl: string,
+  proxy: string,
 ): StreamTicket {
   sweep();
   const ticket: StreamTicket = {
@@ -39,6 +42,7 @@ export function createStreamTicket(
     selection,
     filename,
     sourceUrl,
+    proxy,
     createdAt: Date.now(),
   };
   tickets.set(ticket.id, ticket);

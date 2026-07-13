@@ -488,19 +488,12 @@ export function formatDownloadError(err: unknown): string {
 
 /**
  * Stream-through delivery — the API remuxes the CDN stream(s) and answers with
- * Content-Disposition: attachment, so this click starts the browser download
- * immediately without navigating away (no black video page).
+ * Content-Disposition: attachment, so the browser download starts immediately
+ * (no black video page). Uses the hidden-iframe technique so that even an
+ * error response can never navigate the app away.
  */
-export async function downloadDirectUrl(streamUrl: string, filename: string): Promise<void> {
-  const safe = filename.replace(/[^\w.\- ]+/g, '_').slice(0, 120) || 'video.mp4';
-  const a = document.createElement('a');
-  a.href = streamUrl;
-  a.download = safe;
-  a.rel = 'noopener noreferrer';
-  a.style.display = 'none';
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
+export async function downloadDirectUrl(streamUrl: string, _filename: string): Promise<void> {
+  triggerCrossOriginDownload(streamUrl);
   await new Promise((r) => window.setTimeout(r, 400));
 }
 

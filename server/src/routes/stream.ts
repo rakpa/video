@@ -1,6 +1,7 @@
 import { Router, type Response } from 'express';
 import { spawn } from 'node:child_process';
-import { config, currentProxy } from '../config.js';
+import { fetch as undiciFetch, Agent, ProxyAgent, type Dispatcher } from 'undici';
+import { config } from '../config.js';
 import {
   acquireStreamSlot,
   getStreamTicket,
@@ -27,32 +28,36 @@ function isLoopback(addr: string | undefined): boolean {
   return addr === '127.0.0.1' || addr === '::1' || addr === '::ffff:127.0.0.1';
 }
 
-/** Where ffmpeg reads a track from: the chunked loopback relay, or the CDN
- *  directly when a proxy is configured (fetch() cannot use the proxy, and the
- *  CDN URL is bound to the proxy's IP). */
-function ffmpegInputUrl(ticketId: string, track: 'video' | 'audio', directUrl: string): string {
-  if (currentProxy()) return directUrl;
+/** ffmpeg always reads through the loopback relay — it handles chunking AND
+ *  the extraction proxy (googlevideo URLs are bound to the extracting IP). */
+function ffmpegInputUrl(ticketId: string, track: 'video' | 'audio'): string {
   return `http://127.0.0.1:${config.port}/api/stream/${ticketId}/src/${track}`;
 }
 
-/** Per-input ffmpeg flags: survive hiccups and reuse the extraction proxy. */
+/** Per-input ffmpeg flags: survive relay hiccups on long transfers. */
 function inputArgs(url: string): string[] {
-  const args = [
+  return [
     '-reconnect',
     '1',
     '-reconnect_streamed',
     '1',
     '-reconnect_delay_max',
     '4',
-    '-user_agent',
-    BROWSER_UA,
+    '-i',
+    url,
   ];
-  // googlevideo URLs are bound to the IP that extracted them — when yt-dlp went
-  // through a proxy, ffmpeg must fetch through the same one.
-  const proxy = currentProxy();
-  if (proxy && !url.startsWith('http://127.0.0.1')) args.push('-http_proxy', proxy);
-  args.push('-i', url);
-  return args;
+}
+
+/** One dispatcher per proxy URL — ProxyAgent holds a reusable connection pool. */
+const dispatchers = new Map<string, Dispatcher>();
+
+function dispatcherFor(proxy: string): Dispatcher {
+  let d = dispatchers.get(proxy);
+  if (!d) {
+    d = proxy ? new ProxyAgent(proxy) : new Agent();
+    dispatchers.set(proxy, d);
+  }
+  return d;
 }
 
 function parseTotalSize(contentRange: string | null): number | null {
@@ -78,12 +83,18 @@ async function writeBody(body: ReadableStream<Uint8Array>, res: Response): Promi
 }
 
 /** Sequential 10 MB Range chunks from the CDN piped into `res` at full speed. */
-async function relayChunked(url: string, res: Response, aborted: () => boolean): Promise<void> {
+async function relayChunked(
+  url: string,
+  proxy: string,
+  res: Response,
+  aborted: () => boolean,
+): Promise<void> {
   let offset = 0;
   let total: number | null = null;
 
   while (!aborted() && (total === null || offset < total)) {
-    const upstream = await fetch(url, {
+    const upstream = await undiciFetch(url, {
+      dispatcher: dispatcherFor(proxy),
       headers: { Range: `bytes=${offset}-${offset + CHUNK_SIZE - 1}`, 'User-Agent': BROWSER_UA },
       signal: AbortSignal.timeout(CHUNK_TIMEOUT_MS),
     });
@@ -131,7 +142,7 @@ streamRouter.get('/stream/:ticketId/src/:track', (req, res) => {
   });
 
   res.setHeader('Content-Type', req.params.track === 'audio' ? 'audio/mp4' : 'video/mp4');
-  relayChunked(url, res, () => clientGone).catch((err: unknown) => {
+  relayChunked(url, ticket.proxy, res, () => clientGone).catch((err: unknown) => {
     logger.warn('stream relay failed:', (err as Error).message);
     if (!res.headersSent) res.status(502).json({ error: 'Upstream fetch failed.' });
     else res.destroy();
@@ -156,11 +167,15 @@ streamRouter.get('/stream/:ticketId', (req, res) => {
 
   const { selection, filename } = ticket;
 
-  const videoInput = ffmpegInputUrl(ticket.id, 'video', selection.videoUrl);
-  const args = ['-hide_banner', '-loglevel', 'error', '-nostdin', ...inputArgs(videoInput)];
+  const args = [
+    '-hide_banner',
+    '-loglevel',
+    'error',
+    '-nostdin',
+    ...inputArgs(ffmpegInputUrl(ticket.id, 'video')),
+  ];
   if (selection.kind === 'merge' && selection.audioUrl) {
-    const audioInput = ffmpegInputUrl(ticket.id, 'audio', selection.audioUrl);
-    args.push(...inputArgs(audioInput), '-map', '0:v:0', '-map', '1:a:0');
+    args.push(...inputArgs(ffmpegInputUrl(ticket.id, 'audio')), '-map', '0:v:0', '-map', '1:a:0');
   } else {
     args.push('-map', '0');
   }

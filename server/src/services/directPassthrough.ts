@@ -1,5 +1,5 @@
-import { config } from '../config.js';
-import { getAnyFreshInfoJson } from './infoJsonCache.js';
+import { config, currentProxy } from '../config.js';
+import { getAnyFreshInfoJsonEntry } from './infoJsonCache.js';
 import { detectPlatform } from './platform.js';
 import type { QualityDef } from './formats.js';
 import type { ClipRange } from '../utils/clip.js';
@@ -46,14 +46,24 @@ function safeFilename(base: string): string {
 }
 
 function resolveFromCache(url: string, maxHeight: number): DirectDownloadResult | null {
-  const infoPath = getAnyFreshInfoJson(url.trim());
-  if (!infoPath) return null;
+  const entry = getAnyFreshInfoJsonEntry(url.trim());
+  if (!entry) return null;
 
-  const picked = pickStreamMergeFormats(infoPath, maxHeight);
+  // googlevideo URLs are locked to the IP that extracted them, so the stream
+  // relay must fetch through the same proxy. A disk-restored entry loses its
+  // proxy tag — with a rotating pool we can't know which IP owns the URLs, so
+  // fall back to the job pipeline rather than risk a mid-download 403.
+  let proxy = entry.proxy;
+  if (!proxy && config.proxies.length > 0) {
+    if (config.proxies.length > 1) return null;
+    proxy = currentProxy() ?? '';
+  }
+
+  const picked = pickStreamMergeFormats(entry.path, maxHeight);
   if (!picked) return null;
 
   const filename = safeFilename(`${picked.title}_${picked.height}p`);
-  const ticket = createStreamTicket(picked, filename, url.trim());
+  const ticket = createStreamTicket(picked, filename, url.trim(), proxy);
 
   logger.info(
     `Direct stream ready: ${picked.formatIds} ${picked.height}p (${picked.kind}) for ${url.slice(0, 60)}…`,

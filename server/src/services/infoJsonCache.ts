@@ -74,10 +74,12 @@ export function getFreshInfoJson(url: string, proxy: string): string | null {
 }
 
 /**
- * Fresh dump for direct CDN passthrough — ignores proxy tag.
- * googlevideo URLs are consumed by the visitor's browser, not our proxy IP.
+ * Fresh dump for stream-through downloads, regardless of which proxy produced
+ * it. The returned proxy tag is the one that extracted the media URLs — the
+ * stream relay must fetch through that same proxy (googlevideo URLs are
+ * IP-locked). An empty tag on a disk-restored entry means "unknown".
  */
-export function getAnyFreshInfoJson(url: string): string | null {
+export function getAnyFreshInfoJsonEntry(url: string): { path: string; proxy: string } | null {
   const p = fileFor(url);
   let e = cache.get(url);
 
@@ -97,7 +99,7 @@ export function getAnyFreshInfoJson(url: string): string | null {
     cache.delete(url);
     return null;
   }
-  return e.path;
+  return { path: e.path, proxy: e.proxy };
 }
 
 /** Drop a cached dump (e.g. after a download fails) so the retry re-extracts. */
