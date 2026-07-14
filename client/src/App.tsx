@@ -672,18 +672,17 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
           ? cleanInstagramUrl(fetchedUrl.current || url)
           : fetchedUrl.current || url;
 
-      // YouTube HD (≤1080p) on mobile → stream-through to the browser (user-side).
-      // Do not alter this path — Instagram/FB keep gallery prep separately.
+      // YouTube (720p–4K) on mobile → stream-through to the browser (user-side).
+      // Instagram/FB keep gallery prep separately.
       const useMobileStream =
-        mobile && isYoutube && !highRes && !clip && clipMode !== 'clip';
+        mobile && isYoutube && !clip && clipMode !== 'clip';
       const galleryPrep = mobile && !useMobileStream;
-      // ≤1080p gallery path (and the native app) → Save-to-Gallery share sheet.
-      // 2K/4K on a mobile browser → download the converted H.264 file to Files.
+      // Gallery share sheet only when not streaming to the browser download bar.
       const useGallerySheet = mobile && !useMobileStream && (isNativeMobileApp() || !highRes);
 
       setMobileSavePayload(null);
       setDelivering(false);
-      setConvertingForPhone(mobile && highRes);
+      setConvertingForPhone(mobile && highRes && !useMobileStream);
       setProgress(INITIAL_PROGRESS);
       setOutputHeight(null);
       setPhase('downloading');

@@ -201,11 +201,10 @@ export interface StreamMergeSelection {
 }
 
 /**
- * Formats for the stream-through download (/api/stream). YouTube only serves
- * progressive (muxed) files at 360p — real HD lives in video-only DASH streams —
- * so this picks the best H.264 DASH video ≤ maxHeight plus the best AAC audio
- * for a copy-only ffmpeg remux, falling back to progressive when it is at least
- * as tall (e.g. a 360p request). Both must be plain HTTPS URLs (no HLS).
+ * Formats for the stream-through download (/api/stream).
+ * ≤1080p: H.264 DASH + AAC (same as the known-good HD path).
+ * 2K/4K: best available video-only DASH (VP9/AV1/H.264) + AAC, copy-remuxed
+ * so the browser download starts without a full server file save.
  */
 export function pickStreamMergeFormats(
   infoJsonPath: string,
@@ -222,6 +221,17 @@ export function pickStreamMergeFormats(
   const sizeOf = (f: RawFormat) => f.filesize ?? f.filesize_approx ?? (f.tbr ?? 0) * 1000;
   const usable = (f: RawFormat) =>
     Boolean(f.format_id && f.url?.startsWith('http')) && !(f.protocol ?? '').includes('m3u8');
+  // Keep ≤1080 on H.264 only (do not change working HD). 2K/4K need VP9/AV1.
+  const highRes = maxHeight > 1080;
+  const codecScore = (vcodec: string | undefined) => {
+    const v = (vcodec ?? '').toLowerCase();
+    if (v.includes('vp9')) return 3;
+    if (v.includes('av01') || v.includes('av1')) return 2;
+    if (isH264Vcodec(v)) return 1;
+    return 0;
+  };
+  const videoOk = (vcodec: string | undefined) =>
+    highRes ? codecScore(vcodec) > 0 : isH264Vcodec(vcodec);
 
   const progressive = formats
     .filter((f) => {
@@ -237,11 +247,16 @@ export function pickStreamMergeFormats(
     .filter((f) => {
       if (!usable(f)) return false;
       if ((f.acodec ?? 'none') !== 'none') return false;
-      if (!isH264Vcodec(f.vcodec)) return false;
+      if (!videoOk(f.vcodec)) return false;
       const h = f.height ?? 0;
       return h > 0 && h <= maxHeight;
     })
-    .sort((a, b) => (b.height ?? 0) - (a.height ?? 0) || sizeOf(a) - sizeOf(b));
+    .sort(
+      (a, b) =>
+        (b.height ?? 0) - (a.height ?? 0) ||
+        (highRes ? codecScore(b.vcodec) - codecScore(a.vcodec) : 0) ||
+        sizeOf(a) - sizeOf(b),
+    );
 
   // AAC only — Opus cannot be copy-muxed into a broadly playable MP4. Largest
   // first so quality is not silently reduced to the 48kbps low-bitrate track.
@@ -266,7 +281,8 @@ export function pickStreamMergeFormats(
   const dashHeight = bestVideo?.height ?? 0;
   const progHeight = bestProg?.height ?? 0;
 
-  if (bestVideo?.url && bestAudio?.url && dashHeight > progHeight) {
+  // 2K/4K almost never have tall progressive H.264 — prefer DASH whenever it is taller.
+  if (bestVideo?.url && bestAudio?.url && (highRes || dashHeight > progHeight)) {
     return {
       kind: 'merge',
       videoUrl: bestVideo.url,

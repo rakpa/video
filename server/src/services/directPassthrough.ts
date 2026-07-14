@@ -27,9 +27,8 @@ export interface PassthroughOptions {
  * copy-remuxes the CDN video+audio into the response, so the browser download
  * starts immediately at full quality with no server-side temp file.
  *
- * YouTube HD path is unchanged. Instagram desktop can stream progressive
- * Reels when galleryPrep is off; mobile portrait saves still use galleryPrep
- * + job pipeline (Save to Photos).
+ * YouTube 720p–4K uses this path (HD logic unchanged; 2K/4K now stream too).
+ * Instagram desktop can stream progressive Reels when galleryPrep is off.
  */
 export function canDirectPassthrough(options: PassthroughOptions): boolean {
   if (!config.directPassthrough) return false;
@@ -38,8 +37,8 @@ export function canDirectPassthrough(options: PassthroughOptions): boolean {
   if (platform?.id !== 'youtube' && platform?.id !== 'instagram') return false;
   if (options.galleryPrep) return false;
   if (options.clip) return false;
-  // Only free-tier HD — 2K/4K need the server merge/transcode.
-  if (options.quality.height > 1080) return false;
+  // Instagram stays ≤1080p progressive. YouTube may stream 2K/4K (VP9/AV1 remux).
+  if (platform.id === 'instagram' && options.quality.height > 1080) return false;
   // Saturated stream slots → let the request queue through the job pipeline.
   if (!hasStreamCapacity()) return false;
   return true;
