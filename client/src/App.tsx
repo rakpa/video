@@ -115,19 +115,26 @@ const HIGH_RES_MIN_PX = 1440;
 const MOBILE_GALLERY_MAX_HEIGHT = 1080;
 const HIGH_RES_LIMIT_ID = 'highres-limit-section';
 
-/** Portrait social posts → Gallery; widescreen YouTube → Files. */
+/**
+ * Gallery vs Files routing on mobile:
+ * - YouTube long / widescreen → always Files (stream-through). Never use thumb
+ *   crop — YouTube thumbs are often portrait crops of landscape videos.
+ * - YouTube Shorts, Instagram, Facebook Reels → Gallery.
+ */
 function isPortraitSource(opts: {
   platformId?: string | null;
   url: string;
   thumbPortrait?: boolean | null;
 }): boolean {
-  if (opts.thumbPortrait === true) return true;
+  if (opts.platformId === 'youtube') {
+    return /\/shorts\//i.test(opts.url);
+  }
   if (opts.platformId === 'instagram') return true;
-  if (opts.platformId === 'youtube' && /\/shorts\//i.test(opts.url)) return true;
-  if (opts.thumbPortrait === false) return false;
-  // Facebook mobile traffic is mostly Reels / portrait clips when we have no thumb yet.
-  if (opts.platformId === 'facebook') return true;
-  return false;
+  if (opts.platformId === 'facebook') {
+    if (opts.thumbPortrait === false) return false;
+    return true;
+  }
+  return opts.thumbPortrait === true;
 }
 
 /** Top-level router: legal pages vs. the main downloader app. */
@@ -686,8 +693,8 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
           ? cleanInstagramUrl(fetchedUrl.current || url)
           : fetchedUrl.current || url;
 
-      // Portrait (IG Reels, YT Shorts, portrait thumbs) → Save to Gallery on mobile.
-      // YouTube long / widescreen → stream to Files (browser download). Do not mix these.
+      // YouTube long/widescreen → stream to Files (user-side). Never server %.
+      // Portrait (IG Reels, YT Shorts) → Save to Gallery.
       const portrait = isPortraitSource({
         platformId: platform?.id,
         url: currentUrl,
