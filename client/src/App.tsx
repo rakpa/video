@@ -659,17 +659,19 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
       const platform = detectPlatform(fetchedUrl.current || url);
       const mobile = isMobileDevice();
       const highRes = Boolean(fmt && fmt.height > MOBILE_GALLERY_MAX_HEIGHT);
-      // Phones can't play YouTube's VP9/AV1 2K/4K, and iOS Photos only accepts
-      // H.264 — so every mobile download goes through the server's H.264 prep
-      // (fast remux at ≤1080p, a real convert at 2K/4K). galleryPrep drives that.
-      const galleryPrep = mobile;
-      // ≤1080p (and the native app at any res) → Save-to-Gallery share sheet.
-      // 2K/4K on a mobile browser → download the converted (playable) H.264 file
-      // to Files: it's too large for the Photos share sheet and iOS Photos won't
-      // take 4K anyway, but it now actually plays.
-      const useGallerySheet = mobile && (isNativeMobileApp() || !highRes);
       const isIgFb = platform?.id === 'instagram' || platform?.id === 'facebook';
+      const isYoutube = platform?.id === 'youtube';
       const currentUrl = fetchedUrl.current || url;
+
+      // YouTube HD (≤1080p) on mobile → same stream-through path as desktop so the
+      // browser download starts in a few seconds (no full server download first).
+      // Gallery H.264 prep stays for IG/FB, clips, and 2K/4K (need transcode).
+      const useMobileStream =
+        mobile && isYoutube && !highRes && !clip && clipMode !== 'clip';
+      const galleryPrep = mobile && !useMobileStream;
+      // ≤1080p gallery path (and the native app) → Save-to-Gallery share sheet.
+      // 2K/4K on a mobile browser → download the converted H.264 file to Files.
+      const useGallerySheet = mobile && !useMobileStream && (isNativeMobileApp() || !highRes);
 
       setMobileSavePayload(null);
       setDelivering(false);
@@ -688,7 +690,7 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
           licenseToken(),
           {
             fast: isIgFb || (mobile && !highRes),
-            reuse: !mobile && !clip && !highRes,
+            reuse: !useMobileStream && !mobile && !clip && !highRes,
             clip,
             galleryPrep,
           },
