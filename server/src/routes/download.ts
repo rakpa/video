@@ -5,7 +5,7 @@ import { getQuality, isCodecMode } from '../services/formats.js';
 import { createJob } from '../jobManager.js';
 import { YtDlpError, readCachedVideoInfo } from '../services/ytdlp.js';
 import { canDirectPassthrough, resolveDirectDownload } from '../services/directPassthrough.js';
-import { detectPlatform } from '../services/platform.js';
+import { canonicalizeMediaUrl, detectPlatform } from '../services/platform.js';
 import { maxAllowedHeight, isPro } from '../services/license.js';
 import { parseClipRange } from '../utils/clip.js';
 import { config } from '../config.js';
@@ -82,12 +82,13 @@ downloadRouter.post('/download', async (req, res) => {
     });
   }
 
-  const cached = readCachedVideoInfo(String(url ?? '').trim());
+  const trimmedUrl = canonicalizeMediaUrl(String(url ?? ''));
+  const platform = detectPlatform(trimmedUrl);
+  const cached = readCachedVideoInfo(trimmedUrl);
   const clipResult = parseClipRange(body, cached?.durationSeconds ?? null);
   if (!clipResult.ok) return res.status(400).json({ error: clipResult.error });
 
   // Default to 'best' when the client omits a codec mode.
-  const platform = detectPlatform(url.trim());
   const codecMode =
     platform?.id === 'instagram' || platform?.id === 'facebook'
       ? Boolean(fast)
@@ -99,10 +100,9 @@ downloadRouter.post('/download', async (req, res) => {
         ? mode
         : 'best';
 
-  const trimmedUrl = url.trim();
-
   // Stream-through: /api/stream remuxes the CDN stream(s) straight into the
   // browser's download at full selected quality (no temp file, no worker slot).
+  // YouTube HD and Instagram progressive Reels use this path.
   if (
     canDirectPassthrough({
       url: trimmedUrl,

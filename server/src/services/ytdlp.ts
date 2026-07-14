@@ -409,7 +409,8 @@ function youtubeClientsToTry(hasCookies: boolean): readonly string[] {
  * Args shared by every yt-dlp invocation (info + download) to survive YouTube's
  * bot-detection on cloud/datacenter IPs: a configurable player client and, when
  * provided, an authenticated cookies file and/or PO token. The `youtube:`
- * namespace makes the extractor-arg a no-op for other platforms.
+ * namespace makes the extractor-arg a no-op for other platforms — but loading
+ * cookies still costs I/O, so Instagram/Facebook only get the proxy.
  */
 function youtubeHardeningArgs(playerClient: string): string[] {
   const args = ['--extractor-args', `youtube:${youtubeExtractorArgValue(playerClient)}`];
@@ -428,6 +429,18 @@ function youtubeHardeningArgs(playerClient: string): string[] {
   const proxy = currentProxy();
   if (proxy) args.push('--proxy', proxy);
   return args;
+}
+
+/** Lighter hardening for IG/FB — proxy only (skip cookies / YouTube extractor args). */
+function socialHardeningArgs(): string[] {
+  const proxy = currentProxy();
+  return proxy ? ['--proxy', proxy] : [];
+}
+
+function hardeningArgsForUrl(url: string, playerClient: string): string[] {
+  const platform = detectPlatform(url)?.id;
+  if (platform === 'instagram' || platform === 'facebook') return socialHardeningArgs();
+  return youtubeHardeningArgs(playerClient);
 }
 
 function ytDlpFailureMessage(stderr: string): string {
@@ -605,7 +618,7 @@ async function extractAndCacheInfoJson(url: string): Promise<void> {
     let blocked = false;
     for (const client of clients) {
       try {
-        const stdout = await runJson([...INFO_ARGS, ...youtubeHardeningArgs(client), url]);
+        const stdout = await runJson([...INFO_ARGS, ...hardeningArgsForUrl(url, client), url]);
         saveInfoJson(url, stdout, currentProxy() ?? '');
         return;
       } catch (err) {
@@ -895,7 +908,7 @@ export function startDownload(
     '--fragment-retries', fast ? '5' : '20',
     '--retry-sleep', 'linear=1::5',
     '--socket-timeout', '30',
-    ...youtubeHardeningArgs(youtubeClient ?? config.youtubePlayerClient),
+    ...hardeningArgsForUrl(url, youtubeClient ?? config.youtubePlayerClient),
     '-o', outTemplate,
     // Load the cached extraction when available; otherwise extract from the URL.
     ...(cachedInfoJson ? ['--load-info-json', cachedInfoJson] : [url]),

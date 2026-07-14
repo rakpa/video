@@ -3,6 +3,7 @@ import { AnimatePresence, motion } from 'framer-motion';
 import type { AvailableFormat, CodecMode, Phase, ProgressUpdate, QualityId, VideoInfo } from './types';
 import { useTheme, type Theme } from './hooks/useTheme';
 import { detectPlatform, normalizeUrl } from './utils/platform';
+import { cleanInstagramUrl } from './utils/instagram';
 import { API_NOT_CONFIGURED_MSG, isApiConfigured } from './config/api';
 import { PLACEHOLDER_FORMATS } from './utils/formats';
 import { fetchClientYoutubePreview } from './utils/youtube';
@@ -31,7 +32,6 @@ import {
   fetchVideoPreview,
   isMobileDevice,
   pingApiWarmup,
-  warmSocialPreview,
   startDownloadJob,
   subscribeProgress,
 } from './api/client';
@@ -385,7 +385,9 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
   };
 
   const handleFetch = useCallback(async (target: string) => {
-    const normalized = normalizeUrl(target);
+    const platformGuess = detectPlatform(target);
+    const normalized =
+      platformGuess?.id === 'instagram' ? cleanInstagramUrl(target) : normalizeUrl(target);
     if (!isApiConfigured()) {
       setError(API_NOT_CONFIGURED_MSG);
       setPhase('error');
@@ -593,7 +595,9 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
 
   useEffect(() => {
     const trimmed = url.trim();
-    const normalized = normalizeUrl(trimmed);
+    const platformGuess = detectPlatform(trimmed);
+    const normalized =
+      platformGuess?.id === 'instagram' ? cleanInstagramUrl(trimmed) : normalizeUrl(trimmed);
     const likelyPaste = trimmed.length - prevUrlLen.current > 8;
     prevUrlLen.current = trimmed.length;
 
@@ -608,10 +612,10 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
     }
     if (normalized === fetchedUrl.current || phase === 'downloading') return;
     const isSocial =
-      detectPlatform(trimmed)?.id === 'instagram' || detectPlatform(trimmed)?.id === 'facebook';
+      platformGuess?.id === 'instagram' || platformGuess?.id === 'facebook';
     if (isSocial) {
+      // Warm API only — handleFetch immediately starts preview (avoid double IG scrape).
       pingApiWarmup();
-      warmSocialPreview(normalized);
     }
     const delay = likelyPaste || isSocial ? 0 : 200;
     const t = setTimeout(() => handleFetch(trimmed), delay);
@@ -661,13 +665,21 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
       const highRes = Boolean(fmt && fmt.height > MOBILE_GALLERY_MAX_HEIGHT);
       const isIgFb = platform?.id === 'instagram' || platform?.id === 'facebook';
       const isYoutube = platform?.id === 'youtube';
-      const currentUrl = fetchedUrl.current || url;
+      const isInstagram = platform?.id === 'instagram';
+      const currentUrl =
+        isInstagram && (fetchedUrl.current || url)
+          ? cleanInstagramUrl(fetchedUrl.current || url)
+          : fetchedUrl.current || url;
 
-      // YouTube HD (≤1080p) on mobile → same stream-through path as desktop so the
-      // browser download starts in a few seconds (no full server download first).
-      // Gallery H.264 prep stays for IG/FB, clips, and 2K/4K (need transcode).
+      // YouTube HD + Instagram Reels (≤1080p) → stream-through so the browser
+      // download starts in a few seconds (no full server download first).
+      // Gallery H.264 prep stays for FB, clips, and 2K/4K (need transcode).
       const useMobileStream =
-        mobile && isYoutube && !highRes && !clip && clipMode !== 'clip';
+        mobile &&
+        (isYoutube || isInstagram) &&
+        !highRes &&
+        !clip &&
+        clipMode !== 'clip';
       const galleryPrep = mobile && !useMobileStream;
       // ≤1080p gallery path (and the native app) → Save-to-Gallery share sheet.
       // 2K/4K on a mobile browser → download the converted H.264 file to Files.

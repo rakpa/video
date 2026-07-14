@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { validateUrl } from '../utils/validate.js';
 import { readJsonBody } from '../utils/body.js';
 import { fetchInfo, ensureInfoJsonCache, readCachedVideoInfo, YtDlpError } from '../services/ytdlp.js';
-import { detectPlatform } from '../services/platform.js';
+import { canonicalizeMediaUrl, detectPlatform } from '../services/platform.js';
 import { fetchPreview } from '../services/preview.js';
 import { getCachedInfo, setCachedInfo } from '../services/infoCache.js';
 
@@ -17,16 +17,18 @@ infoRouter.post('/info/preview', async (req, res) => {
     return res.status(400).json({ error: v.message });
   }
 
-  const platform = detectPlatform(url)!;
+  const trimmed = canonicalizeMediaUrl(String(url));
+  const platform = detectPlatform(trimmed)!;
   if (platform.id === 'instagram' || platform.id === 'facebook') {
-    void ensureInfoJsonCache(url.trim()).catch(() => undefined);
+    // Single warm keyed to the canonical URL — avoids a second -J for ?igsh=… pastes.
+    void ensureInfoJsonCache(trimmed).catch(() => undefined);
   }
   try {
-    const preview = await fetchPreview(url.trim(), platform.id);
+    const preview = await fetchPreview(trimmed, platform.id);
     if (!preview) {
       return res.status(204).end();
     }
-    const cacheReady = Boolean(readCachedVideoInfo(url.trim()));
+    const cacheReady = Boolean(readCachedVideoInfo(trimmed));
     return res.json({ platform: platform.id, ...preview, cacheReady });
   } catch {
     return res.status(204).end();
@@ -42,7 +44,7 @@ infoRouter.post('/info', async (req, res) => {
     return res.status(400).json({ error: v.message });
   }
 
-  const trimmed = url.trim();
+  const trimmed = canonicalizeMediaUrl(String(url));
   const cached = getCachedInfo(trimmed);
   if (cached) {
     const platform = detectPlatform(trimmed)!;

@@ -1,3 +1,5 @@
+import { cleanInstagramUrl } from './instagram.js';
+
 /**
  * Platform detection lives here. To support a new site later, add one entry
  * to this list — nothing else in the backend needs to change.
@@ -38,6 +40,16 @@ export function detectPlatform(rawUrl: string): PlatformDef | null {
     return null;
   }
   return PLATFORMS.find((p) => p.patterns.some((re) => re.test(host))) ?? null;
+}
+
+/**
+ * Normalize platform URLs before info-json / download so preview+download
+ * share one cache key (Instagram paste links usually carry ?igsh=…).
+ */
+export function canonicalizeMediaUrl(rawUrl: string): string {
+  const trimmed = rawUrl.trim();
+  if (detectPlatform(trimmed)?.id === 'instagram') return cleanInstagramUrl(trimmed);
+  return trimmed;
 }
 
 export const SUPPORTED_LABELS = PLATFORMS.map((p) => p.label).join(', ');

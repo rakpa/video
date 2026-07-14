@@ -7,6 +7,7 @@ import {
   getStreamTicket,
   releaseStreamSlot,
 } from '../services/streamTickets.js';
+import { detectPlatform } from '../services/platform.js';
 import { logger } from '../utils/logger.js';
 
 export const streamRouter = Router();
@@ -88,14 +89,21 @@ async function relayChunked(
   proxy: string,
   res: Response,
   aborted: () => boolean,
+  referer?: string,
 ): Promise<void> {
   let offset = 0;
   let total: number | null = null;
 
   while (!aborted() && (total === null || offset < total)) {
+    const headers: Record<string, string> = {
+      Range: `bytes=${offset}-${offset + CHUNK_SIZE - 1}`,
+      'User-Agent': BROWSER_UA,
+    };
+    if (referer) headers.Referer = referer;
+
     const upstream = await undiciFetch(url, {
       dispatcher: dispatcherFor(proxy),
-      headers: { Range: `bytes=${offset}-${offset + CHUNK_SIZE - 1}`, 'User-Agent': BROWSER_UA },
+      headers,
       signal: AbortSignal.timeout(CHUNK_TIMEOUT_MS),
     });
 
@@ -142,7 +150,14 @@ streamRouter.get('/stream/:ticketId/src/:track', (req, res) => {
   });
 
   res.setHeader('Content-Type', req.params.track === 'audio' ? 'audio/mp4' : 'video/mp4');
-  relayChunked(url, ticket.proxy, res, () => clientGone).catch((err: unknown) => {
+  const platform = detectPlatform(ticket.sourceUrl);
+  const referer =
+    platform?.id === 'instagram'
+      ? 'https://www.instagram.com/'
+      : platform?.id === 'facebook'
+        ? 'https://www.facebook.com/'
+        : undefined;
+  relayChunked(url, ticket.proxy, res, () => clientGone, referer).catch((err: unknown) => {
     logger.warn('stream relay failed:', (err as Error).message);
     if (!res.headersSent) res.status(502).json({ error: 'Upstream fetch failed.' });
     else res.destroy();

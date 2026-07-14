@@ -26,15 +26,18 @@ export interface PassthroughOptions {
  * True when the download can be streamed straight through /api/stream: ffmpeg
  * copy-remuxes the CDN video+audio into the response, so the browser download
  * starts immediately at full quality with no server-side temp file.
+ *
+ * YouTube HD path is unchanged. Instagram Reels also use this when a
+ * progressive H.264 MP4 is available (typical Reels) — skips the 10s+ job pipeline.
  */
 export function canDirectPassthrough(options: PassthroughOptions): boolean {
   if (!config.directPassthrough) return false;
 
   const platform = detectPlatform(options.url);
-  if (platform?.id !== 'youtube') return false;
+  if (platform?.id !== 'youtube' && platform?.id !== 'instagram') return false;
   if (options.galleryPrep) return false;
   if (options.clip) return false;
-  // Only free-tier HD — 2K/4K are VP9/AV1 and need the server merge/transcode.
+  // Only free-tier HD — 2K/4K need the server merge/transcode.
   if (options.quality.height > 1080) return false;
   // Saturated stream slots → let the request queue through the job pipeline.
   if (!hasStreamCapacity()) return false;
@@ -50,17 +53,24 @@ function resolveFromCache(url: string, maxHeight: number): DirectDownloadResult 
   if (!entry) return null;
 
   // googlevideo URLs are locked to the IP that extracted them, so the stream
-  // relay must fetch through the same proxy. A disk-restored entry loses its
-  // proxy tag — with a rotating pool we can't know which IP owns the URLs, so
-  // fall back to the job pipeline rather than risk a mid-download 403.
+  // relay must fetch through the same proxy. Instagram CDN URLs are usually
+  // not IP-locked the same way — prefer any fresh dump. A disk-restored entry
+  // loses its proxy tag: with a rotating pool we can't know which IP owns the
+  // YouTube URLs, so fall back to the job pipeline rather than risk a mid-download 403.
   let proxy = entry.proxy;
+  const platform = detectPlatform(url);
   if (!proxy && config.proxies.length > 0) {
-    if (config.proxies.length > 1) return null;
+    if (platform?.id !== 'instagram' && config.proxies.length > 1) return null;
     proxy = currentProxy() ?? '';
   }
 
   const picked = pickStreamMergeFormats(entry.path, maxHeight);
   if (!picked) return null;
+
+  // Instagram Reels are progressive H.264 MP4s — refuse merge tickets (rare for IG)
+  // if somehow only separate tracks exist without a progressive candidate that
+  // pickStreamMergeFormats preferred. Progressive is required for reliable CDN relay.
+  if (platform?.id === 'instagram' && picked.kind !== 'progressive') return null;
 
   const filename = safeFilename(`${picked.title}_${picked.height}p`);
   const ticket = createStreamTicket(picked, filename, url.trim(), proxy);

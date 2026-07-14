@@ -2,7 +2,8 @@ import type { PlatformId } from './platform.js';
 import type { VideoInfo } from './ytdlp.js';
 import { ensureInfoJsonCache, readCachedVideoInfo, waitForCachedVideoInfo } from './ytdlp.js';
 import { fetchYoutubePreview } from './previewYoutube.js';
-import { warmThumbCache } from '../routes/thumb.js';
+import { warmThumbCache, warmThumbCacheReady } from '../routes/thumb.js';
+import { cleanInstagramUrl, extractInstagramShortcode } from './instagram.js';
 export { extractYoutubeId, fetchYoutubePreview } from './previewYoutube.js';
 
 const OG_CACHE_TTL_MS = 10 * 60 * 1000;
@@ -157,29 +158,6 @@ async function fetchInstagramOembed(
   }
 }
 
-function extractInstagramShortcode(url: string): string {
-  try {
-    const m = new URL(url).pathname.match(/\/(?:reel|reels|p|tv)\/([A-Za-z0-9_-]+)/i);
-    return m?.[1] ?? '';
-  } catch {
-    return '';
-  }
-}
-
-function cleanInstagramUrl(url: string): string {
-  const id = extractInstagramShortcode(url);
-  if (!id) return url;
-  try {
-    const path = new URL(url).pathname;
-    if (/\/reel/i.test(path)) return `https://www.instagram.com/reel/${id}/`;
-    if (/\/reels/i.test(path)) return `https://www.instagram.com/reels/${id}/`;
-    if (/\/tv/i.test(path)) return `https://www.instagram.com/tv/${id}/`;
-    return `https://www.instagram.com/p/${id}/`;
-  } catch {
-    return url;
-  }
-}
-
 function instagramEmbedUrl(url: string): string {
   const clean = cleanInstagramUrl(url.trim());
   const id = extractInstagramShortcode(clean);
@@ -215,6 +193,10 @@ function parseInstagramTitle(raw?: string): { title: string; author: string } {
 
 function notePreviewImage(image?: string): void {
   if (image) warmThumbCache(image);
+}
+
+async function notePreviewImageReady(image?: string): Promise<void> {
+  if (image) await warmThumbCacheReady(image);
 }
 
 function buildInstagramPreview(
@@ -294,19 +276,19 @@ async function fetchFacebookOembed(
 
 async function fetchInstagramPreview(url: string): Promise<VideoInfo | null> {
   const clean = cleanInstagramUrl(url.trim());
-  const id = extractInstagramShortcode(clean);
+  const id = extractInstagramShortcode(clean) ?? '';
   const embed = instagramEmbedUrl(clean);
   const cacheKey = `ig:${id || clean}`;
 
   const cached = ogCache.get(cacheKey);
   if (cached && cached.expires > Date.now() && cached.data.image) {
-    notePreviewImage(cached.data.image);
+    await notePreviewImageReady(cached.data.image);
     return buildInstagramPreview(id, cached.data);
   }
 
   const warm = readCachedVideoInfo(clean);
   if (warm?.thumbnail) {
-    notePreviewImage(warm.thumbnail);
+    await notePreviewImageReady(warm.thumbnail);
     return {
       id: warm.id || id,
       title: warm.title,
@@ -325,24 +307,25 @@ async function fetchInstagramPreview(url: string): Promise<VideoInfo | null> {
     async () => {
       const og = await fetchInstagramOembed(clean);
       if (!og?.image) return null;
-      notePreviewImage(og.image);
+      await notePreviewImageReady(og.image);
       ogCache.set(cacheKey, { data: og, expires: Date.now() + OG_CACHE_TTL_MS });
       return buildInstagramPreview(id, og);
     },
     async () => {
       const og = await raceForMetadata([
-        () => scrapeOpenGraphOnce(embed, 1200),
-        () => scrapeOpenGraphOnce(clean, 2200),
+        () => scrapeOpenGraphOnce(embed, 900),
+        () => scrapeOpenGraphOnce(clean, 1600),
       ]);
       if (!og?.title && !og?.image) return null;
-      notePreviewImage(og.image);
+      if (og.image) await notePreviewImageReady(og.image);
+      else notePreviewImage(og.image);
       if (og.image) ogCache.set(cacheKey, { data: og, expires: Date.now() + OG_CACHE_TTL_MS });
       return buildInstagramPreview(id, og);
     },
     async () => {
       const info = await waitForCachedVideoInfo(clean, 12000);
       if (!info?.thumbnail) return null;
-      notePreviewImage(info.thumbnail);
+      await notePreviewImageReady(info.thumbnail);
       return {
         id: info.id || id,
         title: info.title,

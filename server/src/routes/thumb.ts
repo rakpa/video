@@ -4,6 +4,7 @@ export const thumbRouter = Router();
 
 const THUMB_CACHE_TTL_MS = 60 * 60 * 1000;
 const thumbCache = new Map<string, { body: Buffer; contentType: string; expires: number }>();
+const thumbInflight = new Map<string, Promise<void>>();
 
 const THUMB_FETCH_HEADERS = {
   'User-Agent':
@@ -16,18 +17,27 @@ async function fetchThumbIntoCache(target: URL): Promise<void> {
   const cached = thumbCache.get(cacheKey);
   if (cached && cached.expires > Date.now()) return;
 
-  const upstream = await fetch(target.href, {
-    headers: {
-      ...THUMB_FETCH_HEADERS,
-      Referer: `${target.protocol}//${target.host}/`,
-    },
-    signal: AbortSignal.timeout(6000),
-  });
-  if (!upstream.ok || !upstream.body) return;
+  let inflight = thumbInflight.get(cacheKey);
+  if (!inflight) {
+    inflight = (async () => {
+      const upstream = await fetch(target.href, {
+        headers: {
+          ...THUMB_FETCH_HEADERS,
+          Referer: `${target.protocol}//${target.host}/`,
+        },
+        signal: AbortSignal.timeout(6000),
+      });
+      if (!upstream.ok || !upstream.body) return;
 
-  const contentType = upstream.headers.get('content-type') ?? 'image/jpeg';
-  const body = Buffer.from(await upstream.arrayBuffer());
-  thumbCache.set(cacheKey, { body, contentType, expires: Date.now() + THUMB_CACHE_TTL_MS });
+      const contentType = upstream.headers.get('content-type') ?? 'image/jpeg';
+      const body = Buffer.from(await upstream.arrayBuffer());
+      thumbCache.set(cacheKey, { body, contentType, expires: Date.now() + THUMB_CACHE_TTL_MS });
+    })().finally(() => {
+      thumbInflight.delete(cacheKey);
+    });
+    thumbInflight.set(cacheKey, inflight);
+  }
+  await inflight;
 }
 
 /** Pre-fetch a CDN thumbnail so the first browser request is instant. */
@@ -38,6 +48,23 @@ export function warmThumbCache(rawUrl: string): void {
     void fetchThumbIntoCache(target).catch(() => undefined);
   } catch {
     /* invalid url */
+  }
+}
+
+/**
+ * Wait briefly for the thumb bytes so the client's first /api/thumb hit is a
+ * cache hit (saves ~0.5–2s of Instagram CDN round-trip on paint).
+ */
+export async function warmThumbCacheReady(rawUrl: string, maxWaitMs = 700): Promise<void> {
+  try {
+    const target = new URL(rawUrl);
+    if (target.protocol !== 'https:' && target.protocol !== 'http:') return;
+    await Promise.race([
+      fetchThumbIntoCache(target),
+      new Promise<void>((resolve) => setTimeout(resolve, maxWaitMs)),
+    ]);
+  } catch {
+    /* invalid url / fetch failed — preview still returns the CDN url */
   }
 }
 
