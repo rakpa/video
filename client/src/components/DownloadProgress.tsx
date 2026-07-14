@@ -54,7 +54,7 @@ export function DownloadProgress({ progress, qualityLabel, clipLabel, delivering
             transition={{ duration: 1.2, repeat: Infinity }}
           />
           <span className="font-semibold text-slate-900">
-            {mobileSave ? 'Preparing Save to Gallery…' : 'Downloading to your device…'}
+            {mobileSave ? 'Preparing Save to Gallery…' : 'Starting your browser download…'}
           </span>
           {qualityLabel && (
             <span className="rounded-md bg-slate-100 px-1.5 py-0.5 text-xs font-medium text-slate-600">{qualityLabel}</span>
@@ -63,15 +63,13 @@ export function DownloadProgress({ progress, qualityLabel, clipLabel, delivering
         <p className="mt-3 text-sm text-slate-500">
           {mobileSave
             ? 'Your save button will appear in a moment.'
-            : 'Watch the browser bar at the bottom — it may say “Zero KB” until the file finishes, then show Open. The file is saving on your phone the whole time.'}
+            : 'Your download should appear in your browser within a few seconds.'}
         </p>
         <div className="relative mt-5 h-2.5 w-full overflow-hidden rounded-full bg-slate-100">
           <motion.div
-            className="btn-gradient absolute inset-y-0 rounded-full"
-            initial={{ width: '30%', x: '-100%' }}
-            animate={{ x: ['-100%', '350%'] }}
-            transition={{ duration: 1.4, repeat: Infinity, ease: 'easeInOut' }}
-            style={{ width: '30%' }}
+            className="btn-gradient absolute inset-y-0 left-0 rounded-full"
+            animate={{ width: '100%' }}
+            transition={{ ease: 'easeOut', duration: 0.4 }}
           />
         </div>
       </motion.div>

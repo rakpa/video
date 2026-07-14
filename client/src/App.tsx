@@ -115,28 +115,6 @@ const HIGH_RES_MIN_PX = 1440;
 const MOBILE_GALLERY_MAX_HEIGHT = 1080;
 const HIGH_RES_LIMIT_ID = 'highres-limit-section';
 
-/**
- * Gallery vs Files routing on mobile:
- * - YouTube long / widescreen → always Files (stream-through). Never use thumb
- *   crop — YouTube thumbs are often portrait crops of landscape videos.
- * - YouTube Shorts, Instagram, Facebook Reels → Gallery.
- */
-function isPortraitSource(opts: {
-  platformId?: string | null;
-  url: string;
-  thumbPortrait?: boolean | null;
-}): boolean {
-  if (opts.platformId === 'youtube') {
-    return /\/shorts\//i.test(opts.url);
-  }
-  if (opts.platformId === 'instagram') return true;
-  if (opts.platformId === 'facebook') {
-    if (opts.thumbPortrait === false) return false;
-    return true;
-  }
-  return opts.thumbPortrait === true;
-}
-
 /** Top-level router: legal pages vs. the main downloader app. */
 export default function App() {
   const { theme, toggle } = useTheme();
@@ -688,20 +666,16 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
       const isIgFb = platform?.id === 'instagram' || platform?.id === 'facebook';
       const isYoutube = platform?.id === 'youtube';
       const isInstagram = platform?.id === 'instagram';
+      // Keep YouTube URL as-is (stream-through). Canonicalize IG only.
       const currentUrl =
         isInstagram && (fetchedUrl.current || url)
           ? cleanInstagramUrl(fetchedUrl.current || url)
           : fetchedUrl.current || url;
 
-      // YouTube long/widescreen → stream to Files (user-side). Never server %.
-      // Portrait (IG Reels, YT Shorts) → Save to Gallery.
-      const portrait = isPortraitSource({
-        platformId: platform?.id,
-        url: currentUrl,
-        thumbPortrait: preloadedThumb?.portrait ?? null,
-      });
+      // YouTube HD (≤1080p) on mobile → stream-through to the browser (user-side).
+      // Do not alter this path — Instagram/FB keep gallery prep separately.
       const useMobileStream =
-        mobile && isYoutube && !portrait && !highRes && !clip && clipMode !== 'clip';
+        mobile && isYoutube && !highRes && !clip && clipMode !== 'clip';
       const galleryPrep = mobile && !useMobileStream;
       // ≤1080p gallery path (and the native app) → Save-to-Gallery share sheet.
       // 2K/4K on a mobile browser → download the converted H.264 file to Files.
@@ -724,8 +698,7 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
           licenseToken(),
           {
             fast: isIgFb || (mobile && !highRes),
-            // Reuse warm/completed jobs (and R2) for viral Reels — speeds gallery saves.
-            reuse: !clip && !highRes,
+            reuse: !useMobileStream && !mobile && !clip && !highRes,
             clip,
             galleryPrep,
           },
@@ -739,9 +712,6 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
           setDelivering(true);
           try {
             await downloadDirectUrl(startResult.url, startResult.filename);
-            // Keep the in-page “downloading to your device” state visible while
-            // Safari’s bar may still say Zero KB (no Content-Length on the stream).
-            await new Promise((r) => window.setTimeout(r, mobile ? 2500 : 800));
             setDelivering(false);
             setPhase('success');
           } catch (e) {
@@ -806,7 +776,7 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
         downloadBusy.current = false;
       }
     },
-    [info, url, maxHeight, clipMode, activeClip, shouldGateHighRes, gateHighResQuality, openLimitSection, preloadedThumb],
+    [info, url, maxHeight, clipMode, activeClip, shouldGateHighRes, gateHighResQuality, openLimitSection],
   );
 
   const clipReady = isClipReady(clipMode, clipStart, clipEnd, info?.durationSeconds ?? null);
