@@ -121,9 +121,14 @@ downloadRouter.post('/download', async (req, res) => {
           requestedHeight: q.height,
           ip: clientIp,
         });
+        // Absolute URL: the frontend lives on a different origin (Vercel) with
+        // a catch-all rewrite to index.html — a relative /api/stream path would
+        // resolve there and download the SPA shell instead of the video.
+        // trust proxy is on, so req.protocol honours X-Forwarded-Proto.
+        const apiBase = `${req.protocol}://${req.get('host')}`;
         return res.status(200).json({
           direct: true,
-          url: direct.url,
+          url: `${apiBase}${direct.url}`,
           filename: direct.filename,
           height: direct.height,
         });

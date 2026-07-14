@@ -1,9 +1,18 @@
-import { API_NOT_CONFIGURED_MSG, apiUrl, isApiConfigured } from '../config/api';
+import { API_BASE, API_NOT_CONFIGURED_MSG, apiUrl, isApiConfigured } from '../config/api';
 
 /** True on the installed Capacitor app — not mobile Safari/Chrome. */
 export function isNativeMobileApp(): boolean {
   return false;
 }
+
+/** Shown when the browser received HTML (often saved as index.html) instead of MP4. */
+export const HTML_INSTEAD_OF_VIDEO_MSG =
+  'Something went wrong — your browser received a webpage (sometimes saved as index.html) instead of the video. Please try downloading again. If this keeps happening, wait a minute for the service to wake up, then retry.';
+
+/** Invalid / non-video payload from the file API. */
+export const INVALID_VIDEO_FILE_MSG =
+  'We could not save the video file. Please try again. If your browser keeps downloading a file named index.html, refresh the page and retry.';
+
 
 /** Phones/tablets — coarse pointer or common mobile UA. */
 export function isMobileDevice(): boolean {
@@ -167,12 +176,10 @@ async function readVideoPayloadFromResponse(res: Response): Promise<VideoFilePay
   const head = await blob.slice(0, Math.min(blob.size, 512 * 1024)).arrayBuffer();
 
   if (looksLikeHtmlOrJson(head) || !isMp4Bytes(head)) {
-    throw new Error(
-      'Received an invalid file (not MP4). The download API may be misconfigured — check VITE_API_URL on Vercel.',
-    );
+    throw new Error(HTML_INSTEAD_OF_VIDEO_MSG);
   }
   if (blob.size < 10_000) {
-    throw new Error('Video file is too small — the download may have failed.');
+    throw new Error('Video file is too small — the download may have failed. Please try again.');
   }
   if (!isH264Mp4(head)) {
     throw new Error(MOBILE_GALLERY_CODEC_MSG);
@@ -188,12 +195,10 @@ async function readDesktopVideoPayloadFromResponse(res: Response): Promise<Video
   const head = await blob.slice(0, Math.min(blob.size, 512 * 1024)).arrayBuffer();
 
   if (looksLikeHtmlOrJson(head) || !isMp4Bytes(head)) {
-    throw new Error(
-      'Received an invalid file (not MP4). The download API may be misconfigured — check VITE_API_URL on Vercel.',
-    );
+    throw new Error(HTML_INSTEAD_OF_VIDEO_MSG);
   }
   if (blob.size < 10_000) {
-    throw new Error('Video file is too small — the download may have failed.');
+    throw new Error('Video file is too small — the download may have failed. Please try again.');
   }
 
   const filename = parseFilename(res.headers.get('Content-Disposition')) || 'VidCliply-video.mp4';
@@ -436,6 +441,32 @@ function isCrossOriginApiUrl(url: string): boolean {
   }
 }
 
+/**
+ * Resolve a download URL against the API host. Refuses to open a same-origin
+ * SPA path when VITE_API_URL points elsewhere — that path returns index.html
+ * via Vercel's catch-all rewrite instead of the video.
+ */
+function resolveBrowserDownloadUrl(url: string): string {
+  const resolved = url.startsWith('http://') || url.startsWith('https://') ? url : apiUrl(url);
+
+  try {
+    const absolute = new URL(resolved, window.location.href);
+    // Split deploy (Vercel UI + external API): never download from the SPA origin.
+    if (API_BASE) {
+      const apiOrigin = new URL(API_BASE).origin;
+      if (absolute.origin !== apiOrigin) {
+        throw new Error(HTML_INSTEAD_OF_VIDEO_MSG);
+      }
+    }
+    return absolute.href;
+  } catch (err) {
+    if (err instanceof Error && err.message === HTML_INSTEAD_OF_VIDEO_MSG) {
+      throw err;
+    }
+    throw new Error(INVALID_VIDEO_FILE_MSG);
+  }
+}
+
 function triggerBlobDownload(payload: VideoFilePayload): void {
   const objectUrl = URL.createObjectURL(payload.blob);
   try {
@@ -481,9 +512,12 @@ export function formatDownloadError(err: unknown): string {
     if (err.message === 'Failed to fetch' || err.name === 'TypeError') {
       return 'Could not save the video to your device. Your connection may have dropped while transferring the file — please try again.';
     }
+    if (/index\.html/i.test(err.message) || /<!doctype|<html/i.test(err.message)) {
+      return HTML_INSTEAD_OF_VIDEO_MSG;
+    }
     return err.message;
   }
-  return 'Could not save the video.';
+  return 'Could not save the video. Please try again.';
 }
 
 /**
@@ -493,7 +527,8 @@ export function formatDownloadError(err: unknown): string {
  * error response can never navigate the app away.
  */
 export async function downloadDirectUrl(streamUrl: string, _filename: string): Promise<void> {
-  triggerCrossOriginDownload(streamUrl);
+  const url = resolveBrowserDownloadUrl(streamUrl);
+  triggerCrossOriginDownload(url);
   await new Promise((r) => window.setTimeout(r, 400));
 }
 
@@ -503,7 +538,7 @@ export async function downloadDirectUrl(streamUrl: string, _filename: string): P
  * Same-origin deploys still use blob download when possible.
  */
 export async function downloadFileToDevice(jobId: string): Promise<void> {
-  const url = apiUrl(`/api/file/${jobId}`);
+  const url = resolveBrowserDownloadUrl(apiUrl(`/api/file/${jobId}`));
   if (!isApiConfigured()) throw new Error(API_NOT_CONFIGURED_MSG);
 
   if (isCrossOriginApiUrl(url)) {
@@ -514,7 +549,11 @@ export async function downloadFileToDevice(jobId: string): Promise<void> {
   try {
     const payload = await fetchDesktopVideoBytes(jobId);
     triggerBlobDownload(payload);
-  } catch {
+  } catch (err) {
+    // Blob path already validates HTML; fall back to iframe only for network blips.
+    if (err instanceof Error && (err.message === HTML_INSTEAD_OF_VIDEO_MSG || err.message === INVALID_VIDEO_FILE_MSG)) {
+      throw err;
+    }
     triggerCrossOriginDownload(url);
   }
 }

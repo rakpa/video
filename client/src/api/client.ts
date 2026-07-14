@@ -235,11 +235,16 @@ export async function startDownloadJob(
   });
 
   if (data.direct && data.url) {
-    // The server returns an API-relative /api/stream/… path — resolve it
-    // against the API host (the frontend is on a different origin).
+    // Prefer an absolute API URL from the server. Fall back to resolving a
+    // relative /api/stream path against VITE_API_URL so we never hit the
+    // Vercel SPA origin (which would download index.html).
+    const streamUrl =
+      data.url.startsWith('http://') || data.url.startsWith('https://')
+        ? data.url
+        : apiUrl(data.url.startsWith('/') ? data.url : `/${data.url}`);
     return {
       kind: 'direct',
-      url: data.url.startsWith('/') ? apiUrl(data.url) : data.url,
+      url: streamUrl,
       filename: data.filename ?? 'video.mp4',
       height: data.height,
     };

@@ -89,11 +89,14 @@ export async function resolveDirectDownload(
   const cached = resolveFromCache(trimmed, maxHeight);
   if (cached) return cached;
 
+  // Keep the warm short so the browser download can start within ~5s of the
+  // user clicking Download. After paste, /api/info usually has already warmed
+  // the cache — this path is only for the rare cold miss.
   try {
     await Promise.race([
       ensureInfoJsonCache(trimmed),
       new Promise<void>((_, reject) =>
-        setTimeout(() => reject(new Error('passthrough info warm timeout')), 22_000),
+        setTimeout(() => reject(new Error('passthrough info warm timeout')), 4_500),
       ),
     ]);
   } catch (err) {

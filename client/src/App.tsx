@@ -695,13 +695,20 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
         );
 
         if (startResult.kind === 'direct') {
+          // Stream-through: remux CDN → browser only (nothing saved on the server).
           setProgress((p) => ({ ...p, percent: 100, stage: 'done', speed: null, eta: null }));
           if (typeof startResult.height === 'number') setOutputHeight(startResult.height);
           setConvertingForPhone(false);
           setDelivering(true);
-          await downloadDirectUrl(startResult.url, startResult.filename);
-          setDelivering(false);
-          setPhase('success');
+          try {
+            await downloadDirectUrl(startResult.url, startResult.filename);
+            setDelivering(false);
+            setPhase('success');
+          } catch (e) {
+            setDelivering(false);
+            setError(formatDownloadError(e));
+            setPhase('error');
+          }
           return;
         }
 

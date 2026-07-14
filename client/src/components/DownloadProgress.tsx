@@ -17,8 +17,8 @@ interface Props {
 }
 
 function stageLabel(p: ProgressUpdate, mobileSave?: boolean, converting?: boolean): string {
-  if (p.stage === 'preparing' || p.stage === 'queued') return 'Getting ready';
-  if (p.percent < 1) return 'Connecting';
+  if (p.stage === 'preparing' || p.stage === 'queued') return 'Processing';
+  if (p.percent < 1) return 'Processing';
   if (p.stage === 'trimming') return 'Trimming clip';
   if (converting && (p.stage === 'merging' || p.percent >= 99)) return 'Converting';
   if (mobileSave && p.stage === 'merging') return 'Preparing for Photos';
@@ -54,7 +54,7 @@ export function DownloadProgress({ progress, qualityLabel, clipLabel, delivering
             transition={{ duration: 1.2, repeat: Infinity }}
           />
           <span className="font-semibold text-slate-900">
-            {mobileSave ? 'Preparing Save to Gallery…' : 'Saving to your device…'}
+            {mobileSave ? 'Preparing Save to Gallery…' : 'Starting your browser download…'}
           </span>
           {qualityLabel && (
             <span className="rounded-md bg-slate-100 px-1.5 py-0.5 text-xs font-medium text-slate-600">{qualityLabel}</span>
@@ -63,7 +63,7 @@ export function DownloadProgress({ progress, qualityLabel, clipLabel, delivering
         <p className="mt-3 text-sm text-slate-500">
           {mobileSave
             ? 'Your save button will appear in a moment.'
-            : "Your file should appear in your browser's downloads any moment now."}
+            : 'Your download should appear in your browser within a few seconds.'}
         </p>
         <div className="relative mt-5 h-2.5 w-full overflow-hidden rounded-full bg-slate-100">
           <motion.div
@@ -91,7 +91,7 @@ export function DownloadProgress({ progress, qualityLabel, clipLabel, delivering
           />
           <span className="font-semibold text-slate-900">
             {warmup
-              ? 'Getting your video ready…'
+              ? "We're processing your download…"
               : convertingNow
                 ? 'Converting for your phone…'
                 : clipLabel
@@ -100,7 +100,7 @@ export function DownloadProgress({ progress, qualityLabel, clipLabel, delivering
                     : 'Preparing your clip…'
                   : showPercent
                     ? 'Downloading your video'
-                    : 'Connecting to server…'}
+                    : "We're processing your download…"}
           </span>
           {qualityLabel && (
             <span className="rounded-md bg-slate-100 px-1.5 py-0.5 text-xs font-medium text-slate-600">{qualityLabel}</span>
@@ -108,6 +108,12 @@ export function DownloadProgress({ progress, qualityLabel, clipLabel, delivering
         </div>
         <span className="text-sm font-medium text-slate-500">{stageLabel(progress, mobileSave, converting)}</span>
       </div>
+
+      {warmup && !convertingNow && (
+        <p className="mt-3 text-sm leading-relaxed text-slate-500">
+          Getting the video ready — your browser download should start within a few seconds.
+        </p>
+      )}
 
       {convertingNow && (
         <p className="mt-3 text-sm leading-relaxed text-slate-500">
@@ -122,7 +128,7 @@ export function DownloadProgress({ progress, qualityLabel, clipLabel, delivering
             {Math.round(display)}<span className="text-2xl font-semibold text-slate-400">%</span>
           </span>
         ) : (
-          <p className="text-base text-slate-500">This usually takes a few seconds…</p>
+          <p className="text-base text-slate-500">Usually ready in about 5 seconds…</p>
         )}
         {showPercent && (progress.speed || progress.eta) && progress.stage !== 'done' && (
           <div className="flex items-center gap-4 text-sm text-slate-500">
