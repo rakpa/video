@@ -221,6 +221,9 @@ streamRouter.get('/stream/:ticketId', (req, res) => {
 
   // Headers only after the first bytes arrive, so an instant ffmpeg failure
   // (expired/IP-locked URL → 403) becomes a JSON error, not an empty download.
+  // Note: we intentionally omit Content-Length — remuxed size isn't known ahead
+  // of time, and a wrong value truncates or hangs Safari's download. Safari then
+  // shows "Zero KB" until complete; bytes are still flowing to the device.
   child.stdout.once('data', (first: Buffer) => {
     if (res.writableEnded || res.destroyed) return;
     res.status(200);

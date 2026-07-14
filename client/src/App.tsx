@@ -739,6 +739,9 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
           setDelivering(true);
           try {
             await downloadDirectUrl(startResult.url, startResult.filename);
+            // Keep the in-page “downloading to your device” state visible while
+            // Safari’s bar may still say Zero KB (no Content-Length on the stream).
+            await new Promise((r) => window.setTimeout(r, mobile ? 2500 : 800));
             setDelivering(false);
             setPhase('success');
           } catch (e) {
