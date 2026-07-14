@@ -115,6 +115,21 @@ const HIGH_RES_MIN_PX = 1440;
 const MOBILE_GALLERY_MAX_HEIGHT = 1080;
 const HIGH_RES_LIMIT_ID = 'highres-limit-section';
 
+/** Portrait social posts → Gallery; widescreen YouTube → Files. */
+function isPortraitSource(opts: {
+  platformId?: string | null;
+  url: string;
+  thumbPortrait?: boolean | null;
+}): boolean {
+  if (opts.thumbPortrait === true) return true;
+  if (opts.platformId === 'instagram') return true;
+  if (opts.platformId === 'youtube' && /\/shorts\//i.test(opts.url)) return true;
+  if (opts.thumbPortrait === false) return false;
+  // Facebook mobile traffic is mostly Reels / portrait clips when we have no thumb yet.
+  if (opts.platformId === 'facebook') return true;
+  return false;
+}
+
 /** Top-level router: legal pages vs. the main downloader app. */
 export default function App() {
   const { theme, toggle } = useTheme();
@@ -671,15 +686,15 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
           ? cleanInstagramUrl(fetchedUrl.current || url)
           : fetchedUrl.current || url;
 
-      // YouTube HD + Instagram Reels (≤1080p) → stream-through so the browser
-      // download starts in a few seconds (no full server download first).
-      // Gallery H.264 prep stays for FB, clips, and 2K/4K (need transcode).
+      // Portrait (IG Reels, YT Shorts, portrait thumbs) → Save to Gallery on mobile.
+      // YouTube long / widescreen → stream to Files (browser download). Do not mix these.
+      const portrait = isPortraitSource({
+        platformId: platform?.id,
+        url: currentUrl,
+        thumbPortrait: preloadedThumb?.portrait ?? null,
+      });
       const useMobileStream =
-        mobile &&
-        (isYoutube || isInstagram) &&
-        !highRes &&
-        !clip &&
-        clipMode !== 'clip';
+        mobile && isYoutube && !portrait && !highRes && !clip && clipMode !== 'clip';
       const galleryPrep = mobile && !useMobileStream;
       // ≤1080p gallery path (and the native app) → Save-to-Gallery share sheet.
       // 2K/4K on a mobile browser → download the converted H.264 file to Files.
@@ -702,7 +717,8 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
           licenseToken(),
           {
             fast: isIgFb || (mobile && !highRes),
-            reuse: !useMobileStream && !mobile && !clip && !highRes,
+            // Reuse warm/completed jobs (and R2) for viral Reels — speeds gallery saves.
+            reuse: !clip && !highRes,
             clip,
             galleryPrep,
           },
@@ -780,7 +796,7 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
         downloadBusy.current = false;
       }
     },
-    [info, url, maxHeight, clipMode, activeClip, shouldGateHighRes, gateHighResQuality, openLimitSection],
+    [info, url, maxHeight, clipMode, activeClip, shouldGateHighRes, gateHighResQuality, openLimitSection, preloadedThumb],
   );
 
   const clipReady = isClipReady(clipMode, clipStart, clipEnd, info?.durationSeconds ?? null);

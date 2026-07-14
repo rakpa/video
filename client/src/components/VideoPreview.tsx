@@ -30,8 +30,12 @@ interface Props {
 /** Rich metadata card: thumbnail, title, author, duration, platform badge. */
 export function VideoPreview({ info, preloadedThumb }: Props) {
   const thumbSrc = resolveThumbSrc(info);
-  const [portrait, setPortrait] = useState(preloadedThumb?.portrait ?? false);
-  const [shownSrc, setShownSrc] = useState<string | null>(preloadedThumb?.src ?? null);
+  const defaultPortrait =
+    info.platform === 'instagram' ||
+    info.platform === 'facebook' ||
+    Boolean(info.id && /\/shorts\//i.test(String(info.id)));
+  const [portrait, setPortrait] = useState(preloadedThumb?.portrait ?? defaultPortrait);
+  const [shownSrc, setShownSrc] = useState<string | null>(preloadedThumb?.src ?? thumbSrc);
 
   useEffect(() => {
     if (preloadedThumb && preloadedThumb.src === thumbSrc) {
@@ -42,17 +46,20 @@ export function VideoPreview({ info, preloadedThumb }: Props) {
 
     if (!thumbSrc) {
       setShownSrc(null);
-      setPortrait(false);
+      setPortrait(defaultPortrait);
       return;
     }
-    if (thumbSrc === shownSrc) return;
+
+    // Paint as soon as we have a URL — don't wait for full decode (was the
+    // main Instagram shimmer delay after preview JSON returned).
+    setShownSrc(thumbSrc);
+    if (defaultPortrait) setPortrait(true);
 
     let cancelled = false;
     const img = new Image();
     img.onload = () => {
       if (cancelled) return;
       setPortrait(img.naturalHeight > img.naturalWidth);
-      setShownSrc(thumbSrc);
     };
     img.onerror = () => {
       if (!cancelled) setShownSrc(null);
@@ -62,8 +69,7 @@ export function VideoPreview({ info, preloadedThumb }: Props) {
     return () => {
       cancelled = true;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- shownSrc intentionally excluded
-  }, [thumbSrc, preloadedThumb]);
+  }, [thumbSrc, preloadedThumb, defaultPortrait]);
 
   return (
     <motion.div

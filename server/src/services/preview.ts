@@ -2,7 +2,7 @@ import type { PlatformId } from './platform.js';
 import type { VideoInfo } from './ytdlp.js';
 import { ensureInfoJsonCache, readCachedVideoInfo, waitForCachedVideoInfo } from './ytdlp.js';
 import { fetchYoutubePreview } from './previewYoutube.js';
-import { warmThumbCache, warmThumbCacheReady } from '../routes/thumb.js';
+import { warmThumbCache } from '../routes/thumb.js';
 import { cleanInstagramUrl, extractInstagramShortcode } from './instagram.js';
 export { extractYoutubeId, fetchYoutubePreview } from './previewYoutube.js';
 
@@ -195,10 +195,6 @@ function notePreviewImage(image?: string): void {
   if (image) warmThumbCache(image);
 }
 
-async function notePreviewImageReady(image?: string): Promise<void> {
-  if (image) await warmThumbCacheReady(image);
-}
-
 function buildInstagramPreview(
   id: string,
   og: { title?: string; image?: string; author?: string },
@@ -282,13 +278,15 @@ async function fetchInstagramPreview(url: string): Promise<VideoInfo | null> {
 
   const cached = ogCache.get(cacheKey);
   if (cached && cached.expires > Date.now() && cached.data.image) {
-    await notePreviewImageReady(cached.data.image);
+    // Fire-and-forget warm — don't delay the preview JSON; client's /api/thumb
+    // shares the same in-flight CDN fetch.
+    notePreviewImage(cached.data.image);
     return buildInstagramPreview(id, cached.data);
   }
 
   const warm = readCachedVideoInfo(clean);
   if (warm?.thumbnail) {
-    await notePreviewImageReady(warm.thumbnail);
+    notePreviewImage(warm.thumbnail);
     return {
       id: warm.id || id,
       title: warm.title,
@@ -307,25 +305,24 @@ async function fetchInstagramPreview(url: string): Promise<VideoInfo | null> {
     async () => {
       const og = await fetchInstagramOembed(clean);
       if (!og?.image) return null;
-      await notePreviewImageReady(og.image);
+      notePreviewImage(og.image);
       ogCache.set(cacheKey, { data: og, expires: Date.now() + OG_CACHE_TTL_MS });
       return buildInstagramPreview(id, og);
     },
     async () => {
       const og = await raceForMetadata([
-        () => scrapeOpenGraphOnce(embed, 900),
-        () => scrapeOpenGraphOnce(clean, 1600),
+        () => scrapeOpenGraphOnce(embed, 800),
+        () => scrapeOpenGraphOnce(clean, 1400),
       ]);
       if (!og?.title && !og?.image) return null;
-      if (og.image) await notePreviewImageReady(og.image);
-      else notePreviewImage(og.image);
+      notePreviewImage(og.image);
       if (og.image) ogCache.set(cacheKey, { data: og, expires: Date.now() + OG_CACHE_TTL_MS });
       return buildInstagramPreview(id, og);
     },
     async () => {
       const info = await waitForCachedVideoInfo(clean, 12000);
       if (!info?.thumbnail) return null;
-      await notePreviewImageReady(info.thumbnail);
+      notePreviewImage(info.thumbnail);
       return {
         id: info.id || id,
         title: info.title,

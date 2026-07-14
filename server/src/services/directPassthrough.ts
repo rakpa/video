@@ -27,8 +27,9 @@ export interface PassthroughOptions {
  * copy-remuxes the CDN video+audio into the response, so the browser download
  * starts immediately at full quality with no server-side temp file.
  *
- * YouTube HD path is unchanged. Instagram Reels also use this when a
- * progressive H.264 MP4 is available (typical Reels) — skips the 10s+ job pipeline.
+ * YouTube HD path is unchanged. Instagram desktop can stream progressive
+ * Reels when galleryPrep is off; mobile portrait saves still use galleryPrep
+ * + job pipeline (Save to Photos).
  */
 export function canDirectPassthrough(options: PassthroughOptions): boolean {
   if (!config.directPassthrough) return false;
