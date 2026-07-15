@@ -49,7 +49,13 @@ const corsOrigin: cors.CorsOptions['origin'] = allowAllOrigins
       }
       return callback(null, false);
     };
-app.use(cors({ origin: corsOrigin }));
+app.use(
+  cors({
+    origin: corsOrigin,
+    // So the SPA can read size hints while fetch-streaming /api/stream to disk.
+    exposedHeaders: ['Content-Length', 'Content-Disposition', 'X-Expected-Size'],
+  }),
+);
 
 // Capture the running yt-dlp version once at startup so /api/health can report
 // it — the surest way to tell whether a deploy actually picked up a fresh binary.

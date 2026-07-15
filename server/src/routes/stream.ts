@@ -249,9 +249,12 @@ function handleStreamDownload(req: Request, res: Response): void {
 
   const { selection, filename, clip } = ticket;
   const hasClip = Boolean(clip && clip.endTime > clip.startTime);
+  const platformId = detectPlatform(ticket.sourceUrl)?.id;
 
-  // Full progressive file: exact CDN size + no remux → reliable browser progress.
-  if (selection.kind === 'progressive' && !hasClip) {
+  // Progressive CDN relay (exact Content-Length) for Instagram/etc.
+  // YouTube always stays on ffmpeg remux — that stream-through path is the
+  // known-good HD download; skipping remux regressed some Safari downloads.
+  if (selection.kind === 'progressive' && !hasClip && platformId !== 'youtube') {
     handleProgressiveDownload(req, res, ticket);
     return;
   }

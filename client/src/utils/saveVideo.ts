@@ -478,7 +478,8 @@ function triggerBlobDownload(payload: VideoFilePayload): void {
     a.click();
     a.remove();
   } finally {
-    URL.revokeObjectURL(objectUrl);
+    // iOS Safari needs the blob URL briefly after the click; revoke later.
+    window.setTimeout(() => URL.revokeObjectURL(objectUrl), 60_000);
   }
 }
 
@@ -523,13 +524,23 @@ export function formatDownloadError(err: unknown): string {
   return 'Could not save the video. Please try again.';
 }
 
-const DIRECT_FETCH_MAX_BYTES = 220 * 1024 * 1024; // ~220 MB — above this, use iframe (no full buffer)
+/** Soft ceiling — above this, use iframe to avoid tab OOM on large 4K files. */
+const DIRECT_FETCH_MAX_BYTES = 280 * 1024 * 1024;
+
+function safeDownloadFilename(filename: string): string {
+  const base = (filename || 'VidCliply-video.mp4').replace(/[^\w.\- ]+/g, '_').trim().slice(0, 120);
+  const named = base || 'VidCliply-video.mp4';
+  return /\.mp4$/i.test(named) ? named : `${named}.mp4`;
+}
 
 /**
- * Stream-through delivery. Prefer fetch when CORS allows so we can report byte
- * progress and still save a real .mp4. Fall back to a hidden iframe + attachment
- * (works even when the remux has no Content-Length — Safari may show "Zero KB"
- * until the transfer finishes, but the file still completes).
+ * Stream-through delivery for YouTube (and other direct streams).
+ *
+ * Primary: fetch the remux with CORS, report byte progress in the app, then
+ * save via blob URL. Safari only opens its download UI once the file has a
+ * known size — that avoids the stuck "Downloading… Zero KB" attachment sheet.
+ *
+ * Fallback: hidden iframe attachment (last resort; Safari may still flash Zero KB).
  */
 export async function downloadDirectUrl(
   streamUrl: string,
@@ -540,21 +551,31 @@ export async function downloadDirectUrl(
   },
 ): Promise<void> {
   const url = resolveBrowserDownloadUrl(streamUrl);
-  const safeName = filename && /\.mp4$/i.test(filename) ? filename : 'VidCliply-video.mp4';
+  const safeName = safeDownloadFilename(filename);
   const estimated = options?.estimatedBytes ?? null;
 
-  // Very large titles / 4K: avoid buffering the whole file in JS memory.
   if (estimated != null && estimated > DIRECT_FETCH_MAX_BYTES) {
+    options?.onProgress?.(10);
     triggerCrossOriginDownload(url, safeName);
-    await new Promise((r) => window.setTimeout(r, 400));
+    await new Promise((r) => window.setTimeout(r, 1500));
+    options?.onProgress?.(100);
     return;
   }
 
   try {
     await downloadDirectViaFetch(url, safeName, estimated, options?.onProgress);
-  } catch {
+  } catch (err) {
+    // Content errors must surface — do not hide them behind a stuck Zero KB UI.
+    if (
+      err instanceof Error &&
+      (err.message === HTML_INSTEAD_OF_VIDEO_MSG || err.message === INVALID_VIDEO_FILE_MSG)
+    ) {
+      throw err;
+    }
+    options?.onProgress?.(15);
     triggerCrossOriginDownload(url, safeName);
-    await new Promise((r) => window.setTimeout(r, 400));
+    await new Promise((r) => window.setTimeout(r, 1500));
+    options?.onProgress?.(100);
   }
 }
 
@@ -564,13 +585,24 @@ async function downloadDirectViaFetch(
   estimatedBytes: number | null,
   onProgress?: (percent: number) => void,
 ): Promise<void> {
-  const res = await fetch(url, { credentials: 'omit', cache: 'no-store' });
+  onProgress?.(3);
+  const res = await fetch(url, {
+    method: 'GET',
+    credentials: 'omit',
+    cache: 'no-store',
+    mode: 'cors',
+  });
   if (!res.ok || !res.body) {
     throw new Error(`stream HTTP ${res.status}`);
   }
 
   const contentType = (res.headers.get('content-type') || '').toLowerCase();
   if (contentType.includes('text/html') || contentType.includes('application/json')) {
+    try {
+      await res.body.cancel();
+    } catch {
+      /* ignore */
+    }
     throw new Error(HTML_INSTEAD_OF_VIDEO_MSG);
   }
 
@@ -593,10 +625,9 @@ async function downloadDirectViaFetch(
       throw new Error('stream too large for in-memory download');
     }
     if (total > 0) {
-      onProgress?.(Math.min(99, Math.round((received / total) * 100)));
+      onProgress?.(Math.min(99, Math.max(3, Math.round((received / total) * 100))));
     } else {
-      // Indeterminate but alive — nudge the bar so the UI is not stuck at 0.
-      onProgress?.(Math.min(90, 5 + Math.floor(received / (2 * 1024 * 1024))));
+      onProgress?.(Math.min(92, 4 + Math.floor(received / (1024 * 1024))));
     }
   }
 
@@ -605,9 +636,9 @@ async function downloadDirectViaFetch(
   }
 
   const blob = new Blob(chunks, { type: 'video/mp4' });
-  // Peek at the start without keeping a second full copy of huge buffers.
   const head = await blob.slice(0, 256).arrayBuffer();
-  if (looksLikeHtmlOrJson(head) || !isMp4Bytes(await blob.slice(0, 12).arrayBuffer())) {
+  const ftyp = await blob.slice(0, 12).arrayBuffer();
+  if (looksLikeHtmlOrJson(head) || !isMp4Bytes(ftyp)) {
     throw new Error(INVALID_VIDEO_FILE_MSG);
   }
 
