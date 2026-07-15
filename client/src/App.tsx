@@ -717,12 +717,32 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
 
         if (startResult.kind === 'direct') {
           // Stream-through: remux CDN → browser only (nothing saved on the server).
-          setProgress((p) => ({ ...p, percent: 100, stage: 'done', speed: null, eta: null }));
+          // Track byte progress while fetching so the UI is not stuck after the
+          // Safari sheet briefly flashes "Zero KB".
+          setProgress((p) => ({
+            ...p,
+            percent: 2,
+            stage: 'downloading',
+            speed: null,
+            eta: null,
+          }));
           if (typeof startResult.height === 'number') setOutputHeight(startResult.height);
           setConvertingForPhone(false);
           setDelivering(true);
           try {
-            await downloadDirectUrl(startResult.url, startResult.filename);
+            await downloadDirectUrl(startResult.url, startResult.filename, {
+              estimatedBytes: startResult.estimatedBytes,
+              onProgress: (percent) => {
+                setProgress((p) => ({
+                  ...p,
+                  percent,
+                  stage: percent >= 100 ? 'done' : 'downloading',
+                  speed: null,
+                  eta: null,
+                }));
+              },
+            });
+            setProgress((p) => ({ ...p, percent: 100, stage: 'done', speed: null, eta: null }));
             setDelivering(false);
             setPhase('success');
           } catch (e) {

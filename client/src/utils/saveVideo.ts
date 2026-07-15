@@ -523,16 +523,96 @@ export function formatDownloadError(err: unknown): string {
   return 'Could not save the video. Please try again.';
 }
 
+const DIRECT_FETCH_MAX_BYTES = 220 * 1024 * 1024; // ~220 MB — above this, use iframe (no full buffer)
+
 /**
- * Stream-through delivery — the API remuxes the CDN stream(s) and answers with
- * Content-Disposition: attachment, so the browser download starts immediately
- * (no black video page). Uses the hidden-iframe technique so that even an
- * error response can never navigate the app away.
+ * Stream-through delivery. Prefer fetch when CORS allows so we can report byte
+ * progress and still save a real .mp4. Fall back to a hidden iframe + attachment
+ * (works even when the remux has no Content-Length — Safari may show "Zero KB"
+ * until the transfer finishes, but the file still completes).
  */
-export async function downloadDirectUrl(streamUrl: string, filename: string): Promise<void> {
+export async function downloadDirectUrl(
+  streamUrl: string,
+  filename: string,
+  options?: {
+    estimatedBytes?: number | null;
+    onProgress?: (percent: number) => void;
+  },
+): Promise<void> {
   const url = resolveBrowserDownloadUrl(streamUrl);
-  triggerCrossOriginDownload(url, filename || 'VidCliply-video.mp4');
-  await new Promise((r) => window.setTimeout(r, 400));
+  const safeName = filename && /\.mp4$/i.test(filename) ? filename : 'VidCliply-video.mp4';
+  const estimated = options?.estimatedBytes ?? null;
+
+  // Very large titles / 4K: avoid buffering the whole file in JS memory.
+  if (estimated != null && estimated > DIRECT_FETCH_MAX_BYTES) {
+    triggerCrossOriginDownload(url, safeName);
+    await new Promise((r) => window.setTimeout(r, 400));
+    return;
+  }
+
+  try {
+    await downloadDirectViaFetch(url, safeName, estimated, options?.onProgress);
+  } catch {
+    triggerCrossOriginDownload(url, safeName);
+    await new Promise((r) => window.setTimeout(r, 400));
+  }
+}
+
+async function downloadDirectViaFetch(
+  url: string,
+  filename: string,
+  estimatedBytes: number | null,
+  onProgress?: (percent: number) => void,
+): Promise<void> {
+  const res = await fetch(url, { credentials: 'omit', cache: 'no-store' });
+  if (!res.ok || !res.body) {
+    throw new Error(`stream HTTP ${res.status}`);
+  }
+
+  const contentType = (res.headers.get('content-type') || '').toLowerCase();
+  if (contentType.includes('text/html') || contentType.includes('application/json')) {
+    throw new Error(HTML_INSTEAD_OF_VIDEO_MSG);
+  }
+
+  const total =
+    Number(res.headers.get('content-length')) ||
+    Number(res.headers.get('x-expected-size')) ||
+    (estimatedBytes && estimatedBytes > 0 ? estimatedBytes : 0);
+
+  const reader = res.body.getReader();
+  const chunks: BlobPart[] = [];
+  let received = 0;
+
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    chunks.push(value as BlobPart);
+    received += value.byteLength;
+    if (received > DIRECT_FETCH_MAX_BYTES) {
+      await reader.cancel().catch(() => undefined);
+      throw new Error('stream too large for in-memory download');
+    }
+    if (total > 0) {
+      onProgress?.(Math.min(99, Math.round((received / total) * 100)));
+    } else {
+      // Indeterminate but alive — nudge the bar so the UI is not stuck at 0.
+      onProgress?.(Math.min(90, 5 + Math.floor(received / (2 * 1024 * 1024))));
+    }
+  }
+
+  if (received < 64) {
+    throw new Error(INVALID_VIDEO_FILE_MSG);
+  }
+
+  const blob = new Blob(chunks, { type: 'video/mp4' });
+  // Peek at the start without keeping a second full copy of huge buffers.
+  const head = await blob.slice(0, 256).arrayBuffer();
+  if (looksLikeHtmlOrJson(head) || !isMp4Bytes(await blob.slice(0, 12).arrayBuffer())) {
+    throw new Error(INVALID_VIDEO_FILE_MSG);
+  }
+
+  triggerBlobDownload({ blob, filename });
+  onProgress?.(100);
 }
 
 /**
