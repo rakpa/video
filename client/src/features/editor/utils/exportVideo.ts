@@ -14,7 +14,19 @@ function even(n: number): number {
   return v % 2 === 0 ? v : v + 1;
 }
 
-function canvasSizeFor(clip: EditorClip, canvas: CanvasSettings): { w: number; h: number } {
+/** Aggressive size/FPS caps — long seeks were the bottleneck; pixels still matter for encode. */
+function exportProfile(totalDuration: number): { maxSide: number; fps: number; bitrate: number } {
+  if (totalDuration > 180) return { maxSide: 720, fps: 12, bitrate: 1_200_000 };
+  if (totalDuration > 90) return { maxSide: 854, fps: 14, bitrate: 1_500_000 };
+  if (totalDuration > 45) return { maxSide: 960, fps: 16, bitrate: 1_800_000 };
+  return { maxSide: 1280, fps: 20, bitrate: 2_200_000 };
+}
+
+function canvasSizeFor(
+  clip: EditorClip,
+  canvas: CanvasSettings,
+  maxSide: number,
+): { w: number; h: number } {
   const srcW = clip.width;
   const srcH = clip.height;
   const rotated = clip.transform.rotation === 90 || clip.transform.rotation === 270;
@@ -27,18 +39,16 @@ function canvasSizeFor(clip: EditorClip, canvas: CanvasSettings): { w: number; h
   if (canvas.aspect !== 'source') {
     const [aw, ah] = canvas.aspect.split(':').map(Number);
     const targetRatio = aw / ah;
-    const maxSide = Math.max(cropW, cropH);
+    const side = Math.max(cropW, cropH);
     if (targetRatio >= 1) {
-      cropW = maxSide;
-      cropH = Math.round(maxSide / targetRatio);
+      cropW = side;
+      cropH = Math.round(side / targetRatio);
     } else {
-      cropH = maxSide;
-      cropW = Math.round(maxSide * targetRatio);
+      cropH = side;
+      cropW = Math.round(side * targetRatio);
     }
   }
 
-  // Cap long side for much faster encode on phones / long clips.
-  const maxSide = 1280;
   const scale = Math.min(1, maxSide / Math.max(cropW, cropH));
   return { w: even(cropW * scale), h: even(cropH * scale) };
 }
@@ -73,6 +83,35 @@ function seekTo(video: HTMLVideoElement, time: number): Promise<void> {
   });
 }
 
+function makeProgressReporter(onProgress?: (percent: number) => void) {
+  let last = -1;
+  let lastAt = 0;
+  return (percent: number) => {
+    if (!onProgress) return;
+    const now = performance.now();
+    const p = Math.min(100, Math.max(0, Math.round(percent)));
+    if (p >= 100 || p - last >= 2 || now - lastAt >= 250) {
+      last = p;
+      lastAt = now;
+      onProgress(p);
+    }
+  };
+}
+
+/** Pick the highest playbackRate the browser accepts for sped-up capture. */
+function maxPlaybackRate(video: HTMLVideoElement): number {
+  for (const rate of [16, 8, 4, 2]) {
+    try {
+      video.playbackRate = rate;
+      if (Math.abs(video.playbackRate - rate) < 0.01) return rate;
+    } catch {
+      /* try lower */
+    }
+  }
+  video.playbackRate = 1;
+  return 1;
+}
+
 /**
  * Export as fast as the browser can decode+encode (WebCodecs), not wall-clock
  * real-time recording. Falls back to MediaRecorder if WebCodecs is unavailable.
@@ -87,7 +126,6 @@ export async function exportEditorProject(options: ExportOptions): Promise<Blob>
     try {
       return await exportWithWebCodecs(options, totalDuration);
     } catch (err) {
-      // Fall through to MediaRecorder if a codec/config is rejected.
       console.warn('WebCodecs export failed, falling back:', err);
     }
   }
@@ -95,17 +133,15 @@ export async function exportEditorProject(options: ExportOptions): Promise<Blob>
 }
 
 async function exportWithWebCodecs(options: ExportOptions, totalDuration: number): Promise<Blob> {
-  const { clips, canvas, onProgress, signal } = options;
+  const { clips, canvas, signal } = options;
+  const report = makeProgressReporter(options.onProgress);
+  const profile = exportProfile(totalDuration);
   const primary = clips[0];
-  const { w: outW, h: outH } = canvasSizeFor(primary, canvas);
-
-  // Fewer frames on longer clips = large speed win, still smooth enough.
-  const fps = totalDuration > 90 ? 18 : totalDuration > 45 ? 20 : 24;
-  const bitrate = outW * outH > 900_000 ? 2_500_000 : 1_800_000;
+  const { w: outW, h: outH } = canvasSizeFor(primary, canvas, profile.maxSide);
+  const { fps, bitrate } = profile;
 
   const target = new ArrayBufferTarget();
-  // Video-only MP4 for speed — seeking+encoding frames is already much faster
-  // than real-time MediaRecorder. Full audio remux needs a demuxer; skip for now.
+  // Video-only MP4 for speed — sequential play-through capture replaces slow seek-per-frame.
   const muxer = new Muxer({
     target,
     video: { codec: 'avc', width: outW, height: outH },
@@ -127,66 +163,184 @@ async function exportWithWebCodecs(options: ExportOptions, totalDuration: number
     height: outH,
     bitrate,
     framerate: fps,
-  });
+    hardwareAcceleration: 'prefer-hardware',
+    latencyMode: 'realtime',
+    avc: { format: 'avc' },
+  } as VideoEncoderConfig);
 
   const drawCanvas = document.createElement('canvas');
   drawCanvas.width = outW;
   drawCanvas.height = outH;
-  const ctx = drawCanvas.getContext('2d', { alpha: false });
+  const ctx = drawCanvas.getContext('2d', { alpha: false, desynchronized: true });
   if (!ctx) throw new Error('Could not open a drawing surface for export.');
 
   let encodedFrames = 0;
   let timelineMicros = 0;
   const totalFramesEstimate = Math.max(1, Math.ceil(totalDuration * fps));
+  const frameDurationMicros = Math.round(1_000_000 / fps);
+  const keyEvery = Math.max(1, Math.round(fps * 2));
 
-  for (const clip of clips) {
-    if (signal?.aborted) throw new Error('Export cancelled.');
-    if (encodeError) throw encodeError;
+  // Keep a detached video in the document so decode is not heavily throttled.
+  const host = document.createElement('div');
+  host.setAttribute('aria-hidden', 'true');
+  host.style.cssText =
+    'position:fixed;width:1px;height:1px;opacity:0;pointer-events:none;overflow:hidden;left:-9999px;top:0';
+  document.body.appendChild(host);
 
-    const video = document.createElement('video');
-    video.src = clip.objectUrl;
-    video.muted = true;
-    video.playsInline = true;
-    video.preload = 'auto';
-    await new Promise<void>((resolve, reject) => {
-      video.onloadeddata = () => resolve();
-      video.onerror = () => reject(new Error(`Could not load ${clip.name}`));
-    });
-
-    const start = clip.trimStart;
-    const end = clip.trimEnd;
-    const speed = Math.max(0.25, clip.transform.speed);
-    const outSpan = (end - start) / speed;
-    const frameCount = Math.max(1, Math.ceil(outSpan * fps));
-    const keyEvery = Math.max(1, Math.round(fps * 2));
-
-    for (let i = 0; i < frameCount; i++) {
+  try {
+    for (const clip of clips) {
       if (signal?.aborted) throw new Error('Export cancelled.');
       if (encodeError) throw encodeError;
 
-      const outT = i / fps;
-      const srcT = start + outT * speed;
-      await seekTo(video, Math.min(srcT, end - 0.001));
-      drawFrame(ctx, video, clip, canvas, outW, outH);
+      const video = document.createElement('video');
+      video.src = clip.objectUrl;
+      video.muted = true;
+      video.playsInline = true;
+      video.preload = 'auto';
+      video.disablePictureInPicture = true;
+      host.appendChild(video);
 
-      const frame = new VideoFrame(drawCanvas, {
-        timestamp: timelineMicros + Math.round(outT * 1_000_000),
-        duration: Math.round(1_000_000 / fps),
+      await new Promise<void>((resolve, reject) => {
+        video.onloadeddata = () => resolve();
+        video.onerror = () => reject(new Error(`Could not load ${clip.name}`));
       });
-      const keyFrame = i % keyEvery === 0;
-      while (encoder.encodeQueueSize > 4) {
-        await new Promise((r) => setTimeout(r, 4));
+
+      const start = clip.trimStart;
+      const end = clip.trimEnd;
+      const speed = Math.max(0.25, clip.transform.speed);
+      const outSpan = (end - start) / speed;
+      const expectedFrames = Math.max(1, Math.ceil(outSpan * fps));
+
+      await seekTo(video, start);
+      const captureRate = maxPlaybackRate(video);
+      // Source advances at captureRate * clip.speed relative to wall clock; we sample by media time.
+      video.playbackRate = Math.min(16, captureRate * speed);
+
+      let nextSrcSample = start;
+      const srcStep = speed / fps;
+      let clipFrameIndex = 0;
+      let finished = false;
+      let pumpBusy = false;
+
+      const encodeOneFrame = async () => {
+        if (clipFrameIndex >= expectedFrames) return;
+        drawFrame(ctx, video, clip, canvas, outW, outH);
+        const frame = new VideoFrame(drawCanvas, {
+          timestamp: timelineMicros + clipFrameIndex * frameDurationMicros,
+          duration: frameDurationMicros,
+        });
+        const keyFrame = clipFrameIndex % keyEvery === 0;
+        while (encoder.encodeQueueSize > 8) {
+          await new Promise((r) => setTimeout(r, 0));
+        }
+        encoder.encode(frame, { keyFrame });
+        frame.close();
+        clipFrameIndex += 1;
+        encodedFrames += 1;
+        report((encodedFrames / totalFramesEstimate) * 97);
+        nextSrcSample += srcStep;
+      };
+
+      await new Promise<void>((resolve, reject) => {
+        const fail = (err: Error) => {
+          cleanup();
+          reject(err);
+        };
+        const done = () => {
+          if (finished) return;
+          finished = true;
+          cleanup();
+          resolve();
+        };
+
+        let rvfcHandle = 0;
+        let rafHandle = 0;
+        const hasRvfc = typeof video.requestVideoFrameCallback === 'function';
+
+        const cleanup = () => {
+          video.pause();
+          video.onended = null;
+          video.onerror = null;
+          if (hasRvfc && rvfcHandle) {
+            try {
+              video.cancelVideoFrameCallback(rvfcHandle);
+            } catch {
+              /* ignore */
+            }
+          }
+          if (rafHandle) cancelAnimationFrame(rafHandle);
+        };
+
+        const schedule = () => {
+          if (finished) return;
+          if (hasRvfc) {
+            rvfcHandle = video.requestVideoFrameCallback((now, meta) => {
+              void pump(now, meta);
+            });
+          } else {
+            rafHandle = requestAnimationFrame(() => {
+              void pump();
+            });
+          }
+        };
+
+        const pump = async (_now?: number, meta?: VideoFrameCallbackMetadata) => {
+          if (finished || pumpBusy) return;
+          pumpBusy = true;
+          try {
+            if (signal?.aborted) {
+              fail(new Error('Export cancelled.'));
+              return;
+            }
+            if (encodeError) {
+              fail(encodeError);
+              return;
+            }
+
+            const mediaTime =
+              typeof meta?.mediaTime === 'number' ? meta.mediaTime : video.currentTime;
+
+            while (
+              clipFrameIndex < expectedFrames &&
+              nextSrcSample < end - 0.0005 &&
+              mediaTime + 0.0005 >= nextSrcSample
+            ) {
+              await encodeOneFrame();
+            }
+
+            if (mediaTime >= end - 0.04 || video.ended || clipFrameIndex >= expectedFrames) {
+              done();
+              return;
+            }
+            schedule();
+          } finally {
+            pumpBusy = false;
+          }
+        };
+
+        video.onended = () => done();
+        video.onerror = () => fail(new Error(`Playback failed while exporting ${clip.name}`));
+
+        void video
+          .play()
+          .then(() => schedule())
+          .catch((err) => fail(err instanceof Error ? err : new Error(String(err))));
+      });
+
+      // Fill any dropped samples from the last displayed frame (high playbackRate can skip).
+      while (clipFrameIndex < expectedFrames) {
+        if (signal?.aborted) throw new Error('Export cancelled.');
+        if (encodeError) throw encodeError;
+        await encodeOneFrame();
       }
-      encoder.encode(frame, { keyFrame });
-      frame.close();
 
-      encodedFrames += 1;
-      onProgress?.(Math.min(97, Math.round((encodedFrames / totalFramesEstimate) * 100)));
+      timelineMicros += expectedFrames * frameDurationMicros;
+      video.removeAttribute('src');
+      video.load();
+      video.remove();
     }
-
-    timelineMicros += Math.round(outSpan * 1_000_000);
-    video.removeAttribute('src');
-    video.load();
+  } finally {
+    host.remove();
   }
 
   await encoder.flush();
@@ -194,7 +348,8 @@ async function exportWithWebCodecs(options: ExportOptions, totalDuration: number
   muxer.finalize();
 
   const { buffer } = target;
-  onProgress?.(100);
+  report(100);
+  options.onProgress?.(100);
   const blob = new Blob([buffer as ArrayBuffer], { type: 'video/mp4' });
   if (blob.size < 64) throw new Error('Export produced an empty file. Please try again.');
   return blob;
@@ -204,41 +359,36 @@ async function exportWithMediaRecorder(
   options: ExportOptions,
   totalDuration: number,
 ): Promise<Blob> {
-  const { clips, canvas, onProgress, signal } = options;
+  const { clips, canvas, signal } = options;
+  const report = makeProgressReporter(options.onProgress);
   if (typeof MediaRecorder === 'undefined') {
     throw new Error('This browser cannot export video. Try Chrome, Edge, or Firefox.');
   }
 
+  const profile = exportProfile(totalDuration);
   const primary = clips[0];
-  const { w: outW, h: outH } = canvasSizeFor(primary, canvas);
+  const { w: outW, h: outH } = canvasSizeFor(primary, canvas, profile.maxSide);
   const drawCanvas = document.createElement('canvas');
   drawCanvas.width = outW;
   drawCanvas.height = outH;
   const ctx = drawCanvas.getContext('2d');
   if (!ctx) throw new Error('Could not open a drawing surface for export.');
 
-  // captureStream + play (muted for speed); Safari/fallback path.
-  const canvasStream = drawCanvas.captureStream(30);
+  // Fallback: still wall-clock, but muted + high playbackRate to finish sooner.
+  const canvasStream = drawCanvas.captureStream(profile.fps);
   const mimeType = pickMime();
   const chunks: BlobPart[] = [];
 
-  const audioCtx = new AudioContext();
-  const dest = audioCtx.createMediaStreamDestination();
-  const combined = new MediaStream([
-    ...canvasStream.getVideoTracks(),
-    ...dest.stream.getAudioTracks(),
-  ]);
-
-  const recorder = new MediaRecorder(combined, {
+  const recorder = new MediaRecorder(canvasStream, {
     mimeType,
-    videoBitsPerSecond: 2_500_000,
+    videoBitsPerSecond: profile.bitrate,
   });
   recorder.ondataavailable = (e) => {
     if (e.data.size > 0) chunks.push(e.data);
   };
   const done = new Promise<Blob>((resolve, reject) => {
     recorder.onerror = () => reject(new Error('Export failed while recording.'));
-    recorder.onstop = () => resolve(new Blob(chunks, { type: 'video/webm' }));
+    recorder.onstop = () => resolve(new Blob(chunks, { type: mimeType.includes('mp4') ? 'video/mp4' : 'video/webm' }));
   });
 
   recorder.start(200);
@@ -246,18 +396,16 @@ async function exportWithMediaRecorder(
   try {
     for (const clip of clips) {
       if (signal?.aborted) throw new Error('Export cancelled.');
-      await renderClipRealtime({
+      await renderClipFastPlayback({
         clip,
         canvas,
         ctx,
         outW,
         outH,
-        audioCtx,
-        dest,
         signal,
         onFrameProgress: (localPct) => {
           const share = effectiveDuration(clip) / totalDuration;
-          onProgress?.(Math.min(99, Math.round((elapsed / totalDuration + localPct * share) * 100)));
+          report((elapsed / totalDuration + localPct * share) * 99);
         },
       });
       elapsed += effectiveDuration(clip);
@@ -265,21 +413,20 @@ async function exportWithMediaRecorder(
   } finally {
     if (recorder.state !== 'inactive') recorder.stop();
     canvasStream.getTracks().forEach((t) => t.stop());
-    await audioCtx.close().catch(() => undefined);
   }
 
   const blob = await done;
-  onProgress?.(100);
+  options.onProgress?.(100);
   if (blob.size < 64) throw new Error('Export produced an empty file. Please try again.');
   return blob;
 }
 
 function pickMime(): string {
   const candidates = [
-    'video/webm;codecs=vp9,opus',
-    'video/webm;codecs=vp8,opus',
     'video/webm;codecs=vp9',
+    'video/webm;codecs=vp8',
     'video/webm',
+    'video/mp4',
   ];
   for (const type of candidates) {
     if (typeof MediaRecorder !== 'undefined' && MediaRecorder.isTypeSupported(type)) return type;
@@ -287,38 +434,33 @@ function pickMime(): string {
   return 'video/webm';
 }
 
-async function renderClipRealtime(args: {
+/** MediaRecorder path: mute + max playbackRate so export is much shorter than realtime. */
+async function renderClipFastPlayback(args: {
   clip: EditorClip;
   canvas: CanvasSettings;
   ctx: CanvasRenderingContext2D;
   outW: number;
   outH: number;
-  audioCtx: AudioContext;
-  dest: MediaStreamAudioDestinationNode;
   signal?: AbortSignal;
   onFrameProgress?: (pct: number) => void;
 }): Promise<void> {
-  const { clip, canvas, ctx, outW, outH, audioCtx, dest, signal, onFrameProgress } = args;
+  const { clip, canvas, ctx, outW, outH, signal, onFrameProgress } = args;
   const video = document.createElement('video');
   video.src = clip.objectUrl;
   video.playsInline = true;
-  video.muted = false;
+  video.muted = true;
   video.preload = 'auto';
-  video.playbackRate = clip.transform.speed;
 
   await new Promise<void>((resolve, reject) => {
     video.onloadeddata = () => resolve();
     video.onerror = () => reject(new Error(`Could not load ${clip.name}`));
   });
 
-  if (audioCtx.state === 'suspended') await audioCtx.resume();
-  const source = audioCtx.createMediaElementSource(video);
-  source.connect(dest);
-
   const start = clip.trimStart;
   const end = clip.trimEnd;
   const span = Math.max(0.05, end - start);
   await seekTo(video, start);
+  video.playbackRate = Math.min(16, maxPlaybackRate(video) * Math.max(0.25, clip.transform.speed));
   await video.play();
 
   await new Promise<void>((resolve, reject) => {
@@ -344,7 +486,6 @@ async function renderClipRealtime(args: {
     raf = requestAnimationFrame(tick);
   });
 
-  source.disconnect();
   video.removeAttribute('src');
   video.load();
 }

@@ -106,6 +106,45 @@ export function EditorWorkspace({ initialFiles, onClose }: Props) {
     setPlaying(true);
   };
 
+  const canSplit =
+    !!active &&
+    currentTime > active.trimStart + 0.15 &&
+    currentTime < active.trimEnd - 0.15;
+
+  const splitAtPlayhead = () => {
+    if (!active || !canSplit) {
+      setError('Move the playhead inside the highlighted selection, then tap Split here.');
+      return;
+    }
+    setError(null);
+    setPlaying(false);
+    const cut = currentTime;
+    const left: EditorClip = {
+      ...active,
+      id: createClipId(),
+      trimEnd: cut,
+      name: `${baseClipName(active.name)} · 1`,
+      transform: cloneTransform(active.transform),
+    };
+    const right: EditorClip = {
+      ...active,
+      id: createClipId(),
+      trimStart: cut,
+      name: `${baseClipName(active.name)} · 2`,
+      transform: cloneTransform(active.transform),
+    };
+    setClips((prev) => {
+      const idx = prev.findIndex((c) => c.id === active.id);
+      if (idx < 0) return prev;
+      const next = [...prev];
+      next.splice(idx, 1, left, right);
+      return renumberClipNames(next);
+    });
+    setActiveId(left.id);
+    setCurrentTime(left.trimStart);
+    if (videoRef.current) videoRef.current.currentTime = left.trimStart;
+  };
+
   const handleExport = async () => {
     if (!clips.length) return;
     setError(null);
@@ -183,8 +222,8 @@ export function EditorWorkspace({ initialFiles, onClose }: Props) {
             />
           </div>
           <p className="mt-2 text-xs font-medium text-indigo-700/80">
-            Encoding on your device (not real-time recording) — short clips usually finish in seconds.
-            Fast exports are video-only for speed.
+            Speeding through your video on-device (not recording in real time). Video-only for speed —
+            a few minutes typically finishes much faster than before.
           </p>
         </div>
       )}
@@ -210,6 +249,45 @@ export function EditorWorkspace({ initialFiles, onClose }: Props) {
             onEnded={() => setPlaying(false)}
             videoRef={videoRef}
           />
+          {clips.length > 1 && (
+            <div className="rounded-2xl border border-slate-200 bg-white p-3 shadow-card sm:p-4">
+              <div className="mb-2 flex items-center justify-between gap-2">
+                <p className="text-xs font-bold uppercase tracking-wider text-slate-500">
+                  Clips · export order
+                </p>
+                <p className="text-xs font-medium text-slate-500 tabular-nums">
+                  {clips.length} parts · {formatEditorTime(totalOut)}
+                </p>
+              </div>
+              <div className="flex gap-2 overflow-x-auto pb-1">
+                {clips.map((clip, i) => (
+                  <button
+                    key={clip.id}
+                    type="button"
+                    onClick={() => {
+                      setActiveId(clip.id);
+                      setPlaying(false);
+                      setCurrentTime(clip.trimStart);
+                      if (videoRef.current) videoRef.current.currentTime = clip.trimStart;
+                    }}
+                    className={`shrink-0 rounded-xl border px-3 py-2 text-left transition ${
+                      clip.id === active?.id
+                        ? 'border-indigo-400 bg-indigo-50 ring-2 ring-indigo-100'
+                        : 'border-slate-200 bg-slate-50 hover:border-slate-300'
+                    }`}
+                  >
+                    <p className="max-w-[10rem] truncate text-xs font-bold text-slate-900">
+                      {i + 1}. {clip.name}
+                    </p>
+                    <p className="mt-0.5 text-[11px] font-medium text-slate-500 tabular-nums">
+                      {formatEditorTime(clip.trimEnd - clip.trimStart)}
+                    </p>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
           {active && (
             <SoloTrimBar
               clip={active}
@@ -227,6 +305,8 @@ export function EditorWorkspace({ initialFiles, onClose }: Props) {
                 );
               }}
               onTogglePlay={playSelection}
+              onSplit={splitAtPlayhead}
+              canSplit={canSplit}
               onRemove={() => removeClip(active.id)}
             />
           )}
@@ -261,4 +341,20 @@ export function EditorWorkspace({ initialFiles, onClose }: Props) {
       />
     </div>
   );
+}
+
+function cloneTransform(t: EditorClip['transform']): EditorClip['transform'] {
+  return { ...t, crop: { ...t.crop } };
+}
+
+function baseClipName(name: string): string {
+  return name.replace(/\s·\s\d+$/, '').trim() || name;
+}
+
+function renumberClipNames(list: EditorClip[]): EditorClip[] {
+  if (list.length <= 1) return list;
+  return list.map((c, i) => ({
+    ...c,
+    name: `${baseClipName(c.name)} · ${i + 1}`,
+  }));
 }

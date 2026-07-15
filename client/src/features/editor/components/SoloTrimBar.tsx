@@ -9,6 +9,8 @@ interface Props {
   onSeek: (time: number) => void;
   onTrimChange: (start: number, end: number) => void;
   onTogglePlay: () => void;
+  onSplit?: () => void;
+  canSplit?: boolean;
   onRemove?: () => void;
 }
 
@@ -23,6 +25,8 @@ export function SoloTrimBar({
   onSeek,
   onTrimChange,
   onTogglePlay,
+  onSplit,
+  canSplit = false,
   onRemove,
 }: Props) {
   const trackRef = useRef<HTMLDivElement>(null);
@@ -144,6 +148,21 @@ export function SoloTrimBar({
           >
             {playing ? 'Pause' : 'Play selection'}
           </button>
+          {onSplit && (
+            <button
+              type="button"
+              onClick={onSplit}
+              disabled={!canSplit}
+              title={
+                canSplit
+                  ? 'Split this clip into two at the playhead'
+                  : 'Move the playhead inside the selection to split'
+              }
+              className="rounded-2xl border border-indigo-200 bg-indigo-50 px-4 py-2.5 text-sm font-semibold text-indigo-700 transition hover:bg-indigo-100 disabled:cursor-not-allowed disabled:opacity-45"
+            >
+              Split here
+            </button>
+          )}
           <button
             type="button"
             onClick={() => {
@@ -182,12 +201,13 @@ export function SoloTrimBar({
               onClick={onRemove}
               className="ml-auto rounded-2xl px-3 py-2.5 text-xs font-bold text-rose-600 transition hover:bg-rose-50"
             >
-              Remove video
+              Remove clip
             </button>
           )}
         </div>
         <p className="mt-3 text-xs font-medium text-slate-500">
-          Drag the white handles to set start and end. Tap the bar to move the playhead. Highlighted range = what you’ll export.
+          Drag the white handles to set start and end. Tap the bar to move the playhead.
+          Use Split here to cut into two clips — export joins them in order.
         </p>
       </div>
     </div>
