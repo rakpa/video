@@ -15,6 +15,7 @@ interface Props {
 
 /** Top-bar navigation links (the SEO content pages + pricing). */
 const NAV_LINKS = [
+  { label: 'Video Editor', path: '/video-editor' },
   { label: 'How-To', path: '/how-to-download-videos' },
   { label: 'YouTube', path: '/download-youtube-videos' },
   { label: 'Facebook', path: '/download-facebook-videos' },

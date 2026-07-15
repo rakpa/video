@@ -53,6 +53,7 @@ export function Footer() {
             <div className="mt-4 flex flex-col items-start gap-2.5">
               <FootLink onClick={() => goToSection('how-it-works')}>How it works</FootLink>
               <FootLink onClick={() => goToSection('features')}>Features</FootLink>
+              <FootLink onClick={() => navigate('/video-editor')}>Video Editor</FootLink>
               <FootLink onClick={() => navigate('/pricing')}>Pricing</FootLink>
             </div>
           </div>

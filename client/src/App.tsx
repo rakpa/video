@@ -51,6 +51,7 @@ import { useDocumentMeta } from './hooks/useDocumentMeta';
 import { LegalPage, LEGAL_ROUTES } from './pages/LegalPages';
 import { ContentPage, CONTENT_ROUTES } from './pages/ContentPages';
 import { PricingPage } from './pages/PricingPage';
+import { VideoEditorPage } from './pages/VideoEditorPage';
 import { SiteHeader } from './components/SiteHeader';
 import { HeroFeatures, HeroPlatforms, HeroTitle } from './components/Hero';
 import { HowItWorks } from './components/HowItWorks';
@@ -131,6 +132,9 @@ export default function App() {
   }
   if (route === '/pricing') {
     return <PricingPage theme={theme} onToggleTheme={toggle} />;
+  }
+  if (route === '/video-editor' || route === '/editor') {
+    return <VideoEditorPage theme={theme} onToggleTheme={toggle} />;
   }
   // Unknown path: show a real not-found page instead of silently rendering the
   // homepage (a soft-404 that hurts SEO and confuses users).
