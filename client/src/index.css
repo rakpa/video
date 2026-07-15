@@ -19,22 +19,10 @@ html {
 
 body {
   margin: 0;
-  font-family: Inter, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  font-family: 'Space Grotesk', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
   color: #0f172a;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
-  font-feature-settings: 'tnum' 1, 'ss01' 1;
-}
-
-/* Ensure every text node (including numbers / inputs) inherits Inter. */
-button,
-input,
-textarea,
-select,
-code,
-pre,
-.tabular-nums {
-  font-family: inherit;
 }
 
 /* App background — clean light slate with subtle indigo/violet radial tints. */
