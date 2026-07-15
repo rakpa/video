@@ -17,13 +17,16 @@ const BROWSER_UA =
 
 /**
  * googlevideo throttles full-file GETs to roughly playback speed after an
- * initial burst, but serves 10 MB Range chunks at full speed (yt-dlp uses the
- * same trick via http_chunk_size). The loopback relay below fetches upstream
- * in chunks so ffmpeg — which only does single full-file GETs — is never the
- * one talking to the CDN.
+ * initial burst, but serves Range chunks at full speed (yt-dlp uses the same
+ * trick via http_chunk_size). The loopback relay below fetches upstream in
+ * chunks so ffmpeg — which only does single full-file GETs — is never the one
+ * talking to the CDN.
+ *
+ * Prefetch the next chunk while writing the current one so ffmpeg stays fed
+ * between Range boundaries (big desktop speed win on long HD files).
  */
-const CHUNK_SIZE = 10 * 1024 * 1024;
-const CHUNK_TIMEOUT_MS = 60_000;
+const CHUNK_SIZE = 16 * 1024 * 1024;
+const CHUNK_TIMEOUT_MS = 90_000;
 
 function isLoopback(addr: string | undefined): boolean {
   return addr === '127.0.0.1' || addr === '::1' || addr === '::ffff:127.0.0.1';
@@ -55,7 +58,16 @@ const dispatchers = new Map<string, Dispatcher>();
 function dispatcherFor(proxy: string): Dispatcher {
   let d = dispatchers.get(proxy);
   if (!d) {
-    d = proxy ? new ProxyAgent(proxy) : new Agent();
+    const pool = {
+      connections: 8,
+      pipelining: 1,
+      keepAliveTimeout: 30_000,
+      keepAliveMaxTimeout: 60_000,
+    };
+    // undici runtime accepts pool options on ProxyAgent; older typings take only the URL.
+    d = proxy
+      ? (new (ProxyAgent as unknown as new (u: string, opts?: object) => Dispatcher)(proxy, pool))
+      : new Agent(pool);
     dispatchers.set(proxy, d);
   }
   return d;
@@ -83,7 +95,28 @@ async function writeBody(body: ReadableStream<Uint8Array>, res: Response): Promi
   }
 }
 
-/** Sequential 10 MB Range chunks from the CDN piped into `res` at full speed. */
+type UpstreamResponse = Awaited<ReturnType<typeof undiciFetch>>;
+
+async function fetchRangeChunk(
+  url: string,
+  proxy: string,
+  offset: number,
+  referer?: string,
+): Promise<UpstreamResponse> {
+  const headers: Record<string, string> = {
+    Range: `bytes=${offset}-${offset + CHUNK_SIZE - 1}`,
+    'User-Agent': BROWSER_UA,
+  };
+  if (referer) headers.Referer = referer;
+
+  return undiciFetch(url, {
+    dispatcher: dispatcherFor(proxy),
+    headers,
+    signal: AbortSignal.timeout(CHUNK_TIMEOUT_MS),
+  });
+}
+
+/** Sequential Range chunks from the CDN, with one-chunk prefetch overlap. */
 async function relayChunked(
   url: string,
   proxy: string,
@@ -93,40 +126,58 @@ async function relayChunked(
 ): Promise<void> {
   let offset = 0;
   let total: number | null = null;
+  let pending: Promise<UpstreamResponse> | null = null;
 
-  while (!aborted() && (total === null || offset < total)) {
-    const headers: Record<string, string> = {
-      Range: `bytes=${offset}-${offset + CHUNK_SIZE - 1}`,
-      'User-Agent': BROWSER_UA,
-    };
-    if (referer) headers.Referer = referer;
+  const cancelPending = async () => {
+    if (!pending) return;
+    try {
+      const p = await pending;
+      await p.body?.cancel().catch(() => undefined);
+    } catch {
+      /* ignore prefetch errors once aborted */
+    }
+    pending = null;
+  };
 
-    const upstream = await undiciFetch(url, {
-      dispatcher: dispatcherFor(proxy),
-      headers,
-      signal: AbortSignal.timeout(CHUNK_TIMEOUT_MS),
-    });
+  try {
+    while (!aborted() && (total === null || offset < total)) {
+      const upstream = pending ? await pending : await fetchRangeChunk(url, proxy, offset, referer);
+      pending = null;
 
-    if (upstream.status === 200) {
-      // Upstream ignored Range — stream the single full response instead.
-      if (!upstream.body) throw new Error('empty upstream body');
-      if (!res.headersSent) res.status(200);
+      if (upstream.status === 200) {
+        // Upstream ignored Range — stream the single full response instead.
+        if (!upstream.body) throw new Error('empty upstream body');
+        if (!res.headersSent) res.status(200);
+        await writeBody(upstream.body, res);
+        break;
+      }
+      if (upstream.status !== 206 || !upstream.body) {
+        throw new Error(`upstream chunk failed with HTTP ${upstream.status}`);
+      }
+
+      if (total === null) {
+        total = parseTotalSize(upstream.headers.get('content-range'));
+        if (total !== null && !res.headersSent) res.setHeader('Content-Length', total);
+      }
+
+      // Prefetch the next Range while writing this one so ffmpeg never waits on
+      // a cold TCP/TLS handshake between 16 MB boundaries.
+      const nextOffset = offset + CHUNK_SIZE;
+      if (total !== null && nextOffset < total && !aborted()) {
+        pending = fetchRangeChunk(url, proxy, nextOffset, referer);
+      }
+
       await writeBody(upstream.body, res);
-      break;
+      offset = nextOffset;
+      if (total === null) break; // unknown size — the first 206 had the whole range
     }
-    if (upstream.status !== 206 || !upstream.body) {
-      throw new Error(`upstream chunk failed with HTTP ${upstream.status}`);
-    }
-
-    if (total === null) {
-      total = parseTotalSize(upstream.headers.get('content-range'));
-      if (total !== null && !res.headersSent) res.setHeader('Content-Length', total);
-    }
-    await writeBody(upstream.body, res);
-    offset += CHUNK_SIZE;
-    if (total === null) break; // unknown size — the first 206 had the whole range
+    res.end();
+  } catch (err) {
+    await cancelPending();
+    throw err;
+  } finally {
+    if (aborted()) await cancelPending();
   }
-  res.end();
 }
 
 /**
@@ -188,9 +239,8 @@ function platformReferer(sourceUrl: string): string | undefined {
 
 /**
  * Progressive (single-file) downloads: relay CDN bytes with an exact
- * Content-Length — no ffmpeg remux, so browser progress is accurate.
- * YouTube HD is almost always DASH merge (handled below); this helps IG / rare
- * progressive YouTube.
+ * Content-Length — no ffmpeg remux, so browser progress is accurate and speed
+ * stays near the CDN Range throughput (much faster than remux).
  */
 function handleProgressiveDownload(
   req: Request,
@@ -216,6 +266,7 @@ function handleProgressiveDownload(
   res.setHeader('Content-Type', 'video/mp4');
   res.setHeader('Content-Disposition', contentDispositionAttachment(filename));
   res.setHeader('Cache-Control', 'no-store');
+  res.setHeader('Accept-Ranges', 'bytes');
   res.setHeader('X-Content-Type-Options', 'nosniff');
 
   const referer = platformReferer(ticket.sourceUrl);
@@ -249,12 +300,11 @@ function handleStreamDownload(req: Request, res: Response): void {
 
   const { selection, filename, clip } = ticket;
   const hasClip = Boolean(clip && clip.endTime > clip.startTime);
-  const platformId = detectPlatform(ticket.sourceUrl)?.id;
 
-  // Progressive CDN relay (exact Content-Length) for Instagram/etc.
-  // YouTube always stays on ffmpeg remux — that stream-through path is the
-  // known-good HD download; skipping remux regressed some Safari downloads.
-  if (selection.kind === 'progressive' && !hasClip && platformId !== 'youtube') {
+  // Progressive CDN relay (exact Content-Length) — including YouTube when
+  // yt-dlp picked a muxed H.264 file. Skipping ffmpeg here is a large desktop
+  // speed win; Safari Zero KB came from wrong remux Content-Length, not this path.
+  if (selection.kind === 'progressive' && !hasClip) {
     handleProgressiveDownload(req, res, ticket);
     return;
   }
@@ -323,6 +373,9 @@ function handleStreamDownload(req: Request, res: Response): void {
     res.setHeader('Content-Type', 'video/mp4');
     res.setHeader('Content-Disposition', contentDispositionAttachment(filename));
     res.setHeader('Cache-Control', 'no-store');
+    // Chrome tries to "Resume" mid-stall when it thinks Range is supported —
+    // remux pipes cannot resume, which leaves downloads stuck on Resuming…
+    res.setHeader('Accept-Ranges', 'none');
     res.setHeader('X-Content-Type-Options', 'nosniff');
     if (ticket.contentLength != null && ticket.contentLength > 0) {
       // Hint only — clients may track in-app progress. Not Content-Length.

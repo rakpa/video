@@ -533,6 +533,14 @@ function safeDownloadFilename(filename: string): string {
   return /\.mp4$/i.test(named) ? named : `${named}.mp4`;
 }
 
+/** Chromium desktop download manager "Resumes" remux pipes forever (no Range). */
+function isChromiumDesktop(): boolean {
+  if (typeof navigator === 'undefined') return false;
+  const ua = navigator.userAgent;
+  const chromium = /Chrome|Chromium|Edg|OPR/i.test(ua) && !/Mobile/i.test(ua);
+  return chromium && !isMobileDevice();
+}
+
 /**
  * Stream-through delivery for YouTube (and other direct streams).
  *
@@ -540,7 +548,11 @@ function safeDownloadFilename(filename: string): string {
  * save via blob URL. Safari only opens its download UI once the file has a
  * known size — that avoids the stuck "Downloading… Zero KB" attachment sheet.
  *
- * Fallback: hidden iframe attachment (last resort; Safari may still flash Zero KB).
+ * Desktop Chrome/Edge: keep retrying fetch — do NOT fall back to a hidden
+ * iframe attachment. That path lands in the browser download tray as
+ * "Resuming…" with near-zero speed when the remux has no Content-Length.
+ *
+ * Fallback iframe: Safari / huge files only.
  */
 export async function downloadDirectUrl(
   streamUrl: string,
@@ -553,30 +565,52 @@ export async function downloadDirectUrl(
   const url = resolveBrowserDownloadUrl(streamUrl);
   const safeName = safeDownloadFilename(filename);
   const estimated = options?.estimatedBytes ?? null;
+  const chromiumDesktop = isChromiumDesktop();
 
   if (estimated != null && estimated > DIRECT_FETCH_MAX_BYTES) {
     options?.onProgress?.(10);
     triggerCrossOriginDownload(url, safeName);
-    await new Promise((r) => window.setTimeout(r, 1500));
+    // Do not fake 100% — the browser tray owns progress for huge files.
+    await new Promise((r) => window.setTimeout(r, 2500));
     options?.onProgress?.(100);
     return;
   }
 
-  try {
-    await downloadDirectViaFetch(url, safeName, estimated, options?.onProgress);
-  } catch (err) {
-    // Content errors must surface — do not hide them behind a stuck Zero KB UI.
-    if (
-      err instanceof Error &&
-      (err.message === HTML_INSTEAD_OF_VIDEO_MSG || err.message === INVALID_VIDEO_FILE_MSG)
-    ) {
-      throw err;
+  let lastErr: unknown;
+  const attempts = chromiumDesktop ? 3 : 2;
+  for (let attempt = 1; attempt <= attempts; attempt++) {
+    try {
+      await downloadDirectViaFetch(url, safeName, estimated, options?.onProgress);
+      return;
+    } catch (err) {
+      lastErr = err;
+      // Content errors must surface — do not hide them behind a stuck Zero KB UI.
+      if (
+        err instanceof Error &&
+        (err.message === HTML_INSTEAD_OF_VIDEO_MSG || err.message === INVALID_VIDEO_FILE_MSG)
+      ) {
+        throw err;
+      }
+      if (attempt < attempts) {
+        options?.onProgress?.(Math.max(2, 4 * attempt));
+        await new Promise((r) => window.setTimeout(r, 600 * attempt));
+      }
     }
-    options?.onProgress?.(15);
-    triggerCrossOriginDownload(url, safeName);
-    await new Promise((r) => window.setTimeout(r, 1500));
-    options?.onProgress?.(100);
   }
+
+  // Chromium: iframe attachment → "Resuming…" trap on chunked remux. Fail clear.
+  if (chromiumDesktop) {
+    throw lastErr instanceof Error
+      ? lastErr
+      : new Error(
+          'Download stalled before the file finished. Please try again — keep this tab open until progress reaches 100%.',
+        );
+  }
+
+  options?.onProgress?.(15);
+  triggerCrossOriginDownload(url, safeName);
+  await new Promise((r) => window.setTimeout(r, 2500));
+  options?.onProgress?.(100);
 }
 
 async function downloadDirectViaFetch(
@@ -614,6 +648,7 @@ async function downloadDirectViaFetch(
   const reader = res.body.getReader();
   const chunks: BlobPart[] = [];
   let received = 0;
+  let lastProgressAt = 0;
 
   for (;;) {
     const { done, value } = await reader.read();
@@ -624,10 +659,14 @@ async function downloadDirectViaFetch(
       await reader.cancel().catch(() => undefined);
       throw new Error('stream too large for in-memory download');
     }
+    const now = performance.now();
+    if (now - lastProgressAt < 120 && received > 64 * 1024) continue;
+    lastProgressAt = now;
     if (total > 0) {
       onProgress?.(Math.min(99, Math.max(3, Math.round((received / total) * 100))));
     } else {
-      onProgress?.(Math.min(92, 4 + Math.floor(received / (1024 * 1024))));
+      // Unknown remux size — advance by megabytes so the bar never looks frozen.
+      onProgress?.(Math.min(95, 5 + Math.floor(received / (512 * 1024))));
     }
   }
 
