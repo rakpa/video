@@ -92,6 +92,7 @@ function resolveFromCache(
       : `${picked.title}_${picked.height}p`,
   );
   const ticket = createStreamTicket(picked, filename, url.trim(), proxy, clip);
+  if (!ticket) return null;
 
   logger.info(
     `Direct stream ready: ${picked.formatIds} ${picked.height}p (${picked.kind}` +
@@ -122,14 +123,14 @@ export async function resolveDirectDownload(
   const cached = resolveFromCache(trimmed, maxHeight, clip);
   if (cached) return cached;
 
-  // Keep the warm short so the browser download can start within ~5s of the
-  // user clicking Download. After paste, /api/info usually has already warmed
-  // the cache — this path is only for the rare cold miss.
+  // Wait long enough for a cold yt-dlp extract — a 4.5s cutover to the job
+  // path was a major source of "sometimes stream / sometimes stuck job"
+  // inconsistency on mobile. Prefer a slightly slower stream start over roulette.
   try {
     await Promise.race([
       ensureInfoJsonCache(trimmed),
       new Promise<void>((_, reject) =>
-        setTimeout(() => reject(new Error('passthrough info warm timeout')), 4_500),
+        setTimeout(() => reject(new Error('passthrough info warm timeout')), 14_000),
       ),
     ]);
   } catch (err) {

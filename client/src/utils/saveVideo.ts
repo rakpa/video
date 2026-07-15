@@ -524,8 +524,22 @@ export function formatDownloadError(err: unknown): string {
   return 'Could not save the video. Please try again.';
 }
 
-/** Soft ceiling — above this, use iframe to avoid tab OOM on large 4K files. */
+/** Soft ceiling — above this, desktop may use iframe; mobile fails clearly. */
 const DIRECT_FETCH_MAX_BYTES = 280 * 1024 * 1024;
+/** Phones OOM more easily — refuse giant remuxes instead of hanging the tab. */
+const DIRECT_FETCH_MAX_BYTES_MOBILE = 160 * 1024 * 1024;
+/** Abort if the remux body sends no bytes for this long (mobile radio + CDN stalls). */
+const STREAM_STALL_MS = 45_000;
+/** First-byte budget — ffmpeg may need CDN open + mux before headers/body start. */
+const STREAM_TTFB_MS = 90_000;
+/** Hard ceiling for one remux attempt (clips + HD finish well under this). */
+const STREAM_ABSOLUTE_TIMEOUT_MS = 12 * 60_000;
+
+export const STREAM_STALL_MSG =
+  'The download stalled with no new data. Keep this tab open and try again — on mobile, one download at a time works best.';
+
+export const STREAM_BUSY_MSG =
+  'The download service is busy right now. Please wait a few seconds and try again.';
 
 function safeDownloadFilename(filename: string): string {
   const base = (filename || 'VidCliply-video.mp4').replace(/[^\w.\- ]+/g, '_').trim().slice(0, 120);
@@ -541,18 +555,21 @@ function isChromiumDesktop(): boolean {
   return chromium && !isMobileDevice();
 }
 
+/** True when the remux blob looks like H.264 (Photos/gallery-safe). */
+export async function blobLooksH264(blob: Blob): Promise<boolean> {
+  const head = await blob.slice(0, Math.min(blob.size, 512 * 1024)).arrayBuffer();
+  return isH264Mp4(head);
+}
+
 /**
  * Stream-through delivery for YouTube (and other direct streams).
  *
- * Primary: fetch the remux with CORS, report byte progress in the app, then
- * save via blob URL. Safari only opens its download UI once the file has a
- * known size — that avoids the stuck "Downloading… Zero KB" attachment sheet.
+ * Always fetches with CORS + stall detection, then returns the finished MP4.
+ * Desktop also triggers a blob file download. Mobile callers should present
+ * Save to Gallery (share sheet) for H.264 — never a fake-success iframe.
  *
- * Desktop Chrome/Edge: keep retrying fetch — do NOT fall back to a hidden
- * iframe attachment. That path lands in the browser download tray as
- * "Resuming…" with near-zero speed when the remux has no Content-Length.
- *
- * Fallback iframe: Safari / huge files only.
+ * Iframe attachment is only used for oversized desktop files where holding the
+ * MP4 in RAM is unsafe.
  */
 export async function downloadDirectUrl(
   streamUrl: string,
@@ -561,77 +578,123 @@ export async function downloadDirectUrl(
     estimatedBytes?: number | null;
     onProgress?: (percent: number) => void;
   },
-): Promise<void> {
+): Promise<VideoFilePayload> {
   const url = resolveBrowserDownloadUrl(streamUrl);
   const safeName = safeDownloadFilename(filename);
   const estimated = options?.estimatedBytes ?? null;
-  const chromiumDesktop = isChromiumDesktop();
+  const mobile = isMobileDevice();
+  const maxBytes = mobile ? DIRECT_FETCH_MAX_BYTES_MOBILE : DIRECT_FETCH_MAX_BYTES;
 
-  if (estimated != null && estimated > DIRECT_FETCH_MAX_BYTES) {
+  if (estimated != null && estimated > maxBytes) {
+    if (mobile) {
+      throw new Error(
+        'This video is too large to finish reliably on a phone. Try 720p/1080p, a shorter clip, or download on desktop.',
+      );
+    }
     options?.onProgress?.(10);
     triggerCrossOriginDownload(url, safeName);
-    // Do not fake 100% — the browser tray owns progress for huge files.
     await new Promise((r) => window.setTimeout(r, 2500));
     options?.onProgress?.(100);
-    return;
+    // Synthetic payload — iframe owns delivery; caller should show success, not share.
+    return { blob: new Blob(), filename: safeName };
   }
 
   let lastErr: unknown;
-  const attempts = chromiumDesktop ? 3 : 2;
+  const attempts = mobile ? 2 : isChromiumDesktop() ? 3 : 2;
   for (let attempt = 1; attempt <= attempts; attempt++) {
     try {
-      await downloadDirectViaFetch(url, safeName, estimated, options?.onProgress);
-      return;
+      const payload = await downloadDirectViaFetch(url, safeName, estimated, maxBytes, options?.onProgress);
+      // Desktop / Android: also write Files. iOS often ignores async <a download>
+      // — MobileSavePrompt handles Photos via a fresh user tap.
+      if (!mobile || !isIos()) {
+        triggerBlobDownload(payload);
+      }
+      options?.onProgress?.(100);
+      return payload;
     } catch (err) {
       lastErr = err;
-      // Content errors must surface — do not hide them behind a stuck Zero KB UI.
       if (
         err instanceof Error &&
-        (err.message === HTML_INSTEAD_OF_VIDEO_MSG || err.message === INVALID_VIDEO_FILE_MSG)
+        (err.message === HTML_INSTEAD_OF_VIDEO_MSG ||
+          err.message === INVALID_VIDEO_FILE_MSG ||
+          err.message === STREAM_STALL_MSG ||
+          /too large/i.test(err.message))
       ) {
         throw err;
       }
+      if (err instanceof Error && /stream HTTP 503|stream HTTP 409/.test(err.message)) {
+        // Busy / already-in-progress — brief backoff then retry same ticket once.
+        if (attempt < attempts) {
+          options?.onProgress?.(Math.max(2, 3 * attempt));
+          await new Promise((r) => window.setTimeout(r, 1200 * attempt));
+          continue;
+        }
+        throw new Error(STREAM_BUSY_MSG);
+      }
       if (attempt < attempts) {
         options?.onProgress?.(Math.max(2, 4 * attempt));
-        await new Promise((r) => window.setTimeout(r, 600 * attempt));
+        await new Promise((r) => window.setTimeout(r, 800 * attempt));
       }
     }
   }
 
-  // Chromium: iframe attachment → "Resuming…" trap on chunked remux. Fail clear.
-  if (chromiumDesktop) {
-    throw lastErr instanceof Error
-      ? lastErr
-      : new Error(
-          'Download stalled before the file finished. Please try again — keep this tab open until progress reaches 100%.',
-        );
-  }
-
-  options?.onProgress?.(15);
-  triggerCrossOriginDownload(url, safeName);
-  await new Promise((r) => window.setTimeout(r, 2500));
-  options?.onProgress?.(100);
+  // Never iframe-fake-success on mobile or Chromium — that was the stuck
+  // "Resuming… / Zero KB / looks done" inconsistency.
+  throw lastErr instanceof Error
+    ? lastErr
+    : new Error(STREAM_STALL_MSG);
 }
 
 async function downloadDirectViaFetch(
   url: string,
   filename: string,
   estimatedBytes: number | null,
+  maxBytes: number,
   onProgress?: (percent: number) => void,
-): Promise<void> {
+): Promise<VideoFilePayload> {
   onProgress?.(3);
-  const res = await fetch(url, {
-    method: 'GET',
-    credentials: 'omit',
-    cache: 'no-store',
-    mode: 'cors',
-  });
+
+  const controller = new AbortController();
+  const absTimer = window.setTimeout(() => controller.abort(), STREAM_ABSOLUTE_TIMEOUT_MS);
+  // Generous TTFB first — tight 45s here aborted healthy remuxes still warming up.
+  let stallTimer = window.setTimeout(() => controller.abort(), STREAM_TTFB_MS);
+  const bumpStallWatchdog = () => {
+    window.clearTimeout(stallTimer);
+    stallTimer = window.setTimeout(() => controller.abort(), STREAM_STALL_MS);
+  };
+  const clearWatchdogs = () => {
+    window.clearTimeout(absTimer);
+    window.clearTimeout(stallTimer);
+  };
+
+  let res: Response;
+  try {
+    res = await fetch(url, {
+      method: 'GET',
+      credentials: 'omit',
+      cache: 'no-store',
+      mode: 'cors',
+      signal: controller.signal,
+    });
+  } catch (err) {
+    clearWatchdogs();
+    if (err instanceof DOMException && err.name === 'AbortError') {
+      throw new Error(STREAM_STALL_MSG);
+    }
+    throw err;
+  }
+
+  // First byte arrived with headers — reset stall clock for the body phase.
+  bumpStallWatchdog();
+
   if (!res.ok || !res.body) {
+    clearWatchdogs();
     throw new Error(`stream HTTP ${res.status}`);
   }
 
   const contentType = (res.headers.get('content-type') || '').toLowerCase();
   if (contentType.includes('text/html') || contentType.includes('application/json')) {
+    clearWatchdogs();
     try {
       await res.body.cancel();
     } catch {
@@ -650,24 +713,42 @@ async function downloadDirectViaFetch(
   let received = 0;
   let lastProgressAt = 0;
 
-  for (;;) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    chunks.push(value as BlobPart);
-    received += value.byteLength;
-    if (received > DIRECT_FETCH_MAX_BYTES) {
-      await reader.cancel().catch(() => undefined);
-      throw new Error('stream too large for in-memory download');
+  try {
+    for (;;) {
+      let chunk: ReadableStreamReadResult<Uint8Array>;
+      try {
+        chunk = await reader.read();
+      } catch (err) {
+        if (err instanceof DOMException && err.name === 'AbortError') {
+          throw new Error(STREAM_STALL_MSG);
+        }
+        throw err;
+      }
+      const { done, value } = chunk;
+      if (done) break;
+      bumpStallWatchdog();
+      chunks.push(value as BlobPart);
+      received += value.byteLength;
+
+      if (received > maxBytes) {
+        await reader.cancel().catch(() => undefined);
+        throw new Error(
+          isMobileDevice()
+            ? 'This video is too large to finish reliably on a phone. Try 720p/1080p, a shorter clip, or download on desktop.'
+            : 'stream too large for in-memory download',
+        );
+      }
+      const now = performance.now();
+      if (now - lastProgressAt < 120 && received > 64 * 1024) continue;
+      lastProgressAt = now;
+      if (total > 0) {
+        onProgress?.(Math.min(99, Math.max(3, Math.round((received / total) * 100))));
+      } else {
+        onProgress?.(Math.min(95, 5 + Math.floor(received / (512 * 1024))));
+      }
     }
-    const now = performance.now();
-    if (now - lastProgressAt < 120 && received > 64 * 1024) continue;
-    lastProgressAt = now;
-    if (total > 0) {
-      onProgress?.(Math.min(99, Math.max(3, Math.round((received / total) * 100))));
-    } else {
-      // Unknown remux size — advance by megabytes so the bar never looks frozen.
-      onProgress?.(Math.min(95, 5 + Math.floor(received / (512 * 1024))));
-    }
+  } finally {
+    clearWatchdogs();
   }
 
   if (received < 64) {
@@ -681,8 +762,7 @@ async function downloadDirectViaFetch(
     throw new Error(INVALID_VIDEO_FILE_MSG);
   }
 
-  triggerBlobDownload({ blob, filename });
-  onProgress?.(100);
+  return { blob, filename };
 }
 
 /**

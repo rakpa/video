@@ -41,6 +41,7 @@ import {
   downloadDirectUrl,
   deliverMobileVideo,
   formatDownloadError,
+  blobLooksH264,
   isNativeMobileApp,
   type ShareResult,
   type VideoFilePayload,
@@ -204,6 +205,8 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
   const [mobileSavePayload, setMobileSavePayload] = useState<VideoFilePayload | null>(null);
   /** Desktop: finished file is being handed off to the browser download manager. */
   const [delivering, setDelivering] = useState(false);
+  /** Progress copy: true only for IG/FB gallery jobs — never YouTube stream-through. */
+  const [galleryProgress, setGalleryProgress] = useState(false);
   /** Mobile 2K/4K: server is converting VP9/AV1 → H.264 so the phone can play it. */
   const [convertingForPhone, setConvertingForPhone] = useState(false);
   const [clipMode, setClipMode] = useState<ClipMode>('full');
@@ -243,6 +246,7 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
     cancelMobileGalleryGestureFallback();
     setMobileSavePayload(null);
     setDelivering(false);
+    setGalleryProgress(false);
     setUrl('');
     setPhase('idle');
     setInfo(null);
@@ -698,6 +702,7 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
 
       setMobileSavePayload(null);
       setDelivering(false);
+      setGalleryProgress(useGallerySheet);
       setConvertingForPhone(mobile && highRes && !useMobileStream);
       setProgress(INITIAL_PROGRESS);
       setOutputHeight(null);
@@ -720,9 +725,8 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
         );
 
         if (startResult.kind === 'direct') {
-          // Stream-through: remux CDN → browser only (nothing saved on the server).
-          // Track byte progress while fetching so the UI is not stuck after the
-          // Safari sheet briefly flashes "Zero KB".
+          // Stream-through: remux CDN → device. Keep the live percent bar visible
+          // (do NOT flip delivering=true — that hid progress and looked "stuck").
           setProgress((p) => ({
             ...p,
             percent: 2,
@@ -732,9 +736,9 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
           }));
           if (typeof startResult.height === 'number') setOutputHeight(startResult.height);
           setConvertingForPhone(false);
-          setDelivering(true);
+          setDelivering(false);
           try {
-            await downloadDirectUrl(startResult.url, startResult.filename, {
+            const payload = await downloadDirectUrl(startResult.url, startResult.filename, {
               estimatedBytes: startResult.estimatedBytes,
               onProgress: (percent) => {
                 setProgress((p) => ({
@@ -748,7 +752,15 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
             });
             setProgress((p) => ({ ...p, percent: 100, stage: 'done', speed: null, eta: null }));
             setDelivering(false);
-            setPhase('success');
+
+            // Mobile H.264 (typical ≤1080p + clips): Save to Photos via a fresh tap.
+            // Async <a download> is unreliable on iOS and was a major "sometimes works" source.
+            if (mobile && payload.blob.size > 64 && (await blobLooksH264(payload.blob))) {
+              setMobileSavePayload(payload);
+              setPhase('ready');
+            } else {
+              setPhase('success');
+            }
           } catch (e) {
             setDelivering(false);
             setError(formatDownloadError(e));
@@ -966,7 +978,7 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
                       qualityLabel={qualityLabel}
                       delivering={delivering}
                       converting={convertingForPhone}
-                      mobileSave={isMobileDevice()}
+                      mobileSave={galleryProgress}
                       clipLabel={
                         clipMode === 'clip' && clipReady
                           ? formatClipRangeLabel(clipStart, clipEnd)

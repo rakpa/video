@@ -24,6 +24,13 @@ export interface StreamTicket {
    */
   contentLength: number | null;
   createdAt: number;
+  /**
+   * Concurrency slot reserved at ticket creation so POST→GET cannot race into
+   * a 503 (that used to bounce clients into fragile iframe fallbacks).
+   */
+  slotHeld: boolean;
+  /** True while a GET /api/stream is actively piping bytes for this ticket. */
+  transferActive: boolean;
 }
 
 /** Google CDN URLs expire after ~6h, but keep tickets short — a retry re-POSTs. */
@@ -34,7 +41,10 @@ const tickets = new Map<string, StreamTicket>();
 function sweep(): void {
   const now = Date.now();
   for (const [id, t] of tickets) {
-    if (now - t.createdAt > TICKET_TTL_MS) tickets.delete(id);
+    if (now - t.createdAt > TICKET_TTL_MS) {
+      releaseTicketSlot(t);
+      tickets.delete(id);
+    }
   }
 }
 
@@ -57,8 +67,9 @@ export function createStreamTicket(
   sourceUrl: string,
   proxy: string,
   clip: ClipRange | null = null,
-): StreamTicket {
+): StreamTicket | null {
   sweep();
+  if (!acquireStreamSlot()) return null;
   const ticket: StreamTicket = {
     id: randomUUID(),
     selection,
@@ -68,6 +79,8 @@ export function createStreamTicket(
     clip,
     contentLength: initialContentLength(selection, clip),
     createdAt: Date.now(),
+    slotHeld: true,
+    transferActive: false,
   };
   tickets.set(ticket.id, ticket);
   return ticket;
@@ -84,10 +97,35 @@ export function getStreamTicket(id: string): StreamTicket | null {
   const t = tickets.get(id);
   if (!t) return null;
   if (Date.now() - t.createdAt > TICKET_TTL_MS) {
+    releaseTicketSlot(t);
     tickets.delete(id);
     return null;
   }
   return t;
+}
+
+/** Mark a transfer in progress — second concurrent GET on the same ticket is rejected. */
+export function beginTicketTransfer(ticket: StreamTicket): boolean {
+  if (ticket.transferActive) return false;
+  // After a finished/failed transfer the slot is released so the same ticket can
+  // be retried; re-acquire then, using the same hard capacity limit as POST.
+  if (!ticket.slotHeld) {
+    if (!acquireStreamSlot()) return false;
+    ticket.slotHeld = true;
+  }
+  ticket.transferActive = true;
+  return true;
+}
+
+export function endTicketTransfer(ticket: StreamTicket): void {
+  ticket.transferActive = false;
+  releaseTicketSlot(ticket);
+}
+
+export function releaseTicketSlot(ticket: StreamTicket): void {
+  if (!ticket.slotHeld) return;
+  ticket.slotHeld = false;
+  releaseStreamSlot();
 }
 
 /* ------------------------- concurrency accounting ------------------------- */
@@ -99,14 +137,14 @@ export function maxConcurrentStreams(): number {
   return Math.max(4, config.maxConcurrentJobs);
 }
 
-/** Checked at POST time so a saturated server falls back to the job queue. */
+/** Checked at POST time so a saturated server falls back to the job pipeline. */
 export function hasStreamCapacity(): boolean {
   return activeStreams < maxConcurrentStreams();
 }
 
-/** Hard cap at GET time — allows brief overshoot for retried downloads. */
+/** Hard cap — same limit as hasStreamCapacity (no soft/hard race). */
 export function acquireStreamSlot(): boolean {
-  if (activeStreams >= maxConcurrentStreams() * 2) return false;
+  if (activeStreams >= maxConcurrentStreams()) return false;
   activeStreams += 1;
   return true;
 }

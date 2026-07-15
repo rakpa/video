@@ -25,7 +25,7 @@ function stageLabel(p: ProgressUpdate, mobileSave?: boolean, converting?: boolea
   if (p.stage === 'done' || p.percent >= 99) return mobileSave ? 'Almost ready' : 'Finishing up';
   if (p.stage === 'merging') return mobileSave ? 'Preparing for Photos' : 'Finishing up';
   if (p.percent < 3) return 'Starting';
-  return 'Downloading';
+  return mobileSave ? 'Preparing' : 'Downloading';
 }
 
 function isWarmupStage(p: ProgressUpdate): boolean {

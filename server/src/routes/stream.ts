@@ -3,9 +3,9 @@ import { spawn } from 'node:child_process';
 import { fetch as undiciFetch, Agent, ProxyAgent, type Dispatcher } from 'undici';
 import { config } from '../config.js';
 import {
-  acquireStreamSlot,
+  beginTicketTransfer,
+  endTicketTransfer,
   getStreamTicket,
-  releaseStreamSlot,
 } from '../services/streamTickets.js';
 import { detectPlatform } from '../services/platform.js';
 import { logger } from '../utils/logger.js';
@@ -257,7 +257,7 @@ function handleProgressiveDownload(
   const release = () => {
     if (released) return;
     released = true;
-    releaseStreamSlot();
+    endTicketTransfer(ticket);
   };
 
   // Content-Type / Disposition first; relayChunked sets exact Content-Length
@@ -293,7 +293,13 @@ function handleStreamDownload(req: Request, res: Response): void {
     res.status(404).json({ error: 'That download link has expired. Please try again.' });
     return;
   }
-  if (!acquireStreamSlot()) {
+  // Slot was reserved when the ticket was created — refuse parallel GETs that
+  // used to stack ffmpeg processes and stall every other mobile download.
+  if (ticket.transferActive) {
+    res.status(409).json({ error: 'That download is already in progress. Please wait, or try again.' });
+    return;
+  }
+  if (!beginTicketTransfer(ticket)) {
     res.status(503).json({ error: 'The server is busy right now. Please try again shortly.' });
     return;
   }
@@ -361,7 +367,7 @@ function handleStreamDownload(req: Request, res: Response): void {
   const release = () => {
     if (released) return;
     released = true;
-    releaseStreamSlot();
+    endTicketTransfer(ticket);
   };
 
   // Headers only after the first bytes arrive, so an instant ffmpeg failure
