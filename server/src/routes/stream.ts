@@ -180,23 +180,41 @@ streamRouter.get('/stream/:ticketId', (req, res) => {
     return res.status(503).json({ error: 'The server is busy right now. Please try again shortly.' });
   }
 
-  const { selection, filename } = ticket;
+  const { selection, filename, clip } = ticket;
+
+  // Optional clip: input-seek (-ss before -i) + -t duration, still -c copy so
+  // the browser download starts immediately (no full-file server job).
+  const seekArgs =
+    clip && clip.endTime > clip.startTime ? ['-ss', String(clip.startTime)] : [];
+  const durationArgs =
+    clip && clip.endTime > clip.startTime
+      ? ['-t', String(Math.max(0.1, clip.endTime - clip.startTime))]
+      : [];
 
   const args = [
     '-hide_banner',
     '-loglevel',
     'error',
     '-nostdin',
+    ...seekArgs,
     ...inputArgs(ffmpegInputUrl(ticket.id, 'video')),
   ];
   if (selection.kind === 'merge' && selection.audioUrl) {
-    args.push(...inputArgs(ffmpegInputUrl(ticket.id, 'audio')), '-map', '0:v:0', '-map', '1:a:0');
+    args.push(
+      ...seekArgs,
+      ...inputArgs(ffmpegInputUrl(ticket.id, 'audio')),
+      '-map',
+      '0:v:0',
+      '-map',
+      '1:a:0',
+    );
   } else {
     args.push('-map', '0');
   }
   // Fragmented MP4: bytes can be sent before the full file exists (a normal
   // moov-at-end MP4 would need a seekable output, i.e. a temp file).
   args.push(
+    ...durationArgs,
     '-c',
     'copy',
     '-movflags',

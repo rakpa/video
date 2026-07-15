@@ -672,10 +672,9 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
           ? cleanInstagramUrl(fetchedUrl.current || url)
           : fetchedUrl.current || url;
 
-      // YouTube (720p–4K) on mobile → stream-through to the browser (user-side).
+      // YouTube (full + clip, 720p–4K) → stream-through to the browser (user-side).
       // Instagram/FB keep gallery prep separately.
-      const useMobileStream =
-        mobile && isYoutube && !clip && clipMode !== 'clip';
+      const useMobileStream = mobile && isYoutube;
       const galleryPrep = mobile && !useMobileStream;
       // Gallery share sheet only when not streaming to the browser download bar.
       const useGallerySheet = mobile && !useMobileStream && (isNativeMobileApp() || !highRes);

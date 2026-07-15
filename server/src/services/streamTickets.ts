@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { config } from '../config.js';
 import type { StreamMergeSelection } from './ytdlp.js';
+import type { ClipRange } from '../utils/clip.js';
 
 /**
  * Short-lived tickets for /api/stream. POST /api/download resolves the CDN
@@ -15,6 +16,8 @@ export interface StreamTicket {
   sourceUrl: string;
   /** Proxy URL that extracted the CDN URLs ('' = none) — relay fetches must use it. */
   proxy: string;
+  /** Optional trim range — ffmpeg -ss/-t while remuxing (YouTube clips). */
+  clip: ClipRange | null;
   createdAt: number;
 }
 
@@ -35,6 +38,7 @@ export function createStreamTicket(
   filename: string,
   sourceUrl: string,
   proxy: string,
+  clip: ClipRange | null = null,
 ): StreamTicket {
   sweep();
   const ticket: StreamTicket = {
@@ -43,6 +47,7 @@ export function createStreamTicket(
     filename,
     sourceUrl,
     proxy,
+    clip,
     createdAt: Date.now(),
   };
   tickets.set(ticket.id, ticket);

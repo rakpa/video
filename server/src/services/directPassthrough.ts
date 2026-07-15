@@ -27,8 +27,8 @@ export interface PassthroughOptions {
  * copy-remuxes the CDN video+audio into the response, so the browser download
  * starts immediately at full quality with no server-side temp file.
  *
- * YouTube 720p–4K uses this path (HD logic unchanged; 2K/4K now stream too).
- * Instagram desktop can stream progressive Reels when galleryPrep is off.
+ * YouTube full videos and clips (720p–4K) use this path. Instagram desktop can
+ * stream progressive Reels (no clip) when galleryPrep is off.
  */
 export function canDirectPassthrough(options: PassthroughOptions): boolean {
   if (!config.directPassthrough) return false;
@@ -36,7 +36,8 @@ export function canDirectPassthrough(options: PassthroughOptions): boolean {
   const platform = detectPlatform(options.url);
   if (platform?.id !== 'youtube' && platform?.id !== 'instagram') return false;
   if (options.galleryPrep) return false;
-  if (options.clip) return false;
+  // Clips: YouTube only (ffmpeg -ss/-t while remuxing to the browser).
+  if (options.clip && platform.id !== 'youtube') return false;
   // Instagram stays ≤1080p progressive. YouTube may stream 2K/4K (VP9/AV1 remux).
   if (platform.id === 'instagram' && options.quality.height > 1080) return false;
   // Saturated stream slots → let the request queue through the job pipeline.
@@ -48,7 +49,18 @@ function safeFilename(base: string): string {
   return `${base.replace(/[^\w.\- ]+/g, '_').slice(0, 120) || 'video'}.mp4`;
 }
 
-function resolveFromCache(url: string, maxHeight: number): DirectDownloadResult | null {
+function clipFilenameSuffix(clip: ClipRange | null | undefined): string {
+  if (!clip) return '';
+  const s = Math.floor(clip.startTime);
+  const e = Math.floor(clip.endTime);
+  return `_${s}s-${e}s`;
+}
+
+function resolveFromCache(
+  url: string,
+  maxHeight: number,
+  clip: ClipRange | null = null,
+): DirectDownloadResult | null {
   const entry = getAnyFreshInfoJsonEntry(url.trim());
   if (!entry) return null;
 
@@ -72,11 +84,14 @@ function resolveFromCache(url: string, maxHeight: number): DirectDownloadResult 
   // pickStreamMergeFormats preferred. Progressive is required for reliable CDN relay.
   if (platform?.id === 'instagram' && picked.kind !== 'progressive') return null;
 
-  const filename = safeFilename(`${picked.title}_${picked.height}p`);
-  const ticket = createStreamTicket(picked, filename, url.trim(), proxy);
+  const filename = safeFilename(
+    `${picked.title}_${picked.height}p${clipFilenameSuffix(clip)}`,
+  );
+  const ticket = createStreamTicket(picked, filename, url.trim(), proxy, clip);
 
   logger.info(
-    `Direct stream ready: ${picked.formatIds} ${picked.height}p (${picked.kind}) for ${url.slice(0, 60)}…`,
+    `Direct stream ready: ${picked.formatIds} ${picked.height}p (${picked.kind}` +
+      `${clip ? `, clip ${clip.startTime}-${clip.endTime}s` : ''}) for ${url.slice(0, 60)}…`,
   );
 
   return {
@@ -94,9 +109,10 @@ function resolveFromCache(url: string, maxHeight: number): DirectDownloadResult 
 export async function resolveDirectDownload(
   url: string,
   maxHeight: number,
+  clip: ClipRange | null = null,
 ): Promise<DirectDownloadResult | null> {
   const trimmed = url.trim();
-  const cached = resolveFromCache(trimmed, maxHeight);
+  const cached = resolveFromCache(trimmed, maxHeight, clip);
   if (cached) return cached;
 
   // Keep the warm short so the browser download can start within ~5s of the
@@ -114,5 +130,5 @@ export async function resolveDirectDownload(
     return null;
   }
 
-  return resolveFromCache(trimmed, maxHeight);
+  return resolveFromCache(trimmed, maxHeight, clip);
 }
