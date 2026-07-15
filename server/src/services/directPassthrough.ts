@@ -85,7 +85,9 @@ function resolveFromCache(
   if (platform?.id === 'instagram' && picked.kind !== 'progressive') return null;
 
   const filename = safeFilename(
-    `${picked.title}_${picked.height}p${clipFilenameSuffix(clip)}`,
+    clip
+      ? `VidCliply_${picked.height}p_clip${clipFilenameSuffix(clip)}`
+      : `${picked.title}_${picked.height}p`,
   );
   const ticket = createStreamTicket(picked, filename, url.trim(), proxy, clip);
 
@@ -95,7 +97,9 @@ function resolveFromCache(
   );
 
   return {
-    url: `/api/stream/${ticket.id}`,
+    // Trailing .mp4 so browsers that name files from the URL (not Content-Disposition)
+    // still save as video — not a generic/zip download.
+    url: `/api/stream/${ticket.id}/${encodeURIComponent(filename)}`,
     filename,
     height: picked.height,
     formatId: picked.formatIds,

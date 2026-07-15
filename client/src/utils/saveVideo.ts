@@ -486,7 +486,7 @@ function triggerBlobDownload(payload: VideoFilePayload): void {
  * Cross-origin file delivery without reading the full MP4 into JS memory.
  * A hidden iframe receives the attachment response so the main page stays put.
  */
-function triggerCrossOriginDownload(url: string): void {
+function triggerCrossOriginDownload(url: string, filename?: string): void {
   const frameName = `vidcliply-dl-${Date.now()}`;
   const iframe = document.createElement('iframe');
   iframe.name = frameName;
@@ -498,6 +498,9 @@ function triggerCrossOriginDownload(url: string): void {
   a.href = url;
   a.target = frameName;
   a.rel = 'noopener';
+  // Hint .mp4 even when the attribute is ignored cross-origin — Content-Disposition
+  // still carries the real name from the API.
+  a.download = filename && /\.mp4$/i.test(filename) ? filename : 'VidCliply-video.mp4';
   document.body.appendChild(a);
   a.click();
   a.remove();
@@ -526,9 +529,9 @@ export function formatDownloadError(err: unknown): string {
  * (no black video page). Uses the hidden-iframe technique so that even an
  * error response can never navigate the app away.
  */
-export async function downloadDirectUrl(streamUrl: string, _filename: string): Promise<void> {
+export async function downloadDirectUrl(streamUrl: string, filename: string): Promise<void> {
   const url = resolveBrowserDownloadUrl(streamUrl);
-  triggerCrossOriginDownload(url);
+  triggerCrossOriginDownload(url, filename || 'VidCliply-video.mp4');
   await new Promise((r) => window.setTimeout(r, 400));
 }
 
@@ -542,7 +545,7 @@ export async function downloadFileToDevice(jobId: string): Promise<void> {
   if (!isApiConfigured()) throw new Error(API_NOT_CONFIGURED_MSG);
 
   if (isCrossOriginApiUrl(url)) {
-    triggerCrossOriginDownload(url);
+    triggerCrossOriginDownload(url, 'VidCliply-video.mp4');
     return;
   }
 
@@ -554,7 +557,7 @@ export async function downloadFileToDevice(jobId: string): Promise<void> {
     if (err instanceof Error && (err.message === HTML_INSTEAD_OF_VIDEO_MSG || err.message === INVALID_VIDEO_FILE_MSG)) {
       throw err;
     }
-    triggerCrossOriginDownload(url);
+    triggerCrossOriginDownload(url, 'VidCliply-video.mp4');
   }
 }
 

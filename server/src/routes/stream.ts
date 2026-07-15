@@ -1,4 +1,4 @@
-import { Router, type Response } from 'express';
+import { Router, type Request, type Response } from 'express';
 import { spawn } from 'node:child_process';
 import { fetch as undiciFetch, Agent, ProxyAgent, type Dispatcher } from 'undici';
 import { config } from '../config.js';
@@ -166,18 +166,28 @@ streamRouter.get('/stream/:ticketId/src/:track', (req, res) => {
 
 /**
  * GET /api/stream/:ticketId
+ * GET /api/stream/:ticketId/:fileName  (fileName ignored for lookup; forces .mp4 in URL)
  * Stream-through download: ffmpeg copy-remuxes the CDN stream(s) into a
  * fragmented MP4 piped straight to the browser. Nothing touches disk, the
  * bytes flow exactly once, and the attachment header makes the browser save
  * immediately instead of rendering a black video page.
  */
-streamRouter.get('/stream/:ticketId', (req, res) => {
+function contentDispositionAttachment(filename: string): string {
+  const safe = (filename.replace(/[^\w.\- ]+/g, '_').trim() || 'video.mp4').slice(0, 120);
+  const withExt = /\.mp4$/i.test(safe) ? safe : `${safe}.mp4`;
+  const ascii = withExt.replace(/[^\x20-\x7E]/g, '_').replace(/["\\]/g, '_');
+  return `attachment; filename="${ascii}"; filename*=UTF-8''${encodeURIComponent(withExt)}`;
+}
+
+function handleStreamDownload(req: Request, res: Response): void {
   const ticket = getStreamTicket(req.params.ticketId);
   if (!ticket) {
-    return res.status(404).json({ error: 'That download link has expired. Please try again.' });
+    res.status(404).json({ error: 'That download link has expired. Please try again.' });
+    return;
   }
   if (!acquireStreamSlot()) {
-    return res.status(503).json({ error: 'The server is busy right now. Please try again shortly.' });
+    res.status(503).json({ error: 'The server is busy right now. Please try again shortly.' });
+    return;
   }
 
   const { selection, filename, clip } = ticket;
@@ -243,8 +253,9 @@ streamRouter.get('/stream/:ticketId', (req, res) => {
     if (res.writableEnded || res.destroyed) return;
     res.status(200);
     res.setHeader('Content-Type', 'video/mp4');
-    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.setHeader('Content-Disposition', contentDispositionAttachment(filename));
     res.setHeader('Cache-Control', 'no-store');
+    res.setHeader('X-Content-Type-Options', 'nosniff');
     res.write(first);
     child.stdout.pipe(res);
   });
@@ -293,6 +304,10 @@ streamRouter.get('/stream/:ticketId', (req, res) => {
   });
 
   logger.info(
-    `Stream-through ${selection.kind} ${selection.formatIds} ${selection.height}p → ${filename}`,
+    `Stream-through ${selection.kind} ${selection.formatIds} ${selection.height}p` +
+      `${clip ? ` clip ${clip.startTime}-${clip.endTime}s` : ''} → ${filename}`,
   );
-});
+}
+
+streamRouter.get('/stream/:ticketId', handleStreamDownload);
+streamRouter.get('/stream/:ticketId/:fileName', handleStreamDownload);
