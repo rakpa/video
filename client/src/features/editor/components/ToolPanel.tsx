@@ -7,11 +7,9 @@ interface Props {
   canvas: CanvasSettings;
   onTransformPatch: (patch: Partial<EditorClip['transform']>) => void;
   onCanvasChange: (patch: Partial<CanvasSettings>) => void;
-  onSplitAtPlayhead: () => void;
 }
 
 const TOOLS: { id: EditorTool; label: string }[] = [
-  { id: 'trim', label: 'Trim' },
   { id: 'crop', label: 'Crop' },
   { id: 'rotate', label: 'Rotate' },
   { id: 'flip', label: 'Flip' },
@@ -19,7 +17,7 @@ const TOOLS: { id: EditorTool; label: string }[] = [
   { id: 'canvas', label: 'Canvas' },
 ];
 
-/** Side panel for trim / crop / rotate / flip / speed / canvas tools. */
+/** Side panel for crop / rotate / flip / speed / canvas (trim lives in SoloTrimBar). */
 export function ToolPanel({
   tool,
   onToolChange,
@@ -27,11 +25,12 @@ export function ToolPanel({
   canvas,
   onTransformPatch,
   onCanvasChange,
-  onSplitAtPlayhead,
 }: Props) {
+  const activeTool = tool === 'trim' ? 'crop' : tool;
   return (
     <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-card sm:p-5">
-      <h3 className="text-sm font-bold uppercase tracking-wider text-slate-500">Tools</h3>
+      <h3 className="text-sm font-bold uppercase tracking-wider text-slate-500">Style & frame</h3>
+      <p className="mt-1 text-xs font-medium text-slate-500">Optional extras — trim is on the bar under the preview.</p>
       <div className="mt-3 flex flex-wrap gap-2">
         {TOOLS.map((t) => (
           <button
@@ -39,7 +38,7 @@ export function ToolPanel({
             type="button"
             onClick={() => onToolChange(t.id)}
             className={`rounded-xl px-3 py-2 text-xs font-bold transition sm:text-sm ${
-              tool === t.id
+              activeTool === t.id
                 ? 'bg-indigo-600 text-white shadow-glow-soft'
                 : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
             }`}
@@ -51,26 +50,13 @@ export function ToolPanel({
 
       <div className="mt-5 border-t border-slate-100 pt-4">
         {!clip ? (
-          <p className="text-sm font-medium text-slate-500">Upload a video to use editing tools.</p>
-        ) : tool === 'trim' ? (
-          <div className="space-y-3">
-            <p className="text-sm font-medium text-slate-600">
-              Drag the timeline handles to cut the start and end. Use split to divide at the playhead.
-            </p>
-            <button
-              type="button"
-              onClick={onSplitAtPlayhead}
-              className="rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-slate-800"
-            >
-              Split at playhead
-            </button>
-          </div>
-        ) : tool === 'crop' ? (
+          <p className="text-sm font-medium text-slate-500">Upload a video to use these tools.</p>
+        ) : activeTool === 'crop' ? (
           <CropControls
             crop={clip.transform.crop}
             onChange={(crop) => onTransformPatch({ crop })}
           />
-        ) : tool === 'rotate' ? (
+        ) : activeTool === 'rotate' ? (
           <div className="flex flex-wrap gap-2">
             {([0, 90, 180, 270] as const).map((deg) => (
               <button
@@ -87,7 +73,7 @@ export function ToolPanel({
               </button>
             ))}
           </div>
-        ) : tool === 'flip' ? (
+        ) : activeTool === 'flip' ? (
           <div className="flex flex-wrap gap-2">
             <button
               type="button"
@@ -108,7 +94,7 @@ export function ToolPanel({
               Flip vertical
             </button>
           </div>
-        ) : tool === 'speed' ? (
+        ) : activeTool === 'speed' ? (
           <div>
             <label className="flex items-center justify-between text-sm font-semibold text-slate-700">
               <span>Playback speed</span>

@@ -4,7 +4,7 @@ import { DEFAULT_CANVAS, DEFAULT_TRANSFORM, createClipId, effectiveDuration } fr
 import { loadVideoMeta, formatEditorTime } from './utils/time';
 import { exportEditorProject } from './utils/exportVideo';
 import { PreviewStage } from './components/PreviewStage';
-import { Timeline } from './components/Timeline';
+import { SoloTrimBar } from './components/SoloTrimBar';
 import { ToolPanel } from './components/ToolPanel';
 
 interface Props {
@@ -78,40 +78,10 @@ export function EditorWorkspace({ initialFiles, onClose }: Props) {
     );
   };
 
-  const splitAtPlayhead = () => {
-    if (!active) return;
-    const t = Math.min(Math.max(currentTime, active.trimStart + 0.1), active.trimEnd - 0.1);
-    if (!(t > active.trimStart && t < active.trimEnd)) {
-      setError('Move the playhead inside the clip to split.');
-      return;
-    }
-    const left: EditorClip = {
-      ...active,
-      id: createClipId(),
-      trimEnd: t,
-      transform: { ...active.transform, crop: { ...active.transform.crop } },
-    };
-    const right: EditorClip = {
-      ...active,
-      id: createClipId(),
-      objectUrl: active.objectUrl,
-      trimStart: t,
-      transform: { ...active.transform, crop: { ...active.transform.crop } },
-    };
-    setClips((prev) => {
-      const idx = prev.findIndex((c) => c.id === active.id);
-      const copy = [...prev];
-      copy.splice(idx, 1, left, right);
-      return copy;
-    });
-    setActiveId(left.id);
-  };
-
   const removeClip = (id: string) => {
     setClips((prev) => {
       const target = prev.find((c) => c.id === id);
       const remaining = prev.filter((c) => c.id !== id);
-      // Revoke URL only if no other clip shares it (split clones share objectUrl).
       if (target && !remaining.some((c) => c.objectUrl === target.objectUrl)) {
         URL.revokeObjectURL(target.objectUrl);
       }
@@ -122,10 +92,24 @@ export function EditorWorkspace({ initialFiles, onClose }: Props) {
     setPlaying(false);
   };
 
+  const playSelection = () => {
+    if (!active) return;
+    if (playing) {
+      setPlaying(false);
+      return;
+    }
+    const t = currentTime < active.trimStart || currentTime >= active.trimEnd - 0.05
+      ? active.trimStart
+      : currentTime;
+    setCurrentTime(t);
+    if (videoRef.current) videoRef.current.currentTime = t;
+    setPlaying(true);
+  };
+
   const handleExport = async () => {
     if (!clips.length) return;
     setError(null);
-    setExportPct(0);
+    setExportPct(1);
     setPlaying(false);
     try {
       const blob = await exportEditorProject({
@@ -162,19 +146,18 @@ export function EditorWorkspace({ initialFiles, onClose }: Props) {
           >
             ← Back to editor home
           </button>
-          <h1 className="mt-1 text-2xl font-bold text-slate-900">Video editor</h1>
+          <h1 className="mt-1 text-2xl font-bold text-slate-900">Trim & edit</h1>
           <p className="text-sm font-medium text-slate-500">
-            {clips.length} clip{clips.length === 1 ? '' : 's'} · output ≈ {formatEditorTime(totalOut)}
+            {active ? active.name : 'No video'} · export ≈ {formatEditorTime(totalOut)}
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <button
             type="button"
-            onClick={() => setPlaying((p) => !p)}
-            disabled={!active}
-            className="rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-800 transition hover:bg-slate-50 disabled:opacity-50"
+            onClick={() => fileInputRef.current?.click()}
+            className="rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-800 transition hover:bg-slate-50"
           >
-            {playing ? 'Pause' : 'Play'}
+            Replace video
           </button>
           <button
             type="button"
@@ -182,10 +165,29 @@ export function EditorWorkspace({ initialFiles, onClose }: Props) {
             disabled={!clips.length || exportPct != null}
             className="btn-gradient rounded-2xl px-5 py-2.5 text-sm font-semibold text-white shadow-glow-soft disabled:opacity-60"
           >
-            {exportPct != null ? `Exporting ${exportPct}%` : 'Export'}
+            {exportPct != null ? `Exporting ${exportPct}%…` : 'Download edit'}
           </button>
         </div>
       </div>
+
+      {exportPct != null && (
+        <div className="overflow-hidden rounded-2xl border border-indigo-100 bg-indigo-50/80 px-4 py-3">
+          <div className="flex items-center justify-between gap-3 text-sm font-semibold text-indigo-800">
+            <span>Fast export running…</span>
+            <span className="tabular-nums">{exportPct}%</span>
+          </div>
+          <div className="mt-2 h-2 overflow-hidden rounded-full bg-indigo-100">
+            <div
+              className="h-full rounded-full bg-indigo-500 transition-[width] duration-150"
+              style={{ width: `${Math.max(2, exportPct)}%` }}
+            />
+          </div>
+          <p className="mt-2 text-xs font-medium text-indigo-700/80">
+            Encoding on your device (not real-time recording) — short clips usually finish in seconds.
+            Fast exports are video-only for speed.
+          </p>
+        </div>
+      )}
 
       {error && (
         <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-700">
@@ -197,7 +199,7 @@ export function EditorWorkspace({ initialFiles, onClose }: Props) {
         <p className="text-sm font-medium text-slate-500">Loading video into the editor…</p>
       )}
 
-      <div className="grid gap-5 lg:grid-cols-[minmax(0,1.4fr)_minmax(280px,0.8fr)]">
+      <div className="grid gap-5 lg:grid-cols-[minmax(0,1.45fr)_minmax(260px,0.75fr)]">
         <div className="space-y-5">
           <PreviewStage
             clip={active}
@@ -208,39 +210,34 @@ export function EditorWorkspace({ initialFiles, onClose }: Props) {
             onEnded={() => setPlaying(false)}
             videoRef={videoRef}
           />
-          <Timeline
-            clips={clips}
-            activeId={active?.id ?? null}
-            currentTime={currentTime}
-            onSelect={(id) => {
-              setActiveId(id);
-              const c = clips.find((x) => x.id === id);
-              if (c) {
-                setCurrentTime(c.trimStart);
-                setPlaying(false);
-              }
-            }}
-            onSeek={(t) => {
-              setCurrentTime(t);
-              if (videoRef.current) videoRef.current.currentTime = t;
-            }}
-            onTrimChange={(id, start, end) => {
-              setClips((prev) =>
-                prev.map((c) => (c.id === id ? { ...c, trimStart: start, trimEnd: end } : c)),
-              );
-            }}
-            onRemove={removeClip}
-            onAddMore={() => fileInputRef.current?.click()}
-          />
+          {active && (
+            <SoloTrimBar
+              clip={active}
+              currentTime={currentTime}
+              playing={playing}
+              onSeek={(t) => {
+                setCurrentTime(t);
+                if (videoRef.current) videoRef.current.currentTime = t;
+              }}
+              onTrimChange={(start, end) => {
+                setClips((prev) =>
+                  prev.map((c) =>
+                    c.id === active.id ? { ...c, trimStart: start, trimEnd: end } : c,
+                  ),
+                );
+              }}
+              onTogglePlay={playSelection}
+              onRemove={() => removeClip(active.id)}
+            />
+          )}
         </div>
         <ToolPanel
-          tool={tool}
-          onToolChange={setTool}
+          tool={tool === 'trim' ? 'crop' : tool}
+          onToolChange={(t) => setTool(t === 'trim' ? 'crop' : t)}
           clip={active}
           canvas={canvas}
           onTransformPatch={patchActiveTransform}
           onCanvasChange={(patch) => setCanvas((c) => ({ ...c, ...patch }))}
-          onSplitAtPlayhead={splitAtPlayhead}
         />
       </div>
 
@@ -248,10 +245,17 @@ export function EditorWorkspace({ initialFiles, onClose }: Props) {
         ref={fileInputRef}
         type="file"
         accept="video/*,.mp4,.webm,.mov,.mkv,.avi,.m4v"
-        multiple
         className="hidden"
         onChange={(e) => {
-          void ingest(Array.from(e.target.files ?? []));
+          const file = e.target.files?.[0];
+          if (!file) return;
+          // Replace: clear previous clips.
+          setClips((prev) => {
+            for (const c of prev) URL.revokeObjectURL(c.objectUrl);
+            return [];
+          });
+          setActiveId(null);
+          void ingest([file]);
           e.target.value = '';
         }}
       />
