@@ -1,5 +1,6 @@
 import type { VideoInfo } from '../types';
 import { normalizeUrl } from './platform';
+import { fetchYoutubeDurationSeconds } from './youtubeDuration';
 
 /** Pull a YouTube video id from common URL shapes. */
 export function extractYoutubeId(url: string): string | null {
@@ -65,4 +66,19 @@ export async function fetchClientYoutubePreview(url: string): Promise<VideoInfo 
     thumbnail,
     formats: [],
   };
+}
+
+/**
+ * Fire-and-forget duration for clip "To" / max length. Resolves quickly via
+ * YouTube's iframe metadata — far sooner than full /api/info (~4s).
+ */
+export function warmYoutubeDuration(
+  url: string,
+  onDuration: (seconds: number) => void,
+): void {
+  const id = extractYoutubeId(url);
+  if (!id) return;
+  void fetchYoutubeDurationSeconds(id).then((sec) => {
+    if (sec != null && sec > 0) onDuration(sec);
+  });
 }

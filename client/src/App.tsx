@@ -6,7 +6,7 @@ import { detectPlatform, normalizeUrl } from './utils/platform';
 import { cleanInstagramUrl } from './utils/instagram';
 import { API_NOT_CONFIGURED_MSG, isApiConfigured } from './config/api';
 import { PLACEHOLDER_FORMATS } from './utils/formats';
-import { fetchClientYoutubePreview } from './utils/youtube';
+import { fetchClientYoutubePreview, warmYoutubeDuration } from './utils/youtube';
 import { preloadThumbnail, warmThumbnailFetch, type PreloadedThumb } from './utils/preloadThumb';
 import { isPro, licenseToken, maxAllowedHeight } from './lib/license';
 import {
@@ -277,9 +277,9 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
   }, []);
 
   useEffect(() => {
-    if (info?.durationSeconds != null && info.durationSeconds > 0) {
-      setClipEnd(formatTimeInput(info.durationSeconds));
-    }
+    if (info?.durationSeconds == null || info.durationSeconds <= 0) return;
+    // Prefill "To" as soon as duration is known; don't clobber a user edit.
+    setClipEnd((prev) => (prev.trim() ? prev : formatTimeInput(info.durationSeconds!)));
   }, [info?.durationSeconds, info?.id]);
 
   useStripeReturn(useCallback(() => refreshEntitlement(), [refreshEntitlement]));
@@ -455,11 +455,21 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
         id: instant?.id ?? '',
         title: instant?.title ?? 'Loading…',
         author: instant?.author ?? '…',
-        durationSeconds: null,
+        durationSeconds: instant?.durationSeconds ?? null,
         thumbnail: instant?.thumbnail ?? null,
         formats: PLACEHOLDER_FORMATS,
       });
       if (instant) setPhase('ready');
+      // Clip "To" max length: iframe metadata is much faster than /api/info (~4s).
+      if (platform.id === 'youtube') {
+        warmYoutubeDuration(normalized, (seconds) => {
+          if (fetchedUrl.current !== normalized) return;
+          setInfo((prev) => {
+            if (!prev || (prev.durationSeconds != null && prev.durationSeconds > 0)) return prev;
+            return { ...prev, durationSeconds: seconds };
+          });
+        });
+      }
     }
 
     const previewPromise = fetchVideoPreview(normalized).catch(() => null);
@@ -486,6 +496,8 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
           title: preview.title || prev?.title || 'Untitled video',
           author: preview.author || prev?.author || 'Unknown',
           thumbnail: preview.thumbnail ?? prev?.thumbnail ?? null,
+          // Keep a fast iframe duration if preview (oEmbed) still has null.
+          durationSeconds: preview.durationSeconds ?? prev?.durationSeconds ?? null,
         }));
         setPhase((p) => (p === 'preview' ? 'ready' : p));
       });
@@ -553,6 +565,7 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
           title: data.title || prev?.title || 'Untitled video',
           author: data.author || prev?.author || 'Unknown',
           thumbnail: data.thumbnail ?? prev?.thumbnail ?? null,
+          durationSeconds: data.durationSeconds ?? prev?.durationSeconds ?? null,
         }));
         setSelected((current) => {
           const resolved = resolveFormatAvailability(data.formats, data.sourceMaxHeight);

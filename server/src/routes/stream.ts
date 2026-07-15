@@ -6,6 +6,7 @@ import {
   acquireStreamSlot,
   getStreamTicket,
   releaseStreamSlot,
+  setStreamTicketContentLength,
 } from '../services/streamTickets.js';
 import { detectPlatform } from '../services/platform.js';
 import { logger } from '../utils/logger.js';
@@ -179,6 +180,140 @@ function contentDispositionAttachment(filename: string): string {
   return `attachment; filename="${ascii}"; filename*=UTF-8''${encodeURIComponent(withExt)}`;
 }
 
+function platformReferer(sourceUrl: string): string | undefined {
+  const platform = detectPlatform(sourceUrl);
+  if (platform?.id === 'instagram') return 'https://www.instagram.com/';
+  if (platform?.id === 'facebook') return 'https://www.facebook.com/';
+  return undefined;
+}
+
+/** Probe CDN Content-Length via a tiny Range request (Content-Range total). */
+async function probeCdnLength(
+  url: string,
+  proxy: string,
+  referer?: string,
+): Promise<number | null> {
+  try {
+    const headers: Record<string, string> = {
+      Range: 'bytes=0-0',
+      'User-Agent': BROWSER_UA,
+    };
+    if (referer) headers.Referer = referer;
+    const upstream = await undiciFetch(url, {
+      dispatcher: dispatcherFor(proxy),
+      headers,
+      signal: AbortSignal.timeout(8_000),
+    });
+    const fromRange = parseTotalSize(upstream.headers.get('content-range'));
+    if (fromRange) {
+      await upstream.body?.cancel().catch(() => undefined);
+      return fromRange;
+    }
+    const cl = Number(upstream.headers.get('content-length'));
+    await upstream.body?.cancel().catch(() => undefined);
+    // Range ignored → full body Content-Length is only trustworthy on 200 with
+    // a tiny probe if the server honoured Range; a 200 with CL=1 means 1 byte.
+    if (upstream.status === 206 && Number.isFinite(cl) && cl > 0) return cl;
+    if (upstream.status === 200 && Number.isFinite(cl) && cl > 1) return cl;
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Expected remux size for browser download progress. Prefer live CDN probes;
+ * fall back to yt-dlp format sizes stored on the ticket.
+ */
+async function resolveDownloadContentLength(
+  ticketId: string,
+  videoUrl: string,
+  audioUrl: string | null,
+  proxy: string,
+  referer: string | undefined,
+  fallback: number | null,
+  clipScale: number | null,
+): Promise<number | null> {
+  const probes = await Promise.all([
+    probeCdnLength(videoUrl, proxy, referer),
+    audioUrl ? probeCdnLength(audioUrl, proxy, referer) : Promise.resolve(null),
+  ]);
+  const [videoLen, audioLen] = probes;
+  let total: number | null = null;
+  if (videoLen && audioLen) total = videoLen + audioLen;
+  else if (videoLen && !audioUrl) total = videoLen;
+  else if (fallback && fallback > 0) total = fallback;
+
+  if (total && clipScale != null) {
+    total = Math.max(1, Math.round(total * clipScale));
+  }
+  if (total && total > 0) {
+    setStreamTicketContentLength(ticketId, total);
+    return total;
+  }
+  return fallback && fallback > 0 ? fallback : null;
+}
+
+function attachmentHeaders(res: Response, filename: string, contentLength: number | null): void {
+  res.status(200);
+  res.setHeader('Content-Type', 'video/mp4');
+  res.setHeader('Content-Disposition', contentDispositionAttachment(filename));
+  res.setHeader('Cache-Control', 'no-store');
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  // Content-Length lets Safari/Chrome show download progress instead of "Zero KB".
+  if (contentLength != null && contentLength > 0) {
+    res.setHeader('Content-Length', contentLength);
+  }
+}
+
+/**
+ * Progressive (single-file) downloads: relay CDN bytes with an exact
+ * Content-Length — no ffmpeg remux, so browser progress is accurate.
+ */
+function handleProgressiveDownload(
+  req: Request,
+  res: Response,
+  ticket: NonNullable<ReturnType<typeof getStreamTicket>>,
+): void {
+  const { filename } = ticket;
+  let clientGone = false;
+  res.on('close', () => {
+    clientGone = true;
+  });
+
+  let released = false;
+  const release = () => {
+    if (released) return;
+    released = true;
+    releaseStreamSlot();
+  };
+
+  // Content-Type / Disposition first; relayChunked sets exact Content-Length
+  // from the CDN Content-Range so the browser download bar is accurate.
+  res.status(200);
+  res.setHeader('Content-Type', 'video/mp4');
+  res.setHeader('Content-Disposition', contentDispositionAttachment(filename));
+  res.setHeader('Cache-Control', 'no-store');
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+
+  const referer = platformReferer(ticket.sourceUrl);
+  relayChunked(ticket.selection.videoUrl, ticket.proxy, res, () => clientGone, referer)
+    .catch((err: unknown) => {
+      logger.warn('progressive stream relay failed:', (err as Error).message);
+      if (!res.headersSent) res.status(502).json({ error: 'Could not stream this video. Please try again.' });
+      else res.destroy();
+    })
+    .finally(release);
+
+  req.on('close', () => {
+    clientGone = true;
+  });
+
+  logger.info(
+    `Stream-through progressive relay ${ticket.selection.formatIds} ${ticket.selection.height}p → ${filename}`,
+  );
+}
+
 function handleStreamDownload(req: Request, res: Response): void {
   const ticket = getStreamTicket(req.params.ticketId);
   if (!ticket) {
@@ -191,15 +326,20 @@ function handleStreamDownload(req: Request, res: Response): void {
   }
 
   const { selection, filename, clip } = ticket;
+  const hasClip = Boolean(clip && clip.endTime > clip.startTime);
+
+  // Full progressive file: exact CDN size + no remux → reliable browser progress.
+  if (selection.kind === 'progressive' && !hasClip) {
+    handleProgressiveDownload(req, res, ticket);
+    return;
+  }
 
   // Optional clip: input-seek (-ss before -i) + -t duration, still -c copy so
   // the browser download starts immediately (no full-file server job).
-  const seekArgs =
-    clip && clip.endTime > clip.startTime ? ['-ss', String(clip.startTime)] : [];
-  const durationArgs =
-    clip && clip.endTime > clip.startTime
-      ? ['-t', String(Math.max(0.1, clip.endTime - clip.startTime))]
-      : [];
+  const seekArgs = hasClip ? ['-ss', String(clip!.startTime)] : [];
+  const durationArgs = hasClip
+    ? ['-t', String(Math.max(0.1, clip!.endTime - clip!.startTime))]
+    : [];
 
   const args = [
     '-hide_banner',
@@ -247,17 +387,50 @@ function handleStreamDownload(req: Request, res: Response): void {
     releaseStreamSlot();
   };
 
+  const referer = platformReferer(ticket.sourceUrl);
+  let clipScale: number | null = null;
+  if (hasClip && selection.durationSeconds && selection.durationSeconds > 0) {
+    clipScale = Math.min(
+      1,
+      Math.max(0.01, (clip!.endTime - clip!.startTime) / selection.durationSeconds),
+    );
+  }
+
+  // Probe CDN track sizes while ffmpeg starts. Content-Length ≈ sum of tracks
+  // (same elementary streams, -c copy). That lets Safari/Chrome show download
+  // progress instead of "Zero KB". Remuxed fMP4 can differ by a small amount;
+  // browsers generally complete when the connection closes cleanly.
+  const lengthPromise = resolveDownloadContentLength(
+    ticket.id,
+    selection.videoUrl,
+    selection.audioUrl,
+    ticket.proxy,
+    referer,
+    ticket.contentLength,
+    clipScale,
+  );
+
   // Headers only after the first bytes arrive, so an instant ffmpeg failure
   // (expired/IP-locked URL → 403) becomes a JSON error, not an empty download.
+  // Wait briefly for the CDN size probe so we can send Content-Length with the
+  // first byte (browser progress). Don't delay more than ~1.2s for a probe.
   child.stdout.once('data', (first: Buffer) => {
     if (res.writableEnded || res.destroyed) return;
-    res.status(200);
-    res.setHeader('Content-Type', 'video/mp4');
-    res.setHeader('Content-Disposition', contentDispositionAttachment(filename));
-    res.setHeader('Cache-Control', 'no-store');
-    res.setHeader('X-Content-Type-Options', 'nosniff');
-    res.write(first);
-    child.stdout.pipe(res);
+    const withTimeout = Promise.race([
+      lengthPromise,
+      new Promise<number | null>((resolve) => {
+        setTimeout(() => resolve(ticket.contentLength), 1200);
+      }),
+    ]);
+    void withTimeout.then((contentLength) => {
+      if (res.writableEnded || res.destroyed) return;
+      attachmentHeaders(res, filename, contentLength);
+      if (contentLength != null && contentLength > 0) {
+        res.setHeader('X-Expected-Size', String(contentLength));
+      }
+      res.write(first);
+      child.stdout.pipe(res);
+    });
   });
 
   child.stderr.on('data', (d: Buffer) => {
@@ -305,7 +478,7 @@ function handleStreamDownload(req: Request, res: Response): void {
 
   logger.info(
     `Stream-through ${selection.kind} ${selection.formatIds} ${selection.height}p` +
-      `${clip ? ` clip ${clip.startTime}-${clip.endTime}s` : ''} → ${filename}`,
+      `${hasClip ? ` clip ${clip!.startTime}-${clip!.endTime}s` : ''} → ${filename}`,
   );
 }
 

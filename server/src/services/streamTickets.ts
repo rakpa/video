@@ -18,6 +18,11 @@ export interface StreamTicket {
   proxy: string;
   /** Optional trim range — ffmpeg -ss/-t while remuxing (YouTube clips). */
   clip: ClipRange | null;
+  /**
+   * Expected download size for Content-Length (browser download progress).
+   * Prefer CDN-probed totals; falls back to yt-dlp format sizes.
+   */
+  contentLength: number | null;
   createdAt: number;
 }
 
@@ -31,6 +36,19 @@ function sweep(): void {
   for (const [id, t] of tickets) {
     if (now - t.createdAt > TICKET_TTL_MS) tickets.delete(id);
   }
+}
+
+function initialContentLength(
+  selection: StreamMergeSelection,
+  clip: ClipRange | null,
+): number | null {
+  const base = selection.estimatedBytes;
+  if (base == null || base <= 0) return null;
+  if (!clip || !(clip.endTime > clip.startTime)) return base;
+  const duration = selection.durationSeconds;
+  if (duration == null || duration <= 0) return null;
+  const ratio = Math.min(1, Math.max(0.01, (clip.endTime - clip.startTime) / duration));
+  return Math.max(1, Math.round(base * ratio));
 }
 
 export function createStreamTicket(
@@ -48,10 +66,18 @@ export function createStreamTicket(
     sourceUrl,
     proxy,
     clip,
+    contentLength: initialContentLength(selection, clip),
     createdAt: Date.now(),
   };
   tickets.set(ticket.id, ticket);
   return ticket;
+}
+
+/** Update Content-Length after a CDN Range probe (more accurate than yt-dlp estimates). */
+export function setStreamTicketContentLength(id: string, bytes: number): void {
+  const t = tickets.get(id);
+  if (!t || !(bytes > 0)) return;
+  t.contentLength = Math.round(bytes);
 }
 
 export function getStreamTicket(id: string): StreamTicket | null {

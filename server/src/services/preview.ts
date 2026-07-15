@@ -50,20 +50,33 @@ const FETCH_HEADERS = {
 
 /** Race scrapes — resolve as soon as any URL returns an image (or best metadata when all finish). */
 async function raceForMetadata(
-  tasks: Array<() => Promise<{ title?: string; image?: string; author?: string } | null>>,
-): Promise<{ title?: string; image?: string; author?: string } | null> {
+  tasks: Array<
+    () => Promise<{ title?: string; image?: string; author?: string; durationSeconds?: number | null } | null>
+  >,
+): Promise<{ title?: string; image?: string; author?: string; durationSeconds?: number | null } | null> {
   if (!tasks.length) return null;
 
   return new Promise((resolve) => {
     let pending = tasks.length;
-    let fallback: { title?: string; image?: string; author?: string } | null = null;
+    let fallback: {
+      title?: string;
+      image?: string;
+      author?: string;
+      durationSeconds?: number | null;
+    } | null = null;
     let done = false;
 
-    const merge = (r: { title?: string; image?: string; author?: string }) => {
+    const merge = (r: {
+      title?: string;
+      image?: string;
+      author?: string;
+      durationSeconds?: number | null;
+    }) => {
       fallback = {
         title: r.title ?? fallback?.title,
         image: r.image ?? fallback?.image,
         author: r.author ?? fallback?.author,
+        durationSeconds: r.durationSeconds ?? fallback?.durationSeconds,
       };
     };
 
@@ -86,11 +99,21 @@ async function raceForMetadata(
   });
 }
 
+function parseOgDurationSeconds(html: string): number | null {
+  const raw =
+    metaContent(html, 'og:video:duration') ??
+    metaContent(html, 'video:duration') ??
+    metaContent(html, 'og:duration');
+  if (!raw) return null;
+  const n = Number(raw);
+  return Number.isFinite(n) && n > 0 ? Math.round(n) : null;
+}
+
 /** Scrape og:title / og:image — stop reading HTML once an image tag is found. */
 async function scrapeOpenGraphOnce(
   url: string,
   timeoutMs = 5000,
-): Promise<{ title?: string; image?: string } | null> {
+): Promise<{ title?: string; image?: string; durationSeconds?: number | null } | null> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
@@ -115,7 +138,7 @@ async function scrapeOpenGraphOnce(
         extractEmbeddedImage(html);
       if (image) {
         controller.abort();
-        return { title, image };
+        return { title, image, durationSeconds: parseOgDurationSeconds(html) };
       }
     }
 
@@ -125,7 +148,7 @@ async function scrapeOpenGraphOnce(
       metaContent(html, 'twitter:image') ??
       extractEmbeddedImage(html);
     if (!title && !image) return null;
-    return { title, image };
+    return { title, image, durationSeconds: parseOgDurationSeconds(html) };
   } catch {
     return null;
   } finally {
@@ -197,7 +220,7 @@ function notePreviewImage(image?: string): void {
 
 function buildInstagramPreview(
   id: string,
-  og: { title?: string; image?: string; author?: string },
+  og: { title?: string; image?: string; author?: string; durationSeconds?: number | null },
   durationSeconds: number | null = null,
 ): VideoInfo {
   const parsed = parseInstagramTitle(og.title);
@@ -205,7 +228,7 @@ function buildInstagramPreview(
     id,
     title: parsed.title,
     author: og.author ?? parsed.author,
-    durationSeconds,
+    durationSeconds: durationSeconds ?? og.durationSeconds ?? null,
     thumbnail: og.image ?? null,
     sourceMaxHeight: null,
     formats: [],

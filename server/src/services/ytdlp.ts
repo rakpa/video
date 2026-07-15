@@ -198,6 +198,13 @@ export interface StreamMergeSelection {
   height: number;
   title: string;
   formatIds: string;
+  /**
+   * Best-known byte size for the remuxed download (video + audio when separate).
+   * Used so the browser download UI can show progress (Content-Length).
+   */
+  estimatedBytes: number | null;
+  /** Source video length — scales estimatedBytes for clip streams. */
+  durationSeconds: number | null;
 }
 
 /**
@@ -218,7 +225,16 @@ export function pickStreamMergeFormats(
   }
 
   const formats = raw.formats ?? [];
-  const sizeOf = (f: RawFormat) => f.filesize ?? f.filesize_approx ?? (f.tbr ?? 0) * 1000;
+  const durationSeconds = typeof raw.duration === 'number' && raw.duration > 0 ? raw.duration : null;
+  const exactSizeOf = (f: RawFormat) =>
+    typeof f.filesize === 'number' && f.filesize > 0
+      ? f.filesize
+      : typeof f.filesize_approx === 'number' && f.filesize_approx > 0
+        ? f.filesize_approx
+        : f.tbr && durationSeconds
+          ? Math.round((f.tbr * 1000 * durationSeconds) / 8)
+          : 0;
+  const sizeOf = (f: RawFormat) => exactSizeOf(f) || (f.tbr ?? 0) * 1000;
   const usable = (f: RawFormat) =>
     Boolean(f.format_id && f.url?.startsWith('http')) && !(f.protocol ?? '').includes('m3u8');
   // Keep ≤1080 on H.264 only (do not change working HD). 2K/4K need VP9/AV1.
@@ -283,6 +299,9 @@ export function pickStreamMergeFormats(
 
   // 2K/4K almost never have tall progressive H.264 — prefer DASH whenever it is taller.
   if (bestVideo?.url && bestAudio?.url && (highRes || dashHeight > progHeight)) {
+    const vBytes = exactSizeOf(bestVideo);
+    const aBytes = exactSizeOf(bestAudio);
+    const estimatedBytes = vBytes > 0 && aBytes > 0 ? vBytes + aBytes : vBytes || aBytes || null;
     return {
       kind: 'merge',
       videoUrl: bestVideo.url,
@@ -290,9 +309,12 @@ export function pickStreamMergeFormats(
       height: dashHeight,
       title,
       formatIds: `${bestVideo.format_id}+${bestAudio.format_id}`,
+      estimatedBytes,
+      durationSeconds,
     };
   }
   if (bestProg?.url) {
+    const estimatedBytes = exactSizeOf(bestProg) || null;
     return {
       kind: 'progressive',
       videoUrl: bestProg.url,
@@ -300,6 +322,8 @@ export function pickStreamMergeFormats(
       height: progHeight,
       title,
       formatIds: String(bestProg.format_id),
+      estimatedBytes,
+      durationSeconds,
     };
   }
   return null;

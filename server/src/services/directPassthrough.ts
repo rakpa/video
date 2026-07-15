@@ -13,6 +13,8 @@ export interface DirectDownloadResult {
   filename: string;
   height: number;
   formatId: string;
+  /** Expected size for browser download progress (Content-Length / client UI). */
+  estimatedBytes: number | null;
 }
 
 export interface PassthroughOptions {
@@ -103,6 +105,7 @@ function resolveFromCache(
     filename,
     height: picked.height,
     formatId: picked.formatIds,
+    estimatedBytes: ticket.contentLength,
   };
 }
 

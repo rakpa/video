@@ -36,7 +36,11 @@ export function ClipSelector({
   }, [mode, startTime, endTime, durationSeconds]);
 
   useEffect(() => {
-    if (mode === 'clip' && durationSeconds != null && durationSeconds > 0 && !endTime) {
+    if (mode !== 'clip' || durationSeconds == null || durationSeconds <= 0) return;
+    // Prefill "To" with the video length as soon as duration is known (often
+    // with the thumbnail, before full /api/info). Keep a later-refined duration
+    // if the user has not edited the field yet.
+    if (!endTime.trim()) {
       onEndTimeChange(formatTimeInput(durationSeconds));
     }
   }, [mode, durationSeconds, endTime, onEndTimeChange]);

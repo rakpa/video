@@ -199,7 +199,13 @@ export async function fetchVideoPreview(url: string): Promise<VideoPreviewResult
 /** Kick off a download — job pipeline or SaveFrom-style direct CDN URL. */
 export type DownloadStartResult =
   | { kind: 'job'; jobId: string }
-  | { kind: 'direct'; url: string; filename: string; height?: number };
+  | {
+      kind: 'direct';
+      url: string;
+      filename: string;
+      height?: number;
+      estimatedBytes?: number | null;
+    };
 
 export async function startDownloadJob(
   url: string,
@@ -220,6 +226,7 @@ export async function startDownloadJob(
     url?: string;
     filename?: string;
     height?: number;
+    estimatedBytes?: number | null;
   }>('/api/download', {
     url,
     quality,
@@ -247,6 +254,7 @@ export async function startDownloadJob(
       url: streamUrl,
       filename: data.filename ?? 'video.mp4',
       height: data.height,
+      estimatedBytes: data.estimatedBytes ?? null,
     };
   }
 

@@ -131,6 +131,7 @@ downloadRouter.post('/download', async (req, res) => {
           url: `${apiBase}${direct.url}`,
           filename: direct.filename,
           height: direct.height,
+          estimatedBytes: direct.estimatedBytes ?? null,
         });
       }
     } catch (err) {
