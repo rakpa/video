@@ -1,0 +1,226 @@
+﻿<!DOCTYPE html>
+
+<html lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=780, height=1768, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" name="viewport"/>
+<title>Onboarding - Scanella</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "surface-container-high": "#e8e8ea",
+                        "secondary-container": "#90efef",
+                        "on-primary-fixed": "#001847",
+                        "on-tertiary-fixed-variant": "#2e4b57",
+                        "on-surface": "#1a1c1d",
+                        "on-secondary-fixed": "#002020",
+                        "background": "#f9f9fb",
+                        "surface-variant": "#e2e2e4",
+                        "surface-container-low": "#f3f3f5",
+                        "on-primary-fixed-variant": "#0040a1",
+                        "tertiary": "#2e4b58",
+                        "on-tertiary-container": "#c0deee",
+                        "secondary-fixed": "#93f2f2",
+                        "on-tertiary-fixed": "#001f2a",
+                        "on-primary-container": "#ccd8ff",
+                        "surface-tint": "#0056d2",
+                        "secondary": "#006a6a",
+                        "error": "#ba1a1a",
+                        "surface-dim": "#d9dadc",
+                        "inverse-on-surface": "#f0f0f2",
+                        "on-secondary": "#ffffff",
+                        "surface-bright": "#f9f9fb",
+                        "tertiary-fixed-dim": "#adcbda",
+                        "tertiary-container": "#466370",
+                        "surface-container-lowest": "#ffffff",
+                        "on-primary": "#ffffff",
+                        "outline-variant": "#c3c6d6",
+                        "inverse-primary": "#b2c5ff",
+                        "surface-container-highest": "#e2e2e4",
+                        "outline": "#737785",
+                        "on-surface-variant": "#424654",
+                        "error-container": "#ffdad6",
+                        "tertiary-fixed": "#c9e7f7",
+                        "on-error": "#ffffff",
+                        "surface": "#f9f9fb",
+                        "on-secondary-container": "#006e6e",
+                        "primary-container": "#0056d2",
+                        "on-error-container": "#93000a",
+                        "secondary-fixed-dim": "#76d6d5",
+                        "primary-fixed": "#dae2ff",
+                        "primary-fixed-dim": "#b2c5ff",
+                        "surface-container": "#eeeef0",
+                        "primary": "#0040a1",
+                        "inverse-surface": "#2f3132",
+                        "on-secondary-fixed-variant": "#004f4f",
+                        "on-background": "#1a1c1d",
+                        "on-tertiary": "#ffffff"
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "0.25rem",
+                        "lg": "0.5rem",
+                        "xl": "0.75rem",
+                        "full": "9999px"
+                    },
+                    "spacing": {
+                        "sm": "8px",
+                        "md": "16px",
+                        "margin-desktop": "48px",
+                        "xl": "32px",
+                        "xs": "4px",
+                        "margin-mobile": "16px",
+                        "lg": "24px",
+                        "base": "4px",
+                        "gutter": "16px"
+                    },
+                    "fontFamily": {
+                        "headline-lg-mobile": ["Inter"],
+                        "body-md": ["Inter"],
+                        "label-md": ["Inter"],
+                        "headline-md": ["Inter"],
+                        "body-lg": ["Inter"],
+                        "label-lg": ["Inter"],
+                        "title-lg": ["Inter"],
+                        "headline-lg": ["Inter"]
+                    },
+                    "fontSize": {
+                        "headline-lg-mobile": ["28px", { "lineHeight": "36px", "letterSpacing": "-0.02em", "fontWeight": "700" }],
+                        "body-md": ["14px", { "lineHeight": "20px", "fontWeight": "400" }],
+                        "label-md": ["11px", { "lineHeight": "16px", "fontWeight": "500" }],
+                        "headline-md": ["24px", { "lineHeight": "32px", "fontWeight": "600" }],
+                        "body-lg": ["16px", { "lineHeight": "24px", "fontWeight": "400" }],
+                        "label-lg": ["12px", { "lineHeight": "16px", "letterSpacing": "0.05em", "fontWeight": "600" }],
+                        "title-lg": ["20px", { "lineHeight": "28px", "fontWeight": "600" }],
+                        "headline-lg": ["32px", { "lineHeight": "40px", "letterSpacing": "-0.02em", "fontWeight": "700" }]
+                    }
+                }
+            }
+        }
+    </script>
+<style>
+        body {
+            background-color: #FFFFFF; /* Pure white background requested */
+            display: flex;
+            flex-direction: column;
+            min-height: 100vh;
+        }
+        
+        /* Neomorphic Button Styling (Level 2) */
+        .btn-primary {
+            background-color: #0040a1; /* primary color */
+            color: #ffffff;
+            border-radius: 16px;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+        .btn-primary:active {
+            transform: scale(0.98);
+            box-shadow: inset 0 2px 4px rgba(0,0,0,0.2);
+        }
+
+        /* Image container to handle visual balance */
+        .illustration-container {
+            flex: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 24px;
+            max-height: 55vh;
+        }
+
+        .illustration-image {
+            max-width: 100%;
+            max-height: 100%;
+            object-fit: contain;
+        }
+        
+        /* Pagination Dots */
+        .dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background-color: #e2e2e4; /* surface-variant */
+            transition: all 0.3s ease;
+        }
+        .dot.active {
+            width: 24px;
+            border-radius: 4px;
+            background-color: #0040a1; /* primary */
+        }
+    </style>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+  <style id="stitch-flutter-fit">
+    html, body {
+      width: 780px !important;
+      height: 1768px !important;
+      min-height: 1768px !important;
+      max-height: 1768px !important;
+      margin: 0 !important;
+      overflow: hidden !important;
+    }
+    .h-screen, main.h-screen, [class*="h-screen"] {
+      height: 1768px !important;
+      min-height: 1768px !important;
+    }
+  </style></head>
+<body class="font-body-md text-on-surface antialiased overflow-hidden selection:bg-primary-container selection:text-on-primary-container">
+<!-- Main Container -->
+<main class="flex flex-col h-screen w-full max-w-[480px] mx-auto relative px-margin-mobile pb-margin-mobile pt-lg">
+<!-- Top Half: Illustration -->
+<div class="illustration-container">
+<img alt="Smart Auto-Crop Illustration" class="illustration-image w-full h-auto drop-shadow-xl animate-[fade-in-up_0.6s_ease-out]" data-alt="A modern, minimalist 3D illustration of a hand holding a sleek smartphone over a crumpled paper receipt. The phone screen displays glowing, vibrant cyan and teal edge-detection lines forming a perfect rectangle around the receipt. The background is a stark, pure white studio setting, emphasizing clean lines and high-performance technology. Soft, neomorphic drop shadows ground the elements, creating a sense of physical depth while maintaining a highly professional, light-mode productivity aesthetic." src="https://lh3.googleusercontent.com/aida-public/AB6AXuBiJcLTizX6lHEFzmQ9HVSfPkSHm6sMaYydFkJtSpBcUwDrKbqqC6CD3IrJibmItf6SZsQ7mK-85eH4xOR-g1b5eEkbIsHYu1ZamnqtesOI1c66Bhb9CY8si5OmhdoZi-LoXzX9aBI9FoSQCZ116kRIcVYH-hPl5QqGRCXilAuu4vQnj0disUQbBHVL-SZK-5Y9mJfY_mketL9JPQWxpJbmIRf5R7dKSz3odpw9ffRxB5UhcQmDnakc"/>
+</div>
+<!-- Bottom Half: Content -->
+<div class="flex flex-col flex-1 justify-end pb-lg z-10 bg-white">
+<!-- Text Content -->
+<div class="text-center mb-xl animate-[fade-in-up_0.8s_ease-out]">
+<h1 class="font-headline-lg-mobile text-headline-lg-mobile text-on-surface mb-sm tracking-tight">Smart Auto-Crop</h1>
+<p class="font-body-lg text-body-lg text-on-surface-variant max-w-[300px] mx-auto leading-relaxed">
+                    Automatically detects and crops your documents perfectly.
+                </p>
+</div>
+<!-- Pagination Indicators -->
+<div class="flex justify-center items-center gap-2 mb-xl animate-[fade-in_1s_ease-out]">
+<div class="dot active"></div>
+<div class="dot"></div>
+<div class="dot"></div>
+</div>
+<!-- Action Button -->
+<div class="w-full animate-[fade-in-up_1s_ease-out]">
+<button class="btn-primary w-full py-4 font-title-lg text-title-lg flex items-center justify-center gap-2">
+                    Next
+                    <span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 0;">arrow_forward</span>
+</button>
+</div>
+<!-- Skip Link (Optional but common for onboarding) -->
+<div class="text-center mt-md">
+<button class="font-label-lg text-label-lg text-on-surface-variant hover:text-primary transition-colors py-2 px-4 rounded-full active:bg-surface-variant/50">
+                    Skip
+                </button>
+</div>
+</div>
+</main>
+<!-- Tailwind Custom Animations -->
+<script>
+        tailwind.config.theme.extend.keyframes = {
+            'fade-in-up': {
+                '0%': { opacity: '0', transform: 'translateY(20px)' },
+                '100%': { opacity: '1', transform: 'translateY(0)' },
+            },
+            'fade-in': {
+                '0%': { opacity: '0' },
+                '100%': { opacity: '1' },
+            }
+        };
+    </script>
+</body></html>

@@ -1,194 +1,92 @@
-# 🎬 VidCliply — Premium Video Downloader
+# Paperly (scan2)
 
-A polished, production-ready web app to download videos from **YouTube, Facebook, and Instagram** by pasting a URL. Choose **720p · 1080p · 2K · 4K** — always merged to a single **MP4 with sound**.
+Paperly is a Flutter document scanner (`doc_scanner`) built with Material 3,
+Riverpod, go_router, Drift, and on-device image processing. Original branding —
+not a CamScanner clone — with no paywall, cloud sync, accounts, or subscriptions.
 
-> Built with React + TypeScript + Tailwind + Framer Motion on the front, Node + Express + `yt-dlp` + `ffmpeg` on the back.
+> **Repo note:** `github.com/rakpa/scan2` did not exist when this agent ran, and
+> the cloud session was attached to `rakpa/video`. This branch is an orphan
+> Flutter tree intended to be copied into a new `rakpa/scan2` repository
+> (`git push <scan2-remote> HEAD:main`).
 
----
+## Features
 
-## ☁️ Deploy (frontend on Vercel + backend on Render)
+- Camera scan flow with live edge detection overlay, ~1s auto-capture, manual shutter,
+  flash toggle, batch page thumbnails, and gallery import.
+- Crop editor with 4 draggable corner handles, loupe while dragging, Re-detect, and
+  Use full image; pure-Dart homography perspective correction on both platforms.
+- On-device OCR via `google_mlkit_text_recognition` (offline); extract/copy/share `.txt`
+  and store text so library search matches page contents.
+- Gallery import into the same scan pipeline.
+- Filters: Original, Color, Auto, Magic Color, Lighten, Grayscale, and adaptive
+  B&W.
+- Library with folders, title search, date/name sorting, grid/list toggle,
+  rename/delete/move/duplicate, and page drag-to-reorder.
+- Export sheet on document detail:
+  - Share PDF
+  - Save PDF into the app exports folder
+  - Print with `printing`
+  - Export per-page JPGs as a ZIP
+  - Save JPG pages to the device gallery with `gal`
+- Settings for theme, auto-capture default, default filter, PDF page size, and
+  file name pattern (`Scan {date}` -> `Scan 2026-07-15 (1)`).
+- iOS simulator CI, iOS signed IPA workflow, Android signed AAB workflow.
 
-This app has **two halves**: a static **frontend** (Vercel) and a **download backend** that runs `yt-dlp` + `ffmpeg` (must run on a real server — **not** Vercel). The backend is pre-configured for Render via `render.yaml`.
+PDF password protection is intentionally skipped: the pure-Dart `pdf` package
+used here does not expose an encryption/password API.
 
-### 1. Deploy the backend to Render (one click)
+## Architecture
 
-[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/rakpa/video)
+```
+lib/
+  app/                 MaterialApp.router, theme, routes
+  core/                app-wide providers, storage, design tokens
+  data/database/       Drift schema and database helpers
+  features/
+    documents/         repository contract/impl, library/detail UI
+    enhance/           DocFilter enum and image pipeline
+    export/            PDF/JPG/ZIP services and export sheet
+    folders/           folder repository and UI
+    home/              dashboard, feed, search/sort/view toggles
+    onboarding/        first-run completion only
+    scan/              camera/gallery capture and perspective crop
+    settings/          hand-written Riverpod preference notifiers
+```
 
-This reads `render.yaml`, creates the `clipvault-api` Web Service (Docker, Free plan), and installs `ffmpeg` + `yt-dlp` from the `Dockerfile`. Auto-deploys on every push to the connected branch. Copy the URL it gives you (e.g. `https://clipvault-api-xxxx.onrender.com`).
+Presentation code depends on repository interfaces; Drift and disk storage live
+behind data-layer implementations. Riverpod providers are hand-written.
 
-> Free tier sleeps after ~15 min idle; the first request then takes ~50s to wake — that's the "wait a minute for the API to wake up" notice in the UI.
+## Local setup
 
-### 2. Point the frontend at it (Vercel)
-
-1. Vercel → project → **Settings → Environment Variables** → set `VITE_API_URL` to your Render URL (no trailing slash).
-2. **Redeploy** on Vercel (Vite bakes env vars in at build time).
-3. On Render, ensure `CLIENT_ORIGIN` equals your exact Vercel domain (else CORS blocks requests).
-
----
-
-## ✨ Features
-
-- Paste-a-URL flow with **auto platform detection** (icon appears as you type).
-- Rich metadata preview: thumbnail, title, duration, channel/author.
-- Quality cards (720p/1080p/1440p/2160p) with **estimated file size** + **"with sound"** badge.
-- **Codec toggle** — *Best quality* (VP9/AV1, up to 4K, smaller files) or *Most compatible* (H.264/AAC, capped at 1080p, plays in any player including older QuickTime/Windows Media Player).
-- **Real-time progress** (percentage + speed + ETA) over Server-Sent Events.
-- Glassmorphism UI, dark mode default + light toggle, confetti on success.
-- Friendly error states for every failure (invalid URL, unsupported, no formats, network).
-- Temp files are streamed and **deleted after each download** — nothing is stored permanently.
-
----
-
-## 📦 Prerequisites — install the binaries
-
-This app shells out to two external binaries. **Both must be on your `PATH`.**
-
-### 1. `yt-dlp`
-
-| OS | Command |
-|----|---------|
-| Windows (winget) | `winget install yt-dlp.yt-dlp` |
-| Windows (choco) | `choco install yt-dlp` |
-| macOS | `brew install yt-dlp` |
-| Linux | `sudo curl -L https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp -o /usr/local/bin/yt-dlp && sudo chmod a+rx /usr/local/bin/yt-dlp` |
-| pip (any) | `pip install -U yt-dlp` |
-
-### 2. `ffmpeg` (required to merge video + audio)
-
-| OS | Command |
-|----|---------|
-| Windows (winget) | `winget install Gyan.FFmpeg` |
-| Windows (choco) | `choco install ffmpeg` |
-| macOS | `brew install ffmpeg` |
-| Linux (Debian/Ubuntu) | `sudo apt install ffmpeg` |
-
-**Verify both are visible:**
+Use the Flutter SDK requested for this project:
 
 ```bash
-yt-dlp --version
-ffmpeg -version
+export PATH="/home/ubuntu/flutter-3.44.6/bin:$PATH"
+flutter pub get
+dart run build_runner build --delete-conflicting-outputs
+flutter test
 ```
 
-> If they live in a custom folder, set `YTDLP_PATH` and `FFMPEG_PATH` in `server/.env` (see below).
+Windows PowerShell Flutter path note:
 
----
+```powershell
+$env:Path = "C:\src\flutter\bin;" + $env:Path
+```
 
-## 🚀 Run it (dev)
-
-Open two terminals.
+Install a debug build on a connected Android device:
 
 ```bash
-# Terminal 1 — backend (http://localhost:5174)
-cd server
-cp .env.example .env       # Windows PowerShell: copy .env.example .env
-npm install
-npm run dev
-
-# Terminal 2 — frontend (http://localhost:5173)
-cd client
-npm install
-npm run dev
+flutter install --debug -d CPH2569
 ```
 
-Visit **http://localhost:5173**. The Vite dev server proxies `/api` to the backend automatically.
+## Release notes
 
----
+- Android package/application ID: `com.paperly.scanner`.
+- iOS bundle ID: `com.paperly.scanner`.
+- Android release signing is documented in `android/KEYSTORE.md`.
+- iOS signing from Windows is documented in `ios/README.md`.
 
-## 🔧 Environment variables (`server/.env`)
+## Current OCR hook
 
-| Var | Default | Description |
-|-----|---------|-------------|
-| `PORT` | `5174` | Backend port. |
-| `CLIENT_ORIGIN` | `http://localhost:5173` | Allowed CORS origin. |
-| `YTDLP_PATH` | `yt-dlp` | Path to the yt-dlp binary (override if not on PATH). |
-| `FFMPEG_PATH` | `ffmpeg` | Path to the ffmpeg binary (override if not on PATH). |
-| `TMP_TTL_MINUTES` | `30` | How long a finished temp file lives before the sweeper deletes it. |
-| `MAX_DURATION_MINUTES` | `180` | Reject videos longer than this (abuse guard). |
-
----
-
-## 🏗️ Production build
-
-```bash
-# Build frontend → static files in client/dist
-cd client && npm run build
-
-# Build + run backend
-cd ../server && npm run build && npm start
-```
-
-Serve `client/dist` from any static host (or have the backend serve it) and point its `/api` calls at the backend URL.
-
----
-
-## 🧱 Extending to new platforms
-
-Platform support lives in **one place per side**:
-
-- Frontend: `client/src/utils/platform.ts` → add a `{ id, label, test, icon }` entry.
-- Backend: `server/src/services/platform.ts` → add a matching detector.
-
-`yt-dlp` already supports 1000+ sites, so usually you only need to whitelist the URL pattern.
-
----
-
-## ⚖️ Legal / Disclaimer
-
-This tool is provided for downloading content **you own or have explicit rights to**. You are responsible for complying with each platform's Terms of Service and with applicable copyright law. The authors assume no liability for misuse.
-
----
-
-## 📁 Project structure
-
-```
-video-downloader/
-├── README.md
-├── server/
-│   ├── package.json
-│   ├── tsconfig.json
-│   ├── .env.example
-│   └── src/
-│       ├── index.ts              # Express app + routes wiring
-│       ├── config.ts             # env config
-│       ├── jobManager.ts         # in-memory job store + TTL sweeper
-│       ├── routes/
-│       │   ├── info.ts           # POST /api/info
-│       │   ├── download.ts       # POST /api/download
-│       │   ├── progress.ts       # GET  /api/progress/:jobId (SSE)
-│       │   └── file.ts           # GET  /api/file/:jobId (stream + cleanup)
-│       ├── services/
-│       │   ├── platform.ts       # URL → platform detection
-│       │   ├── ytdlp.ts          # spawn yt-dlp (info + download)
-│       │   └── formats.ts        # quality → yt-dlp format selectors
-│       └── utils/
-│           ├── validate.ts       # URL validation
-│           └── logger.ts
-└── client/
-    ├── package.json
-    ├── tsconfig.json
-    ├── vite.config.ts
-    ├── tailwind.config.js
-    ├── postcss.config.js
-    ├── index.html
-    └── src/
-        ├── main.tsx
-        ├── App.tsx
-        ├── index.css
-        ├── types.ts
-        ├── api/client.ts
-        ├── hooks/useTheme.ts
-        ├── utils/platform.ts
-        ├── utils/format.ts
-        └── components/
-            ├── Hero.tsx
-            ├── UrlInput.tsx
-            ├── PlatformIcon.tsx
-            ├── VideoPreview.tsx
-            ├── QualitySelector.tsx
-            ├── DownloadProgress.tsx
-            ├── SuccessState.tsx
-            ├── ErrorBanner.tsx
-            ├── ThemeToggle.tsx
-            ├── Confetti.tsx
-            └── Footer.tsx
-```
+Library search matches titles today. The feed contains an explicit TODO hook to
+include OCR text when the OCR persistence column lands.

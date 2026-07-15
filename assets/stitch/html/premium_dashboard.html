@@ -1,0 +1,323 @@
+﻿<!DOCTYPE html>
+
+<html class="light" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=780, height=1768, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" name="viewport"/>
+<title>Scanella - Dashboard</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;600&amp;family=Plus+Jakarta+Sans:wght@700;800&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    colors: {
+                        "surface-variant": "#dae2fd",
+                        "on-tertiary": "#ffffff",
+                        "on-surface-variant": "#464555",
+                        "inverse-on-surface": "#eef0ff",
+                        "primary": "#3525cd",
+                        "surface-container-lowest": "#ffffff",
+                        "tertiary-fixed": "#ffdbcc",
+                        "on-error": "#ffffff",
+                        "on-surface": "#131b2e",
+                        "inverse-surface": "#283044",
+                        "on-secondary-fixed-variant": "#004e5c",
+                        "outline-variant": "#c7c4d8",
+                        "error-container": "#ffdad6",
+                        "tertiary-container": "#a44100",
+                        "on-secondary-fixed": "#001f26",
+                        "on-tertiary-container": "#ffd2be",
+                        "primary-fixed": "#e2dfff",
+                        "on-primary": "#ffffff",
+                        "surface-tint": "#4d44e3",
+                        "on-secondary-container": "#006172",
+                        "on-background": "#131b2e",
+                        "on-error-container": "#93000a",
+                        "primary-container": "#4f46e5",
+                        "secondary-container": "#57dffe",
+                        "on-primary-fixed-variant": "#3323cc",
+                        "on-tertiary-fixed-variant": "#7b2f00",
+                        "surface": "#faf8ff",
+                        "secondary-fixed-dim": "#4cd7f6",
+                        "on-secondary": "#ffffff",
+                        "error": "#ba1a1a",
+                        "surface-bright": "#faf8ff",
+                        "tertiary-fixed-dim": "#ffb695",
+                        "outline": "#777587",
+                        "on-primary-fixed": "#0f0069",
+                        "on-primary-container": "#dad7ff",
+                        "surface-container-high": "#e2e7ff",
+                        "primary-fixed-dim": "#c3c0ff",
+                        "secondary-fixed": "#acedff",
+                        "surface-dim": "#d2d9f4",
+                        "tertiary": "#7e3000",
+                        "secondary": "#00687a",
+                        "inverse-primary": "#c3c0ff",
+                        "surface-container-highest": "#dae2fd",
+                        "on-tertiary-fixed": "#351000",
+                        "surface-container": "#eaedff",
+                        "background": "#faf8ff",
+                        "surface-container-low": "#f2f3ff"
+                    },
+                    borderRadius: {
+                        "DEFAULT": "0.25rem",
+                        "lg": "0.5rem",
+                        "xl": "0.75rem",
+                        "full": "9999px"
+                    },
+                    spacing: {
+                        "xs": "4px",
+                        "container-margin": "20px",
+                        "gutter": "16px",
+                        "md": "24px",
+                        "sm": "12px",
+                        "base": "8px",
+                        "lg": "40px"
+                    },
+                    fontFamily: {
+                        "label-sm": ["Outfit"],
+                        "body-lg": ["Outfit"],
+                        "body-md": ["Outfit"],
+                        "display-lg-mobile": ["Plus Jakarta Sans"],
+                        "headline-md": ["Plus Jakarta Sans"],
+                        "display-lg": ["Plus Jakarta Sans"]
+                    },
+                    fontSize: {
+                        "label-sm": ["13px", { lineHeight: "16px", letterSpacing: "0.05em", fontWeight: "600" }],
+                        "body-lg": ["18px", { lineHeight: "28px", fontWeight: "400" }],
+                        "body-md": ["16px", { lineHeight: "24px", fontWeight: "400" }],
+                        "display-lg-mobile": ["32px", { lineHeight: "40px", letterSpacing: "-0.02em", fontWeight: "800" }],
+                        "headline-md": ["24px", { lineHeight: "32px", letterSpacing: "-0.01em", fontWeight: "700" }],
+                        "display-lg": ["48px", { lineHeight: "56px", letterSpacing: "-0.02em", fontWeight: "800" }]
+                    }
+                }
+            }
+        }
+    </script>
+<style>
+        .glass-panel {
+            background: rgba(255, 255, 255, 0.7);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.5);
+        }
+        .ai-glow {
+            box-shadow: 0 0 15px rgba(87, 223, 254, 0.4);
+            border: 1px solid rgba(87, 223, 254, 0.6);
+        }
+        .gradient-btn {
+            background: linear-gradient(135deg, #4f46e5 0%, #57dffe 100%);
+        }
+    </style>
+<style id="stitch-flutter-fit">
+    html, body {
+      width: 780px !important;
+      height: 1768px !important;
+      min-height: 1768px !important;
+      max-height: 1768px !important;
+      margin: 0 !important;
+      overflow: hidden !important;
+    }
+    .h-screen, main.h-screen, [class*="h-screen"] {
+      height: 1768px !important;
+      min-height: 1768px !important;
+    }
+  </style></head>
+<body class="bg-surface text-on-surface font-body-md antialiased min-h-screen pb-24 md:pb-0">
+<!-- TopAppBar -->
+<header class="bg-surface/95 dark:bg-surface-container-highest/95 backdrop-blur-md docked full-width top-0 sticky z-50 border-b border-outline-variant/10 shadow-[0px_4px_12px_rgba(79,70,229,0.05)] flex justify-between items-center px-container-margin h-16 w-full">
+<div class="flex items-center gap-4">
+<button class="text-on-surface-variant hover:opacity-80 transition-opacity active:scale-95 duration-200">
+<span class="material-symbols-outlined" data-icon="menu">menu</span>
+</button>
+<div class="flex items-center gap-2">
+<img alt="Scanella Logo" class="h-8 w-8 object-contain" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDaUyBLbpLRoE6kD0AlWjl0f4wWeT7ocdICqsaXtmk0RV_FTq6KkwL0KTP2GEd2wr-Fy2sIUxEBO8-8R5oQn2tBWVKJsa3nOrI2uqro8HkwJm3EDN1_-LttI9Cp38cm03cZC7hGMao0LtHNvP4K3an5moW2kdV2roYa05PvJOh06TzCV-IToanUhIe0d45E5nlE4AxE-FWKmTqWybtV2yflPZ0B-Vww4GP1A-qKgjqbaxQ72xg320-Z"/>
+<h1 class="font-headline-md text-headline-md font-bold tracking-tight text-primary">Scanella</h1>
+</div>
+</div>
+<div>
+<button class="h-10 w-10 rounded-full overflow-hidden hover:opacity-80 transition-opacity border border-outline-variant/20 shadow-sm">
+<img alt="User profile" class="w-full h-full object-cover" src="https://lh3.googleusercontent.com/aida-public/AB6AXuCoxUV23GFjXoBBBZblmMaj0KnLajVM0S0EzEq8_6_0ySOW8tagazoY5zjc488pAOkphLGR99ji8lvSjWbqrnIow53J4wcL2gq4OeziDmkt5vngu6dTuIas5bGMj7bRqfwmweFL4DkfScU1C5Evm-GkuNatFy08VFKvrmPJC4jZQPSyVmhg8kKLiMdJJYOeJLfcAy08fGxFmJ4IlRwOzmWYgcMkq0fkQW9U7YZbI5-kTSonCggx8Z5Z"/>
+</button>
+</div>
+</header>
+<div class="flex">
+<!-- NavigationDrawer (Hidden on Mobile, Visible on Desktop) -->
+<nav class="hidden md:flex flex-col h-[calc(100vh-64px)] w-80 rounded-r-xl bg-surface shadow-2xl py-md px-sm sticky top-16 border-r border-outline-variant/10">
+<div class="mb-8 px-4 flex items-center gap-3">
+<div class="h-12 w-12 rounded-full overflow-hidden border-2 border-primary-container">
+<img alt="User Profile" class="w-full h-full object-cover" src="https://lh3.googleusercontent.com/aida-public/AB6AXuBe1lqQvkK3RsQ07mGevtHSM-7b4GGlVVGPXBYwSZWFW8zp7nDVyv6LQoovclbjVEPXNnMClHM_AbFqUSU7diS9WTHqi_kVhVvHJ2sr1Mm3ZipXsMx6gf6pZX4sUuzdsh9xJ6YfVKhpAOYiSC_lYzsCCh0L_mnCJIy6R_6x33V8ev0mXpbXOY9p6fyglv1tk-6K2_7_psjM7BBtWyu23CR2bTp-1NRK9mGTVSX7zM1qWvtFpTK8h17c"/>
+</div>
+<div>
+<h3 class="font-headline-md text-[18px] text-primary">Premium User</h3>
+<p class="text-sm text-on-surface-variant">Pro Plan Active</p>
+</div>
+</div>
+<ul class="flex flex-col gap-2 flex-grow">
+<li>
+<a class="flex items-center gap-3 px-4 py-3 rounded-lg text-primary bg-primary/5 font-bold transition-colors duration-200" href="#">
+<span class="material-symbols-outlined" data-icon="folder" data-weight="fill" style="font-variation-settings: 'FILL' 1;">folder</span>
+<span class="font-body-md text-body-md">All Documents</span>
+</a>
+</li>
+<li>
+<a class="flex items-center gap-3 px-4 py-3 rounded-lg text-on-surface-variant hover:bg-surface-variant transition-colors duration-200" href="#">
+<span class="material-symbols-outlined" data-icon="share">share</span>
+<span class="font-body-md text-body-md">Shared</span>
+</a>
+</li>
+<li>
+<a class="flex items-center gap-3 px-4 py-3 rounded-lg text-on-surface-variant hover:bg-surface-variant transition-colors duration-200" href="#">
+<span class="material-symbols-outlined" data-icon="star">star</span>
+<span class="font-body-md text-body-md">Starred</span>
+</a>
+</li>
+<li>
+<a class="flex items-center gap-3 px-4 py-3 rounded-lg text-on-surface-variant hover:bg-surface-variant transition-colors duration-200" href="#">
+<span class="material-symbols-outlined" data-icon="delete">delete</span>
+<span class="font-body-md text-body-md">Trash</span>
+</a>
+</li>
+</ul>
+<div class="mt-auto pt-4 border-t border-outline-variant/20">
+<a class="flex items-center gap-3 px-4 py-3 rounded-lg text-on-surface-variant hover:bg-surface-variant transition-colors duration-200" href="#">
+<span class="material-symbols-outlined" data-icon="help">help</span>
+<span class="font-body-md text-body-md">Help</span>
+</a>
+</div>
+</nav>
+<!-- Main Content -->
+<main class="flex-1 w-full max-w-[1200px] mx-auto p-container-margin md:p-lg pt-6">
+<!-- Welcome Section -->
+<section class="mb-10 flex flex-col md:flex-row justify-between items-start md:items-end gap-6">
+<div>
+<h2 class="font-display-lg-mobile md:font-display-lg text-display-lg-mobile md:text-display-lg text-on-surface mb-2">Welcome back</h2>
+<p class="font-body-lg text-body-lg text-on-surface-variant">You have 3 documents waiting for AI processing.</p>
+</div>
+<button class="gradient-btn text-on-primary font-label-sm text-label-sm px-6 py-3 rounded-full flex items-center gap-2 shadow-[0px_12px_32px_rgba(79,70,229,0.2)] hover:opacity-90 active:scale-95 transition-all">
+<span class="material-symbols-outlined" data-icon="document_scanner">document_scanner</span>
+                    New Scan
+                </button>
+</section>
+<!-- Stats/Action Grid -->
+<section class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-12">
+<!-- Smart Action Card -->
+<div class="glass-panel rounded-2xl p-6 shadow-[0px_4px_12px_rgba(79,70,229,0.05)] relative overflow-hidden group hover:shadow-[0px_8px_24px_rgba(79,70,229,0.1)] transition-all">
+<div class="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity">
+<span class="material-symbols-outlined text-6xl text-primary" data-icon="auto_awesome">auto_awesome</span>
+</div>
+<div class="h-12 w-12 rounded-xl bg-primary-container/10 flex items-center justify-center text-primary mb-4">
+<span class="material-symbols-outlined" data-icon="receipt_long">receipt_long</span>
+</div>
+<h3 class="font-headline-md text-[20px] text-on-surface mb-1">Expense Reports</h3>
+<p class="text-sm text-on-surface-variant mb-4">AI auto-extracted 12 receipts.</p>
+<button class="text-primary font-label-sm text-label-sm flex items-center gap-1 group-hover:translate-x-1 transition-transform">
+                        Review Now <span class="material-symbols-outlined text-sm" data-icon="arrow_forward">arrow_forward</span>
+</button>
+</div>
+<!-- Stats Card -->
+<div class="bg-surface-container-lowest rounded-2xl p-6 shadow-[0px_4px_12px_rgba(79,70,229,0.05)] border border-outline-variant/10">
+<div class="h-12 w-12 rounded-xl bg-secondary-container/20 flex items-center justify-center text-secondary mb-4">
+<span class="material-symbols-outlined" data-icon="folder_open">folder_open</span>
+</div>
+<h3 class="font-headline-md text-[20px] text-on-surface mb-1">Total Scans</h3>
+<div class="flex items-end gap-2">
+<span class="font-display-lg-mobile text-[36px] font-bold text-on-surface leading-none">1,284</span>
+<span class="text-sm text-secondary font-medium mb-1 flex items-center"><span class="material-symbols-outlined text-sm" data-icon="trending_up">trending_up</span> +12%</span>
+</div>
+</div>
+<!-- Storage Card -->
+<div class="bg-surface-container-lowest rounded-2xl p-6 shadow-[0px_4px_12px_rgba(79,70,229,0.05)] border border-outline-variant/10">
+<div class="flex justify-between items-start mb-6">
+<div class="h-12 w-12 rounded-xl bg-surface-variant flex items-center justify-center text-primary mb-4">
+<span class="material-symbols-outlined" data-icon="cloud">cloud</span>
+</div>
+<span class="text-xs font-bold text-on-surface-variant bg-surface-dim px-2 py-1 rounded">PRO</span>
+</div>
+<h3 class="font-headline-md text-[16px] text-on-surface mb-2">Cloud Storage</h3>
+<div class="w-full bg-surface-dim rounded-full h-2 mb-2 overflow-hidden">
+<div class="bg-primary h-2 rounded-full" style="width: 45%"></div>
+</div>
+<p class="text-sm text-on-surface-variant">45GB of 100GB used</p>
+</div>
+</section>
+<!-- Recent Scans - Bento Grid -->
+<section>
+<div class="flex justify-between items-center mb-6">
+<h2 class="font-headline-md text-headline-md text-on-surface">Recent Scans</h2>
+<a class="text-primary font-label-sm text-label-sm hover:underline" href="#">View All</a>
+</div>
+<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+<!-- Enhanced AI Card -->
+<div class="glass-panel ai-glow rounded-xl overflow-hidden relative group cursor-pointer">
+<div class="absolute top-3 left-3 z-10 bg-surface/90 backdrop-blur px-2 py-1 rounded-md flex items-center gap-1 shadow-sm">
+<span class="material-symbols-outlined text-secondary-container text-sm" data-icon="auto_awesome" data-weight="fill" style="font-variation-settings: 'FILL' 1;">auto_awesome</span>
+<span class="text-xs font-bold text-on-surface">AI Enhanced</span>
+</div>
+<div class="h-48 w-full bg-surface-container overflow-hidden relative">
+<!-- Background Image with data-alt -->
+<div class="absolute inset-0 bg-cover bg-center group-hover:scale-105 transition-transform duration-500" data-alt="A modern, high-contrast overhead photograph of a neatly arranged architectural blueprint and some financial documents on a pristine white desk. The lighting is crisp and bright, characteristic of a premium tech light-mode aesthetic. A sleek metallic pen and a pair of minimalist glasses rest nearby, adding to the sophisticated corporate mood. The subtle shadows provide depth, enhancing the professional and precise atmosphere." style="background-image: url('https://lh3.googleusercontent.com/aida-public/AB6AXuDBiYSBRcfA5K9SXLsysJOS8QHra4_3910EiRTEzJvRlSDWNU6P5QBe69Mms_XPJngGuyrfmIMSMbYND5BYOm7AERZpJ45mr5W5z9JseUX4vuAYBwLeF5A2nyHwKEBLe06shB90Fl_T6IqlcY5_SGzkQGlH_hjEMNRzwaGSOmV9bnu_wK5TJNOjKa8inNMR_3mZYVu8hQ-QGj5CygdshHUME3gpRiQm8nEIsuag0GAfF6LGz9Gtg19m');"></div>
+<div class="absolute inset-0 bg-gradient-to-t from-surface/80 to-transparent"></div>
+</div>
+<div class="p-4 relative bg-surface-container-lowest">
+<h4 class="font-body-md text-body-md font-bold text-on-surface truncate mb-1">Q3 Financial Blueprint</h4>
+<p class="text-sm text-on-surface-variant flex items-center gap-2">
+<span class="material-symbols-outlined text-[16px]" data-icon="description">description</span> PDF · 2.4 MB
+                            </p>
+</div>
+</div>
+<!-- Standard Card -->
+<div class="bg-surface-container-lowest border border-outline-variant/10 rounded-xl overflow-hidden shadow-[0px_4px_12px_rgba(79,70,229,0.05)] group cursor-pointer hover:shadow-[0px_8px_24px_rgba(79,70,229,0.1)] transition-shadow">
+<div class="h-48 w-full bg-surface-container overflow-hidden relative">
+<div class="absolute inset-0 bg-cover bg-center group-hover:scale-105 transition-transform duration-500 grayscale group-hover:grayscale-0" data-alt="A close-up view of a minimalist white notepad with handwritten notes, lying on a clean, light-colored surface. The lighting is soft and diffused, emphasizing the high-fidelity and sophisticated aesthetic of modern corporate design. A sleek, silver pen lies diagonally across the pad. The overall scene is bright, organized, and conveys a sense of focused productivity." style="background-image: url('https://lh3.googleusercontent.com/aida-public/AB6AXuCg0xnyhOluSaHJGU3qm8s_jdEs4V67G_wuzOtIVAOrd815fH_FrmDPS76ZmO98lZqypnhC2Zlu1e-zAzDkrSGx_Iqg2D9GjqA47lJ1VJNJSKB3WrcpDAuOB0D2acm70xp7O5wMa6reL9BmTltsL2lT9weznEjXX11-GsUuaUD0Hp_ssfiz2z0zuqh77r3U51l429T6j5v6HBVRBl2H10z3WnrM0IkqxU68v5rRjV2kNRHTZcITlvo9');"></div>
+</div>
+<div class="p-4 relative">
+<h4 class="font-body-md text-body-md font-bold text-on-surface truncate mb-1">Meeting Notes - Oct 12</h4>
+<p class="text-sm text-on-surface-variant flex items-center gap-2">
+<span class="material-symbols-outlined text-[16px]" data-icon="image">image</span> JPG · 1.1 MB
+                            </p>
+</div>
+</div>
+<!-- Standard Card -->
+<div class="bg-surface-container-lowest border border-outline-variant/10 rounded-xl overflow-hidden shadow-[0px_4px_12px_rgba(79,70,229,0.05)] group cursor-pointer hover:shadow-[0px_8px_24px_rgba(79,70,229,0.1)] transition-shadow">
+<div class="h-48 w-full bg-surface-container overflow-hidden relative">
+<div class="absolute inset-0 bg-cover bg-center group-hover:scale-105 transition-transform duration-500 grayscale group-hover:grayscale-0" data-alt="A clean, top-down shot of several scattered white business cards on a stark white surface. The lighting is very bright and creates soft, elegant shadows underneath the cards, giving them a floating, glassmorphic quality. The setup feels premium, fast, and highly professional, fitting a high-performance utility application's light theme perfectly." style="background-image: url('https://lh3.googleusercontent.com/aida-public/AB6AXuDGXxL7ILnuebCSqB7cm3SfMJusgBDMGDPrGiIN1oMCuSk3-uc-gHmb9Gmjzh0vyIvVghbDY5JYTw351xDV1MAzC1yAZkbZrvxIFlRc9lomI6nI6RKrETmKam3dykTqNKridahNCGSluqNp3Djclod4Lk9vbR5Ko9_Wi0KDrW85c_B5vUmgegEBfAC7bl9gHLHTq86Bm52P3rE7mOC1mmGfmmKF3ahJzkMpQSEzPDbdJexX7tR17TGl');"></div>
+</div>
+<div class="p-4 relative">
+<h4 class="font-body-md text-body-md font-bold text-on-surface truncate mb-1">Client Business Cards</h4>
+<p class="text-sm text-on-surface-variant flex items-center gap-2">
+<span class="material-symbols-outlined text-[16px]" data-icon="contact_mail">contact_mail</span> PDF · 800 KB
+                            </p>
+</div>
+</div>
+</div>
+</section>
+</main>
+</div>
+<!-- Floating Action Button (Mobile Only) -->
+<button class="md:hidden fixed bottom-24 right-6 w-14 h-14 gradient-btn rounded-full shadow-[0px_12px_32px_rgba(79,70,229,0.3)] flex items-center justify-center text-white z-50 hover:scale-105 active:scale-95 transition-transform">
+<span class="material-symbols-outlined text-3xl" data-icon="add" data-weight="fill">add</span>
+</button>
+<!-- BottomNavBar (Mobile Only) -->
+<nav class="md:hidden bg-surface/90 dark:bg-inverse-surface/90 backdrop-blur-lg fixed bottom-0 w-full z-50 rounded-t-xl border-t border-outline-variant/20 shadow-[0px_-4px_16px_rgba(79,70,229,0.08)] flex justify-around items-center px-4 py-2 pb-safe">
+<a class="flex flex-col items-center justify-center text-primary dark:text-secondary-fixed-dim bg-primary/10 dark:bg-primary-container/20 rounded-xl px-4 py-1 hover:bg-surface-variant/50 dark:hover:bg-on-surface-variant/10 active:scale-90 transition-all duration-300" href="#">
+<span class="material-symbols-outlined" data-icon="description" data-weight="fill" style="font-variation-settings: 'FILL' 1;">description</span>
+<span class="font-label-sm text-label-sm mt-1">Scans</span>
+</a>
+<a class="flex flex-col items-center justify-center text-on-surface-variant dark:text-outline hover:bg-surface-variant/50 dark:hover:bg-on-surface-variant/10 active:scale-90 transition-all duration-300 px-4 py-1 rounded-xl" href="#">
+<span class="material-symbols-outlined" data-icon="auto_awesome">auto_awesome</span>
+<span class="font-label-sm text-label-sm mt-1">AI Tools</span>
+</a>
+<a class="flex flex-col items-center justify-center text-on-surface-variant dark:text-outline hover:bg-surface-variant/50 dark:hover:bg-on-surface-variant/10 active:scale-90 transition-all duration-300 px-4 py-1 rounded-xl" href="#">
+<span class="material-symbols-outlined" data-icon="history">history</span>
+<span class="font-label-sm text-label-sm mt-1">Recent</span>
+</a>
+<a class="flex flex-col items-center justify-center text-on-surface-variant dark:text-outline hover:bg-surface-variant/50 dark:hover:bg-on-surface-variant/10 active:scale-90 transition-all duration-300 px-4 py-1 rounded-xl" href="#">
+<span class="material-symbols-outlined" data-icon="settings">settings</span>
+<span class="font-label-sm text-label-sm mt-1">Settings</span>
+</a>
+</nav>
+</body></html>

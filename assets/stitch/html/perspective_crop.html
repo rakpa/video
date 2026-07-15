@@ -1,0 +1,267 @@
+﻿<!DOCTYPE html>
+
+<html class="light" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=780, height=1768, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" name="viewport"/>
+<title>Adjust Borders - Scanella</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            "colors": {
+                    "surface-container-high": "#e8e8ea",
+                    "secondary-container": "#90efef",
+                    "on-primary-fixed": "#001847",
+                    "on-tertiary-fixed-variant": "#2e4b57",
+                    "on-surface": "#1a1c1d",
+                    "on-secondary-fixed": "#002020",
+                    "background": "#f9f9fb",
+                    "surface-variant": "#e2e2e4",
+                    "surface-container-low": "#f3f3f5",
+                    "on-primary-fixed-variant": "#0040a1",
+                    "tertiary": "#2e4b58",
+                    "on-tertiary-container": "#c0deee",
+                    "secondary-fixed": "#93f2f2",
+                    "on-tertiary-fixed": "#001f2a",
+                    "on-primary-container": "#ccd8ff",
+                    "surface-tint": "#0056d2",
+                    "secondary": "#006a6a",
+                    "error": "#ba1a1a",
+                    "surface-dim": "#d9dadc",
+                    "inverse-on-surface": "#f0f0f2",
+                    "on-secondary": "#ffffff",
+                    "surface-bright": "#f9f9fb",
+                    "tertiary-fixed-dim": "#adcbda",
+                    "tertiary-container": "#466370",
+                    "surface-container-lowest": "#ffffff",
+                    "on-primary": "#ffffff",
+                    "outline-variant": "#c3c6d6",
+                    "inverse-primary": "#b2c5ff",
+                    "surface-container-highest": "#e2e2e4",
+                    "outline": "#737785",
+                    "on-surface-variant": "#424654",
+                    "error-container": "#ffdad6",
+                    "tertiary-fixed": "#c9e7f7",
+                    "on-error": "#ffffff",
+                    "surface": "#f9f9fb",
+                    "on-secondary-container": "#006e6e",
+                    "primary-container": "#0056d2",
+                    "on-error-container": "#93000a",
+                    "secondary-fixed-dim": "#76d6d5",
+                    "primary-fixed": "#dae2ff",
+                    "primary-fixed-dim": "#b2c5ff",
+                    "surface-container": "#eeeef0",
+                    "primary": "#0040a1",
+                    "inverse-surface": "#2f3132",
+                    "on-secondary-fixed-variant": "#004f4f",
+                    "on-background": "#1a1c1d",
+                    "on-tertiary": "#ffffff"
+            },
+            "borderRadius": {
+                    "DEFAULT": "0.25rem",
+                    "lg": "0.5rem",
+                    "xl": "0.75rem",
+                    "full": "9999px"
+            },
+            "spacing": {
+                    "sm": "8px",
+                    "md": "16px",
+                    "margin-desktop": "48px",
+                    "xl": "32px",
+                    "xs": "4px",
+                    "margin-mobile": "16px",
+                    "lg": "24px",
+                    "base": "4px",
+                    "gutter": "16px"
+            },
+            "fontFamily": {
+                    "headline-lg-mobile": ["Inter"],
+                    "body-md": ["Inter"],
+                    "label-md": ["Inter"],
+                    "headline-md": ["Inter"],
+                    "body-lg": ["Inter"],
+                    "label-lg": ["Inter"],
+                    "title-lg": ["Inter"],
+                    "headline-lg": ["Inter"]
+            },
+            "fontSize": {
+                    "headline-lg-mobile": ["28px", {"lineHeight": "36px", "letterSpacing": "-0.02em", "fontWeight": "700"}],
+                    "body-md": ["14px", {"lineHeight": "20px", "fontWeight": "400"}],
+                    "label-md": ["11px", {"lineHeight": "16px", "fontWeight": "500"}],
+                    "headline-md": ["24px", {"lineHeight": "32px", "fontWeight": "600"}],
+                    "body-lg": ["16px", {"lineHeight": "24px", "fontWeight": "400"}],
+                    "label-lg": ["12px", {"lineHeight": "16px", "letterSpacing": "0.05em", "fontWeight": "600"}],
+                    "title-lg": ["20px", {"lineHeight": "28px", "fontWeight": "600"}],
+                    "headline-lg": ["32px", {"lineHeight": "40px", "letterSpacing": "-0.02em", "fontWeight": "700"}]
+            }
+          }
+        }
+      }
+    </script>
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+        
+        /* Neumorphic shadow utilities - customized for light mode */
+        .shadow-neu {
+            box-shadow: 4px 4px 8px rgba(0, 0, 0, 0.05), -4px -4px 8px rgba(255, 255, 255, 1);
+        }
+        .shadow-neu-pressed {
+            box-shadow: inset 4px 4px 8px rgba(0, 0, 0, 0.05), inset -4px -4px 8px rgba(255, 255, 255, 1);
+        }
+        
+        /* Document Crop specific styles */
+        .crop-handle {
+            width: 24px;
+            height: 24px;
+            background-color: theme('colors.primary');
+            border: 3px solid white;
+            border-radius: 50%;
+            position: absolute;
+            transform: translate(-50%, -50%);
+            box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+            z-index: 10;
+            cursor: pointer;
+        }
+        .crop-line {
+            position: absolute;
+            background-color: theme('colors.primary');
+            box-shadow: 0 0 4px rgba(255,255,255,0.8);
+            z-index: 5;
+        }
+    </style>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+  <style id="stitch-flutter-fit">
+    html, body {
+      width: 780px !important;
+      height: 1768px !important;
+      min-height: 1768px !important;
+      max-height: 1768px !important;
+      margin: 0 !important;
+      overflow: hidden !important;
+    }
+    .h-screen, main.h-screen, [class*="h-screen"] {
+      height: 1768px !important;
+      min-height: 1768px !important;
+    }
+  </style></head>
+<body class="bg-background text-on-background h-screen flex flex-col overflow-hidden">
+<!-- TopAppBar - Suppressed shell nav per rules, treating this as a focused task screen. Custom task header. -->
+<header class="bg-surface dark:bg-surface-dim w-full top-0 sticky shadow-[4px_4px_8px_rgba(0,0,0,0.05),-4px_-4px_4px_rgba(255,255,255,1)] flex justify-between items-center px-md py-sm w-full z-50">
+<button aria-label="Cancel" class="text-on-surface-variant hover:opacity-80 transition-opacity active:scale-95 transition-transform p-2 rounded-full shadow-neu">
+<span class="material-symbols-outlined text-[24px]">close</span>
+</button>
+<h1 class="font-headline-md text-headline-md-mobile text-on-surface tracking-tight">Adjust Borders</h1>
+<button aria-label="Reset" class="text-on-surface-variant hover:opacity-80 transition-opacity active:scale-95 transition-transform p-2 rounded-full shadow-neu">
+<span class="material-symbols-outlined text-[24px]">restart_alt</span>
+</button>
+</header>
+<!-- Main Content Canvas - Crop Area -->
+<main class="flex-grow relative bg-surface-container-high overflow-hidden flex items-center justify-center p-md">
+<!-- Image Container -->
+<div class="relative max-w-full max-h-full rounded-lg shadow-xl" style="width: 85%; height: 80%;">
+<!-- Source Image -->
+<img alt="Document to crop" class="w-full h-full object-contain rounded-lg block pointer-events-none" data-alt="A top-down view of a slightly crumpled white paper document containing printed black text, resting on a medium dark wood textured desk surface. The lighting is soft and even, simulating a clean, modern scanning application environment. The scene is realistic and emphasizes the physical nature of paper." id="document-image" src="https://lh3.googleusercontent.com/aida-public/AB6AXuD8wG9kH4U4nspXAb4AE1XYSKkjl-3ylh7lfLqn5m4uhrk7Fg28AreB25c8X8px_wNadFLPvYQXREdyGTfp1xqOcZUVX9ClvqsIMRDY7FbFwB29Zvb_vU9eylBF151l4uovuDjjFM0y61FyJQ2dlHVpwSVPAfMvv93oB225hStIKuqyhF2oo2SmVDQ5annSIGetKQb9ZyTsvKouIC4dnq9ANmuhVtug94eXeLQHezXsihsxl7RHvA2a"/>
+<!-- Dark Overlay (Outside crop area) -->
+<div class="absolute inset-0 bg-black/40 pointer-events-none rounded-lg"></div>
+<!-- Crop Polygon/Grid (Inside crop area) -->
+<!-- Using SVG for precise polygon rendering and transparent "hole" punch -->
+<svg class="absolute inset-0 w-full h-full pointer-events-none z-0" id="crop-svg">
+<defs>
+<mask id="crop-mask">
+<rect fill="white" height="100%" width="100%"></rect>
+<polygon fill="black" id="crop-mask-poly" points="10%,15% 90%,10% 85%,95% 15%,90%"></polygon>
+</mask>
+</defs>
+<rect fill="rgba(0,0,0,0.5)" height="100%" mask="url(#crop-mask)" width="100%"></rect>
+<!-- Crop area highlight (transparent center) -->
+<polygon class="text-primary" fill="none" id="crop-outline" points="10%,15% 90%,10% 85%,95% 15%,90%" stroke="currentColor" stroke-width="2"></polygon>
+<!-- Grid Lines inside crop area (optional visual enhancement) -->
+<g fill="none" id="crop-grid" stroke="rgba(255,255,255,0.3)" stroke-width="1">
+<line x1="36.6%" x2="38.3%" y1="13.3%" y2="91.6%"></line>
+<line x1="63.3%" x2="61.6%" y1="11.6%" y2="93.3%"></line>
+<line x1="11.6%" x2="88.3%" y1="41.6%" y2="36.6%"></line>
+<line x1="13.3%" x2="86.6%" y1="66.6%" y2="63.3%"></line>
+</g>
+</svg>
+<!-- Interactive Nodes -->
+<div class="crop-handle" id="node-tl" style="left: 10%; top: 15%;"></div>
+<div class="crop-handle" id="node-tr" style="left: 90%; top: 10%;"></div>
+<div class="crop-handle" id="node-br" style="left: 85%; top: 95%;"></div>
+<div class="crop-handle" id="node-bl" style="left: 15%; top: 90%;"></div>
+<!-- Edges (for potential edge-dragging implementation, just visual here) -->
+<div class="crop-line" style="top: 12.5%; left: 50%; width: 80%; height: 2px; transform: translate(-50%, -50%) rotate(-3deg);"></div>
+<div class="crop-line" style="top: 52.5%; left: 87.5%; width: 2px; height: 85%; transform: translate(-50%, -50%) rotate(3deg);"></div>
+<div class="crop-line" style="top: 92.5%; left: 50%; width: 70%; height: 2px; transform: translate(-50%, -50%) rotate(4deg);"></div>
+<div class="crop-line" style="top: 52.5%; left: 12.5%; width: 2px; height: 75%; transform: translate(-50%, -50%) rotate(-4deg);"></div>
+</div>
+<!-- Magnifier Preview (Hidden by default, shown on drag) -->
+<div class="hidden absolute top-md left-md w-32 h-32 bg-surface rounded-full border-4 border-primary shadow-2xl overflow-hidden pointer-events-none z-50" id="magnifier">
+<!-- Placeholder for magnified content logic -->
+<div class="w-full h-full bg-surface-container flex items-center justify-center">
+<span class="material-symbols-outlined text-outline opacity-50">zoom_in</span>
+</div>
+<!-- Crosshair -->
+<div class="absolute inset-0 flex items-center justify-center">
+<div class="w-full h-[1px] bg-primary/50"></div>
+<div class="h-full w-[1px] bg-primary/50 absolute"></div>
+</div>
+</div>
+</main>
+<!-- Bottom Actions Area - Task Focused -->
+<footer class="bg-surface w-full p-md shadow-[0_-4px_12px_rgba(0,0,0,0.05),0_-2px_4px_rgba(255,255,255,0.8)] z-20 flex justify-between items-center pb-safe pt-lg border-t border-surface-variant/20">
+<button class="font-label-lg text-label-lg text-on-surface-variant hover:text-on-surface px-lg py-sm transition-colors active:scale-95 duration-200 uppercase tracking-widest">
+            Cancel
+        </button>
+<button class="font-label-lg text-label-lg text-on-primary bg-primary hover:opacity-90 active:scale-95 transition-all duration-200 px-xl py-md rounded-[16px] shadow-md flex items-center gap-2 uppercase tracking-widest">
+<span class="material-symbols-outlined text-[20px]">crop</span>
+            Confirm Crop
+        </button>
+</footer>
+<!-- Minimal JS for node interaction simulation -->
+<script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const nodes = document.querySelectorAll('.crop-handle');
+            const magnifier = document.getElementById('magnifier');
+            
+            nodes.forEach(node => {
+                node.addEventListener('mousedown', () => {
+                    node.classList.add('scale-150', 'transition-transform');
+                    magnifier.classList.remove('hidden');
+                });
+                
+                node.addEventListener('mouseup', () => {
+                    node.classList.remove('scale-150');
+                    magnifier.classList.add('hidden');
+                });
+                
+                node.addEventListener('mouseleave', () => {
+                    node.classList.remove('scale-150');
+                    magnifier.classList.add('hidden');
+                });
+                
+                // Touch events for mobile
+                node.addEventListener('touchstart', (e) => {
+                    e.preventDefault(); // Prevent scrolling
+                    node.classList.add('scale-150', 'transition-transform');
+                    magnifier.classList.remove('hidden');
+                });
+                
+                node.addEventListener('touchend', () => {
+                    node.classList.remove('scale-150');
+                    magnifier.classList.add('hidden');
+                });
+            });
+        });
+    </script>
+</body></html>

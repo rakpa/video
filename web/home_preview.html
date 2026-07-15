@@ -1,0 +1,361 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Scanella — Home Preview</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: Inter, system-ui, sans-serif;
+      background: #1a1a1a;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+    }
+    .phone {
+      width: min(390px, 100%);
+      height: min(844px, 92vh);
+      background: #F5F5F7;
+      border-radius: 24px;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      box-shadow: 0 24px 80px rgba(0,0,0,.45);
+      position: relative;
+    }
+    .header {
+      background: #F9F9FB;
+      padding: 8px;
+      display: flex;
+      align-items: center;
+      box-shadow: 4px 4px 8px rgba(0,0,0,.05), -4px -4px 4px #fff;
+    }
+    .icon-btn {
+      width: 44px; height: 44px; border: none; border-radius: 999px;
+      background: #F9F9FB; cursor: pointer;
+      box-shadow: 4px 4px 8px rgba(0,0,0,.05), -4px -4px 8px #fff;
+      display: grid; place-items: center; color: #424654; font-size: 20px;
+    }
+    .title { flex: 1; text-align: center; font-size: 24px; font-weight: 600; color: #0040A1; }
+    .search-wrap { padding: 8px 16px 0; }
+    .search {
+      height: 52px; background: #F9F9FB; border-radius: 16px; padding: 0 14px;
+      display: flex; align-items: center; gap: 10px;
+      box-shadow: 4px 4px 8px rgba(0,0,0,.05), -4px -4px 8px #fff;
+      color: #737785; font-size: 16px;
+    }
+    .section { padding: 20px 16px 8px; }
+    .section-top { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 10px; }
+    .section h2 { font-size: 20px; font-weight: 600; color: #1A1C1D; }
+    .sort-btn, .toggle button {
+      border: none; border-radius: 10px; background: #F9F9FB; cursor: pointer;
+      box-shadow: 2px 2px 6px rgba(0,0,0,.05), -2px -2px 4px #fff;
+      color: #424654; font-size: 13px; padding: 6px 10px;
+    }
+    .section-bottom { display: flex; justify-content: flex-end; align-items: center; gap: 8px; padding-bottom: 4px; }
+    .toggle { display: flex; gap: 8px; }
+    .toggle button { width: 40px; height: 40px; padding: 0; font-size: 18px; }
+    .toggle button.active { background: rgba(144,239,239,.25); color: #006A6A; }
+    .content { flex: 1; overflow-y: auto; overflow-x: hidden; padding: 0 16px 16px; scrollbar-width: none; }
+    .content::-webkit-scrollbar { display: none; }
+    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; align-content: start; grid-auto-rows: 1fr; width: 100%; }
+    .grid.list { display: flex; flex-direction: column; gap: 10px; }
+    .grid.list .card { min-height: auto; height: auto; flex-direction: row; align-items: center; gap: 12px; }
+    .grid.list .thumb { width: 56px; height: 72px; min-height: 72px; flex: 0 0 56px; margin-bottom: 0; }
+    .card {
+      background: #fff; border-radius: 12px; padding: 10px;
+      box-shadow: 4px 4px 8px rgba(0,0,0,.05), -4px -4px 8px #fff;
+      cursor: pointer;
+      display: flex; flex-direction: column; min-height: 200px; height: 100%;
+    }
+    .thumb {
+      flex: 1; min-height: 120px; background: #E8E8EA; border-radius: 8px;
+      display: grid; place-items: center; color: #737785; font-size: 32px; margin-bottom: 8px;
+    }
+    .thumb.folder { background: rgba(255,213,79,.2); }
+    .card h3 { font-size: 12px; font-weight: 600; color: #1A1C1D; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; line-height: 1.2; min-height: 16px; }
+    .card p { font-size: 11px; color: #737785; margin-top: 2px; line-height: 1.2; min-height: 14px; }
+    .empty { text-align: center; padding: 48px 24px; color: #737785; grid-column: 1 / -1; }
+    .scan-bar {
+      background: #F9F9FB; border-radius: 16px 16px 0 0;
+      box-shadow: 0 -4px 12px rgba(0,0,0,.05);
+      padding: 8px 0 20px; display: flex; justify-content: center; align-items: center;
+      min-height: 80px;
+    }
+    .scan-btn {
+      width: 64px; height: 64px; border-radius: 16px; border: none;
+      background: #0040A1; color: #fff; font-size: 28px;
+      box-shadow: 0 8px 24px rgba(0,64,161,.4); cursor: pointer;
+    }
+    .drawer-overlay {
+      position: absolute; inset: 0; background: rgba(0,0,0,.35);
+      opacity: 0; pointer-events: none; transition: opacity .2s; z-index: 10;
+    }
+    .drawer-overlay.open { opacity: 1; pointer-events: auto; }
+    .drawer {
+      position: absolute; top: 0; left: 0; bottom: 0; width: 78%;
+      max-width: 300px; background: #F9F9FB; transform: translateX(-100%);
+      transition: transform .25s; z-index: 11; padding: 24px 0;
+      box-shadow: 4px 0 24px rgba(0,0,0,.12);
+    }
+    .drawer.open { transform: translateX(0); }
+    .drawer h2 { padding: 0 24px 8px; color: #0040A1; font-size: 24px; }
+    .drawer p { padding: 0 24px 16px; color: #737785; }
+    .drawer button {
+      width: 100%; border: none; background: transparent; text-align: left;
+      padding: 14px 24px; font-size: 16px; color: #1A1C1D; cursor: pointer;
+    }
+    .drawer button:hover { background: rgba(0,64,161,.06); }
+    .folder-view { display: none; flex-direction: column; flex: 1; min-height: 0; }
+    .folder-view.active { display: flex; }
+    .home-view { display: flex; flex-direction: column; flex: 1; min-height: 0; }
+    .home-view.hidden { display: none; }
+    .note {
+      position: fixed; bottom: 12px; left: 50%; transform: translateX(-50%);
+      color: rgba(255,255,255,.6); font-size: 12px; text-align: center;
+    }
+  </style>
+</head>
+<body>
+  <div class="phone" id="app">
+    <div class="drawer-overlay" id="drawerOverlay"></div>
+    <nav class="drawer" id="drawer">
+      <h2>Scanella</h2>
+      <p>Menu</p>
+      <button id="menuProfile">👤 Profile</button>
+      <button id="menuSettings">⚙ Settings</button>
+      <button id="menuNewFolder">📁 New folder</button>
+    </nav>
+
+    <div class="home-view" id="homeView">
+      <header class="header">
+        <button class="icon-btn" id="menuBtn" aria-label="Menu">☰</button>
+        <div class="title">Scanella</div>
+        <div style="width:44px"></div>
+      </header>
+      <div class="search-wrap">
+        <div class="search"><span>🔍</span><span>Search Scans...</span><span style="margin-left:auto">🎤</span></div>
+      </div>
+      <div class="section">
+        <div class="section-top">
+          <h2>Recent</h2>
+          <button class="sort-btn" id="sortBtn">⇅ Newest</button>
+        </div>
+        <div class="section-bottom">
+          <button class="icon-btn" id="newFolderBtn" title="New folder" style="width:40px;height:40px;font-size:18px">＋</button>
+          <div class="toggle">
+            <button class="active" id="gridBtn" title="Grid">▦</button>
+            <button id="listBtn" title="List">☰</button>
+          </div>
+        </div>
+      </div>
+      <div class="content">
+        <div class="grid" id="feedGrid">
+          <div class="empty" id="feedEmpty">
+            <div style="font-size:40px;margin-bottom:12px">📁</div>
+            <strong style="display:block;color:#1A1C1D;margin-bottom:6px">Nothing here yet</strong>
+            Create a folder or tap scan below.
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="folder-view" id="folderView">
+      <header class="header">
+        <button class="icon-btn" id="folderBackBtn" aria-label="Back">←</button>
+        <div class="title" id="folderTitle">Folder</div>
+        <div style="width:44px"></div>
+      </header>
+      <div class="section"><h2 id="folderSectionTitle">Scans in folder</h2></div>
+      <div class="content">
+        <div class="grid" id="folderGrid">
+          <div class="empty" id="folderEmpty">
+            <div style="font-size:40px;margin-bottom:12px">📄</div>
+            <strong style="display:block;color:#1A1C1D;margin-bottom:6px">No scans in this folder</strong>
+            Tap the scan button below.
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="scan-bar">
+      <button class="scan-btn" id="scanBtn" title="Scan">📷</button>
+    </div>
+  </div>
+  <p class="note">Browser preview — folders & scans on home, scan button centered below</p>
+  <script>
+  let folders = [];
+  let scans = [];
+  let openFolderId = null;
+  let sortMode = 'newest';
+  let listView = false;
+  const sortOptions = [
+    { id: 'newest', label: 'Newest' },
+    { id: 'oldest', label: 'Oldest' },
+    { id: 'nameAsc', label: 'Name A–Z' },
+    { id: 'nameDesc', label: 'Name Z–A' },
+  ];
+
+  const feedGrid = document.getElementById('feedGrid');
+  const feedEmpty = document.getElementById('feedEmpty');
+  const folderGrid = document.getElementById('folderGrid');
+  const folderEmpty = document.getElementById('folderEmpty');
+  const homeView = document.getElementById('homeView');
+  const folderView = document.getElementById('folderView');
+  const folderTitle = document.getElementById('folderTitle');
+  const drawer = document.getElementById('drawer');
+  const drawerOverlay = document.getElementById('drawerOverlay');
+
+  function openDrawer() {
+    drawer.classList.add('open');
+    drawerOverlay.classList.add('open');
+  }
+  function closeDrawer() {
+    drawer.classList.remove('open');
+    drawerOverlay.classList.remove('open');
+  }
+
+  function sortItems(items) {
+    const sorted = [...items];
+    switch (sortMode) {
+      case 'oldest': sorted.sort((a, b) => a.ts - b.ts); break;
+      case 'nameAsc': sorted.sort((a, b) => a.name.localeCompare(b.name)); break;
+      case 'nameDesc': sorted.sort((a, b) => b.name.localeCompare(a.name)); break;
+      default: sorted.sort((a, b) => b.ts - a.ts);
+    }
+    return sorted;
+  }
+
+  function renderFeed() {
+    const items = sortItems([
+      ...folders.map(f => ({ type: 'folder', data: f, ts: f.ts, name: f.name })),
+      ...scans.map(s => ({ type: 'scan', data: s, ts: s.ts, name: s.title })),
+    ]);
+
+    feedGrid.classList.toggle('list', listView);
+
+    feedGrid.innerHTML = '';
+    if (!items.length) {
+      feedGrid.appendChild(feedEmpty);
+      feedEmpty.style.display = 'block';
+      return;
+    }
+    feedEmpty.style.display = 'none';
+
+    items.forEach(item => {
+      const card = document.createElement('article');
+      card.className = 'card';
+      if (item.type === 'folder') {
+        const f = item.data;
+        const label = f.scans === 0 ? 'Empty' : `${f.scans} scan${f.scans === 1 ? '' : 's'}`;
+        card.innerHTML = `<div class="thumb folder">📁</div><h3>${f.name}</h3><p>${label}</p>`;
+        card.onclick = () => openFolder(f.id);
+      } else {
+        const s = item.data;
+        card.innerHTML = `<div class="thumb">📄</div><h3>${s.title}</h3><p>${s.meta}</p>`;
+      }
+      feedGrid.appendChild(card);
+    });
+  }
+
+  function createFolder(name, open = false) {
+    const id = 'f' + Date.now();
+    folders.unshift({ id, name, scans: 0, ts: Date.now() });
+    renderFeed();
+    if (open) openFolder(id);
+  }
+
+  function openFolder(id) {
+    openFolderId = id;
+    const folder = folders.find(f => f.id === id);
+    folderTitle.textContent = folder?.name || 'Folder';
+    homeView.classList.add('hidden');
+    folderView.classList.add('active');
+    folderGrid.innerHTML = '';
+    const folderScans = scans.filter(s => s.folderId === id);
+    if (!folderScans.length) {
+      folderGrid.appendChild(folderEmpty);
+      folderEmpty.style.display = 'block';
+    } else {
+      folderEmpty.style.display = 'none';
+      folderScans.forEach(s => {
+        const card = document.createElement('article');
+        card.className = 'card';
+        card.innerHTML = `<div class="thumb">📄</div><h3>${s.title}</h3><p>${s.meta}</p>`;
+        folderGrid.appendChild(card);
+      });
+    }
+  }
+
+  function closeFolder() {
+    openFolderId = null;
+    homeView.classList.remove('hidden');
+    folderView.classList.remove('active');
+    renderFeed();
+  }
+
+  document.getElementById('menuBtn').onclick = openDrawer;
+  drawerOverlay.onclick = closeDrawer;
+  document.getElementById('menuProfile').onclick = () => { closeDrawer(); alert('Profile — open in app'); };
+  document.getElementById('menuSettings').onclick = () => { closeDrawer(); alert('Settings — open in app'); };
+  document.getElementById('menuNewFolder').onclick = () => {
+    closeDrawer();
+    const name = prompt('Folder name');
+    if (name?.trim()) createFolder(name.trim());
+  };
+  document.getElementById('newFolderBtn').onclick = () => {
+    const name = prompt('Folder name');
+    if (name?.trim()) createFolder(name.trim());
+  };
+  document.getElementById('folderBackBtn').onclick = closeFolder;
+
+  document.getElementById('sortBtn').onclick = () => {
+    const idx = sortOptions.findIndex(o => o.id === sortMode);
+    const next = sortOptions[(idx + 1) % sortOptions.length];
+    sortMode = next.id;
+    document.getElementById('sortBtn').textContent = '⇅ ' + next.label;
+    renderFeed();
+  };
+  document.getElementById('gridBtn').onclick = () => {
+    listView = false;
+    document.getElementById('gridBtn').classList.add('active');
+    document.getElementById('listBtn').classList.remove('active');
+    renderFeed();
+  };
+  document.getElementById('listBtn').onclick = () => {
+    listView = true;
+    document.getElementById('listBtn').classList.add('active');
+    document.getElementById('gridBtn').classList.remove('active');
+    renderFeed();
+  };
+
+  document.getElementById('scanBtn').onclick = () => {
+    const d = new Date();
+    const scan = {
+      id: 's' + Date.now(),
+      title: 'Scan ' + d.toLocaleString(),
+      meta: d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) + ' · 1 pg',
+      folderId: openFolderId,
+      ts: Date.now(),
+    };
+    scans.unshift(scan);
+    if (openFolderId) {
+      const folder = folders.find(f => f.id === openFolderId);
+      if (folder) { folder.scans++; folder.ts = Date.now(); }
+      openFolder(openFolderId);
+    } else {
+      renderFeed();
+    }
+    const btn = document.getElementById('scanBtn');
+    btn.textContent = '⏳';
+    setTimeout(() => { btn.textContent = '📷'; }, 400);
+  };
+
+  renderFeed();
+  </script>
+</body>
+</html>

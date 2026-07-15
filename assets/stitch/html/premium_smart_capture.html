@@ -1,0 +1,365 @@
+﻿<!DOCTYPE html>
+
+<html lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=780, height=1768, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" name="viewport"/>
+<title>Smart Capture - Scanella</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com" rel="preconnect"/>
+<link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;600&amp;family=Plus+Jakarta+Sans:wght@700;800&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+          darkMode: "class",
+          theme: {
+            extend: {
+              "colors": {
+                      "surface-variant": "#dae2fd",
+                      "on-tertiary": "#ffffff",
+                      "on-surface-variant": "#464555",
+                      "inverse-on-surface": "#eef0ff",
+                      "primary": "#3525cd",
+                      "surface-container-lowest": "#ffffff",
+                      "tertiary-fixed": "#ffdbcc",
+                      "on-error": "#ffffff",
+                      "on-surface": "#131b2e",
+                      "inverse-surface": "#283044",
+                      "on-secondary-fixed-variant": "#004e5c",
+                      "outline-variant": "#c7c4d8",
+                      "error-container": "#ffdad6",
+                      "tertiary-container": "#a44100",
+                      "on-secondary-fixed": "#001f26",
+                      "on-tertiary-container": "#ffd2be",
+                      "primary-fixed": "#e2dfff",
+                      "on-primary": "#ffffff",
+                      "surface-tint": "#4d44e3",
+                      "on-secondary-container": "#006172",
+                      "on-background": "#131b2e",
+                      "on-error-container": "#93000a",
+                      "primary-container": "#4f46e5",
+                      "secondary-container": "#57dffe",
+                      "on-primary-fixed-variant": "#3323cc",
+                      "on-tertiary-fixed-variant": "#7b2f00",
+                      "surface": "#faf8ff",
+                      "secondary-fixed-dim": "#4cd7f6",
+                      "on-secondary": "#ffffff",
+                      "error": "#ba1a1a",
+                      "surface-bright": "#faf8ff",
+                      "tertiary-fixed-dim": "#ffb695",
+                      "outline": "#777587",
+                      "on-primary-fixed": "#0f0069",
+                      "on-primary-container": "#dad7ff",
+                      "surface-container-high": "#e2e7ff",
+                      "primary-fixed-dim": "#c3c0ff",
+                      "secondary-fixed": "#acedff",
+                      "surface-dim": "#d2d9f4",
+                      "tertiary": "#7e3000",
+                      "secondary": "#00687a",
+                      "inverse-primary": "#c3c0ff",
+                      "surface-container-highest": "#dae2fd",
+                      "on-tertiary-fixed": "#351000",
+                      "surface-container": "#eaedff",
+                      "background": "#faf8ff",
+                      "surface-container-low": "#f2f3ff"
+              },
+              "borderRadius": {
+                      "DEFAULT": "0.25rem",
+                      "lg": "0.5rem",
+                      "xl": "0.75rem",
+                      "full": "9999px"
+              },
+              "spacing": {
+                      "xs": "4px",
+                      "container-margin": "20px",
+                      "gutter": "16px",
+                      "md": "24px",
+                      "sm": "12px",
+                      "base": "8px",
+                      "lg": "40px",
+                      "safe": "env(safe-area-inset-bottom)"
+              },
+              "fontFamily": {
+                      "label-sm": [
+                              "Outfit"
+                      ],
+                      "body-lg": [
+                              "Outfit"
+                      ],
+                      "body-md": [
+                              "Outfit"
+                      ],
+                      "display-lg-mobile": [
+                              "Plus Jakarta Sans"
+                      ],
+                      "headline-md": [
+                              "Plus Jakarta Sans"
+                      ],
+                      "display-lg": [
+                              "Plus Jakarta Sans"
+                      ]
+              },
+              "fontSize": {
+                      "label-sm": [
+                              "13px",
+                              {
+                                      "lineHeight": "16px",
+                                      "letterSpacing": "0.05em",
+                                      "fontWeight": "600"
+                              }
+                      ],
+                      "body-lg": [
+                              "18px",
+                              {
+                                      "lineHeight": "28px",
+                                      "fontWeight": "400"
+                              }
+                      ],
+                      "body-md": [
+                              "16px",
+                              {
+                                      "lineHeight": "24px",
+                                      "fontWeight": "400"
+                              }
+                      ],
+                      "display-lg-mobile": [
+                              "32px",
+                              {
+                                      "lineHeight": "40px",
+                                      "letterSpacing": "-0.02em",
+                                      "fontWeight": "800"
+                              }
+                      ],
+                      "headline-md": [
+                              "24px",
+                              {
+                                      "lineHeight": "32px",
+                                      "letterSpacing": "-0.01em",
+                                      "fontWeight": "700"
+                              }
+                      ],
+                      "display-lg": [
+                              "48px",
+                              {
+                                      "lineHeight": "56px",
+                                      "letterSpacing": "-0.02em",
+                                      "fontWeight": "800"
+                              }
+                      ]
+              }
+            },
+          }
+        }
+    </script>
+<style>
+        .material-symbols-outlined {
+          font-variation-settings:
+          'FILL' 0,
+          'wght' 400,
+          'GRAD' 0,
+          'opsz' 24
+        }
+        
+        .viewfinder-corner {
+            position: absolute;
+            width: 40px;
+            height: 40px;
+            border-color: #57dffe; /* Cyber Cyan */
+            border-style: solid;
+            box-shadow: 0 0 15px rgba(87, 223, 254, 0.5);
+            transition: all 0.3s ease;
+        }
+
+        .viewfinder-corner.top-left { top: 0; left: 0; border-width: 4px 0 0 4px; border-top-left-radius: 12px; }
+        .viewfinder-corner.top-right { top: 0; right: 0; border-width: 4px 4px 0 0; border-top-right-radius: 12px; }
+        .viewfinder-corner.bottom-left { bottom: 0; left: 0; border-width: 0 0 4px 4px; border-bottom-left-radius: 12px; }
+        .viewfinder-corner.bottom-right { bottom: 0; right: 0; border-width: 0 4px 4px 0; border-bottom-right-radius: 12px; }
+
+        @keyframes pulse-cyan {
+            0%, 100% { box-shadow: 0 0 15px rgba(87, 223, 254, 0.5); border-color: rgba(87, 223, 254, 0.8); }
+            50% { box-shadow: 0 0 30px rgba(87, 223, 254, 0.9); border-color: rgba(87, 223, 254, 1); }
+        }
+
+        .scanning-active .viewfinder-corner {
+            animation: pulse-cyan 1.5s infinite;
+        }
+
+        .scanning-line {
+            position: absolute;
+            left: 0;
+            width: 100%;
+            height: 2px;
+            background: linear-gradient(90deg, transparent, #57dffe, transparent);
+            box-shadow: 0 0 10px #57dffe;
+            animation: scan 2.5s infinite linear;
+            display: none;
+        }
+
+        .scanning-active .scanning-line {
+            display: block;
+        }
+
+        @keyframes scan {
+            0% { top: 5%; opacity: 0; }
+            10% { opacity: 1; }
+            90% { opacity: 1; }
+            100% { top: 95%; opacity: 0; }
+        }
+
+        .glass-panel {
+            background: rgba(250, 248, 255, 0.85);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border-top: 1px solid rgba(199, 196, 216, 0.3);
+        }
+        
+        .dark .glass-panel {
+            background: rgba(40, 48, 68, 0.85);
+            border-top: 1px solid rgba(199, 196, 216, 0.1);
+        }
+
+        /* Suppress navigation shell as this is a focused task screen */
+    </style>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+  <style id="stitch-flutter-fit">
+    html, body {
+      width: 780px !important;
+      height: 1768px !important;
+      min-height: 1768px !important;
+      max-height: 1768px !important;
+      margin: 0 !important;
+      overflow: hidden !important;
+    }
+    .h-screen, main.h-screen, [class*="h-screen"] {
+      height: 1768px !important;
+      min-height: 1768px !important;
+    }
+  </style></head>
+<body class="bg-black text-on-surface h-screen overflow-hidden font-body-md selection:bg-secondary-container selection:text-on-secondary-container relative">
+<!-- Camera View (Simulated Background) -->
+<div class="absolute inset-0 z-0 bg-gray-900">
+<img alt="A modern office desk setting viewed from above, simulating a camera view preparing to scan a document. A crisp white paper invoice rests on a dark wood surface, surrounded by minimalist tech accessories like a sleek keyboard and a stylus. The lighting is bright and even, casting soft shadows, ideal for document scanning. The overall aesthetic is clean, professional, and slightly high-tech." class="w-full h-full object-cover opacity-80" data-alt="A modern office desk setting viewed from above, simulating a camera view preparing to scan a document. A crisp white paper invoice rests on a dark wood surface, surrounded by minimalist tech accessories like a sleek keyboard and a stylus. The lighting is bright and even, casting soft shadows, ideal for document scanning. The overall aesthetic is clean, professional, and slightly high-tech." id="camera-feed-sim" src="https://lh3.googleusercontent.com/aida-public/AB6AXuAKi-iqkmEId5kcG_8MrA4UE6Vlz2VrsTIS13ZSM6Y2iBfkAkmDzi6IK_aprl9zj2nkZSmylnD1uqg4rxjIXzMrzJzRWpoNhXYWUmU2p5cW4uOtcFweStsvKOeot2xds7nyzshg4kmymTh3rkKPFLZjv-YIr9uyylBe8O5gktYhBvlc1jKlYpuzif0Rg8zr5KzHZJGI_7gahMRshFpjB7TLj8i_Sq0RYZJdWyYRaRn2FyHsDWVfd-2J"/>
+<div class="absolute inset-0 bg-black/20"></div>
+</div>
+<!-- Top Controls Layer -->
+<div class="absolute top-0 left-0 w-full z-20 flex justify-between items-center p-4 pt-safe mt-4">
+<button class="w-12 h-12 rounded-full bg-black/30 backdrop-blur-md flex items-center justify-center text-white hover:bg-black/50 transition-colors">
+<span class="material-symbols-outlined" data-icon="close">close</span>
+</button>
+<div class="flex gap-4">
+<button class="w-12 h-12 rounded-full bg-black/30 backdrop-blur-md flex items-center justify-center text-white hover:bg-black/50 transition-colors" id="flash-toggle">
+<span class="material-symbols-outlined" data-icon="flash_auto">flash_auto</span>
+</button>
+<button class="w-12 h-12 rounded-full bg-black/30 backdrop-blur-md flex items-center justify-center text-white hover:bg-black/50 transition-colors">
+<span class="material-symbols-outlined" data-icon="auto_awesome">auto_awesome</span>
+</button>
+</div>
+</div>
+<!-- Document Bounding Box (Viewfinder) -->
+<div class="absolute inset-0 z-10 flex items-center justify-center pointer-events-none p-8" id="viewfinder-container">
+<!-- The bounding box dynamically adjusts based on 'detected' document size, simulated here -->
+<div class="relative w-full max-w-md aspect-[3/4] scanning-active" id="bounding-box">
+<div class="viewfinder-corner top-left"></div>
+<div class="viewfinder-corner top-right"></div>
+<div class="viewfinder-corner bottom-left"></div>
+<div class="viewfinder-corner bottom-right"></div>
+<div class="scanning-line"></div>
+<!-- Guidance Text -->
+<div class="absolute -top-12 left-0 w-full text-center">
+<span class="bg-black/60 backdrop-blur-md text-white font-label-sm text-label-sm px-4 py-2 rounded-full tracking-wide">
+                    Hold steady to scan...
+                </span>
+</div>
+</div>
+</div>
+<!-- Bottom Controls Area (Glassmorphism) -->
+<div class="absolute bottom-0 left-0 w-full z-20 glass-panel rounded-t-3xl pt-6 pb-safe flex flex-col items-center">
+<!-- Mode Selector -->
+<div class="flex gap-2 bg-surface-variant/50 p-1 rounded-full mb-6">
+<button class="px-6 py-2 rounded-full font-label-sm text-label-sm text-on-surface-variant hover:text-primary transition-colors">Batch</button>
+<button class="px-6 py-2 rounded-full bg-white text-primary font-label-sm text-label-sm shadow-sm transition-all">Document</button>
+<button class="px-6 py-2 rounded-full font-label-sm text-label-sm text-on-surface-variant hover:text-primary transition-colors">ID Card</button>
+</div>
+<!-- Capture Button Area -->
+<div class="flex justify-between items-center w-full px-8 pb-8">
+<!-- Gallery Thumb -->
+<button class="w-14 h-14 rounded-xl overflow-hidden border-2 border-outline-variant/30 relative hover:border-primary/50 transition-colors">
+<img alt="A small thumbnail showing a previously scanned document. The image features a white sheet of paper with abstract text and graphs on it, set against a dark background. The thumbnail is slightly blurred to indicate it is a preview." class="w-full h-full object-cover" data-alt="A small thumbnail showing a previously scanned document. The image features a white sheet of paper with abstract text and graphs on it, set against a dark background. The thumbnail is slightly blurred to indicate it is a preview." src="https://lh3.googleusercontent.com/aida-public/AB6AXuBAEKJmYrIoj5E4oKP4POaKkJXThhU0JnD4zwPA6vU6Oom_NKYvsBAhW1Eslao2jrlxpfM_kUB678VvpAYAZks6xW_fZpxsv4LLf32ILtkyLhmQWeGTD1EpCDWW0F5jxslsDO4LgVhALlzOX4zX4K55mn45jvh54VU9mCtiYxn2EU1Uvsnsyg21sCiGA0fLJy7NMQLHZElbaczibXbOzluR3Khh1qrw6EuMiYEtohWGb8tMNOw6hRxR"/>
+<div class="absolute inset-0 bg-black/10"></div>
+</button>
+<!-- Main Shutter Button -->
+<button class="relative w-20 h-20 flex items-center justify-center group" id="capture-btn">
+<div class="absolute inset-0 rounded-full border-4 border-primary/30 group-hover:border-primary/60 transition-colors"></div>
+<div class="w-16 h-16 rounded-full bg-gradient-to-tr from-primary to-secondary-container shadow-[0px_4px_12px_rgba(79,70,229,0.3)] flex items-center justify-center transform group-active:scale-95 transition-transform">
+<span class="material-symbols-outlined text-white text-3xl" data-icon="camera" style="font-variation-settings: 'FILL' 1;">camera</span>
+</div>
+</button>
+<!-- Manual/Auto Toggle -->
+<button class="w-14 h-14 rounded-full bg-surface-variant/50 flex flex-col items-center justify-center text-primary hover:bg-surface-variant transition-colors">
+<span class="material-symbols-outlined text-lg mb-1" data-icon="hdr_auto">hdr_auto</span>
+<span class="text-[10px] font-bold uppercase tracking-wider">Auto</span>
+</button>
+</div>
+</div>
+<script>
+        // Simple interaction scripts
+        document.addEventListener('DOMContentLoaded', () => {
+            const captureBtn = document.getElementById('capture-btn');
+            const boundingBox = document.getElementById('bounding-box');
+            const flashToggle = document.getElementById('flash-toggle');
+            let isFlashOn = false;
+
+            // Simulate capture action
+            captureBtn.addEventListener('click', () => {
+                // Flash effect
+                const flash = document.createElement('div');
+                flash.className = 'absolute inset-0 bg-white z-50 pointer-events-none transition-opacity duration-300';
+                document.body.appendChild(flash);
+                
+                // Freeze box
+                boundingBox.classList.remove('scanning-active');
+                
+                setTimeout(() => {
+                    flash.style.opacity = '0';
+                    setTimeout(() => {
+                        flash.remove();
+                        // Resume scanning animation
+                        boundingBox.classList.add('scanning-active');
+                    }, 300);
+                }, 100);
+            });
+
+            // Flash toggle
+            flashToggle.addEventListener('click', () => {
+                isFlashOn = !isFlashOn;
+                const icon = flashToggle.querySelector('span');
+                if (isFlashOn) {
+                    icon.textContent = 'flash_on';
+                    icon.style.fontVariationSettings = "'FILL' 1";
+                    flashToggle.classList.add('bg-primary/50');
+                } else {
+                    icon.textContent = 'flash_auto';
+                    icon.style.fontVariationSettings = "'FILL' 0";
+                    flashToggle.classList.remove('bg-primary/50');
+                }
+            });
+
+            // Simulate slight movement of bounding box for "live" feel
+            setInterval(() => {
+                if(boundingBox.classList.contains('scanning-active')){
+                    const rotate = (Math.random() - 0.5) * 1.5;
+                    const scale = 1 + (Math.random() - 0.5) * 0.02;
+                    boundingBox.style.transform = `rotate(${rotate}deg) scale(${scale})`;
+                    boundingBox.style.transition = 'transform 0.5s ease-in-out';
+                } else {
+                     boundingBox.style.transform = `rotate(0deg) scale(1)`;
+                }
+            }, 500);
+        });
+    </script>
+</body></html>

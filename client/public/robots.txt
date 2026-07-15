@@ -1,5 +1,0 @@
-# VidCliply — robots.txt
-User-agent: *
-Allow: /
-
-Sitemap: https://vidcliply.com/sitemap.xml

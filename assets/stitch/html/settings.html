@@ -1,0 +1,329 @@
+﻿<!DOCTYPE html>
+
+<html class="light" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=780, height=1768, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" name="viewport"/>
+<title>Settings - Scanella</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "surface-container-high": "#e8e8ea",
+                        "secondary-container": "#90efef",
+                        "on-primary-fixed": "#001847",
+                        "on-tertiary-fixed-variant": "#2e4b57",
+                        "on-surface": "#1a1c1d",
+                        "on-secondary-fixed": "#002020",
+                        "background": "#f9f9fb",
+                        "surface-variant": "#e2e2e4",
+                        "surface-container-low": "#f3f3f5",
+                        "on-primary-fixed-variant": "#0040a1",
+                        "tertiary": "#2e4b58",
+                        "on-tertiary-container": "#c0deee",
+                        "secondary-fixed": "#93f2f2",
+                        "on-tertiary-fixed": "#001f2a",
+                        "on-primary-container": "#ccd8ff",
+                        "surface-tint": "#0056d2",
+                        "secondary": "#006a6a",
+                        "error": "#ba1a1a",
+                        "surface-dim": "#d9dadc",
+                        "inverse-on-surface": "#f0f0f2",
+                        "on-secondary": "#ffffff",
+                        "surface-bright": "#f9f9fb",
+                        "tertiary-fixed-dim": "#adcbda",
+                        "tertiary-container": "#466370",
+                        "surface-container-lowest": "#ffffff",
+                        "on-primary": "#ffffff",
+                        "outline-variant": "#c3c6d6",
+                        "inverse-primary": "#b2c5ff",
+                        "surface-container-highest": "#e2e2e4",
+                        "outline": "#737785",
+                        "on-surface-variant": "#424654",
+                        "error-container": "#ffdad6",
+                        "tertiary-fixed": "#c9e7f7",
+                        "on-error": "#ffffff",
+                        "surface": "#f9f9fb",
+                        "on-secondary-container": "#006e6e",
+                        "primary-container": "#0056d2",
+                        "on-error-container": "#93000a",
+                        "secondary-fixed-dim": "#76d6d5",
+                        "primary-fixed": "#dae2ff",
+                        "primary-fixed-dim": "#b2c5ff",
+                        "surface-container": "#eeeef0",
+                        "primary": "#0040a1",
+                        "inverse-surface": "#2f3132",
+                        "on-secondary-fixed-variant": "#004f4f",
+                        "on-background": "#1a1c1d",
+                        "on-tertiary": "#ffffff"
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "0.25rem",
+                        "lg": "0.5rem",
+                        "xl": "0.75rem",
+                        "full": "9999px"
+                    },
+                    "spacing": {
+                        "sm": "8px",
+                        "md": "16px",
+                        "margin-desktop": "48px",
+                        "xl": "32px",
+                        "xs": "4px",
+                        "margin-mobile": "16px",
+                        "lg": "24px",
+                        "base": "4px",
+                        "gutter": "16px"
+                    },
+                    "fontFamily": {
+                        "headline-lg-mobile": ["Inter"],
+                        "body-md": ["Inter"],
+                        "label-md": ["Inter"],
+                        "headline-md": ["Inter"],
+                        "body-lg": ["Inter"],
+                        "label-lg": ["Inter"],
+                        "title-lg": ["Inter"],
+                        "headline-lg": ["Inter"]
+                    },
+                    "fontSize": {
+                        "headline-lg-mobile": ["28px", { "lineHeight": "36px", "letterSpacing": "-0.02em", "fontWeight": "700" }],
+                        "body-md": ["14px", { "lineHeight": "20px", "fontWeight": "400" }],
+                        "label-md": ["11px", { "lineHeight": "16px", "fontWeight": "500" }],
+                        "headline-md": ["24px", { "lineHeight": "32px", "fontWeight": "600" }],
+                        "body-lg": ["16px", { "lineHeight": "24px", "fontWeight": "400" }],
+                        "label-lg": ["12px", { "lineHeight": "16px", "letterSpacing": "0.05em", "fontWeight": "600" }],
+                        "title-lg": ["20px", { "lineHeight": "28px", "fontWeight": "600" }],
+                        "headline-lg": ["32px", { "lineHeight": "40px", "letterSpacing": "-0.02em", "fontWeight": "700" }]
+                    }
+                }
+            }
+        }
+    </script>
+<style>
+        .neomorphic-surface {
+            box-shadow: -4px -4px 8px rgba(255, 255, 255, 1), 4px 4px 8px rgba(0, 0, 0, 0.05);
+        }
+        .neomorphic-pressed {
+            box-shadow: inset 4px 4px 8px rgba(0, 0, 0, 0.05), inset -4px -4px 8px rgba(255, 255, 255, 1);
+        }
+        
+        /* Custom Switch */
+        input:checked ~ .dot {
+            transform: translateX(100%);
+            background-color: #0040a1; /* primary */
+        }
+        input:checked ~ .track {
+            background-color: #dae2ff; /* primary-fixed */
+        }
+    </style>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+  <style id="stitch-flutter-fit">
+    html, body {
+      width: 780px !important;
+      height: 1768px !important;
+      min-height: 1768px !important;
+      max-height: 1768px !important;
+      margin: 0 !important;
+      overflow: hidden !important;
+    }
+    .h-screen, main.h-screen, [class*="h-screen"] {
+      height: 1768px !important;
+      min-height: 1768px !important;
+    }
+  </style></head>
+<body class="bg-[#F5F5F7] text-on-surface font-body-lg min-h-screen pb-24 md:pb-0 selection:bg-primary-container selection:text-on-primary-container">
+<!-- TopAppBar -->
+<header class="bg-surface dark:bg-surface-dim text-primary dark:text-primary-fixed font-headline-md text-headline-md-mobile w-full top-0 sticky shadow-[4px_4px_8px_rgba(0,0,0,0.05),-4px_-4px_4px_rgba(255,255,255,1)] dark:shadow-none flex justify-between items-center px-md py-sm w-full z-40">
+<button aria-label="Menu" class="p-2 rounded-full text-on-surface-variant hover:opacity-80 transition-opacity active:scale-95 transition-transform hidden md:block">
+<span class="material-symbols-outlined" data-icon="menu">menu</span>
+</button>
+<div class="font-headline-md text-headline-md-mobile text-primary dark:text-primary-fixed tracking-tight">Scanella</div>
+<button aria-label="Settings" class="p-2 rounded-full text-on-surface-variant hover:opacity-80 transition-opacity active:scale-95 transition-transform md:hidden">
+<span class="material-symbols-outlined" data-icon="settings">settings</span>
+</button>
+<div class="w-10 hidden md:block"></div> <!-- Spacer for centering on desktop -->
+</header>
+<div class="flex max-w-[1200px] mx-auto h-[calc(100vh-64px)]">
+<!-- NavigationDrawer (Desktop) -->
+<nav class="hidden md:flex bg-surface dark:bg-surface-container h-full w-80 rounded-r-xl shadow-xl flex-col py-lg px-md sticky top-16 z-30">
+<div class="mb-8 px-4 flex items-center gap-4">
+<div class="w-12 h-12 rounded-full bg-primary-container text-on-primary-container flex items-center justify-center font-headline-md text-headline-md">
+                    P
+                </div>
+<div>
+<h2 class="font-title-lg text-title-lg text-primary">Professional User</h2>
+<p class="font-body-md text-body-md text-on-surface-variant">Pro Plan Member</p>
+</div>
+</div>
+<a class="flex items-center gap-4 px-4 py-3 text-on-surface-variant dark:text-on-surface-variant hover:bg-surface-variant/50 rounded-full mx-2 my-1 hover:bg-surface-container-high transition-colors active:bg-surface-variant transition-all group" href="#">
+<span class="material-symbols-outlined group-hover:text-primary transition-colors" data-icon="drafts">drafts</span>
+<span class="font-body-lg text-body-lg group-hover:text-primary transition-colors">All Documents</span>
+</a>
+<a class="flex items-center gap-4 px-4 py-3 text-on-surface-variant dark:text-on-surface-variant hover:bg-surface-variant/50 rounded-full mx-2 my-1 hover:bg-surface-container-high transition-colors active:bg-surface-variant transition-all group" href="#">
+<span class="material-symbols-outlined group-hover:text-primary transition-colors" data-icon="cloud_upload">cloud_upload</span>
+<span class="font-body-lg text-body-lg group-hover:text-primary transition-colors">Cloud Sync</span>
+</a>
+<a class="flex items-center gap-4 px-4 py-3 text-on-surface-variant dark:text-on-surface-variant hover:bg-surface-variant/50 rounded-full mx-2 my-1 hover:bg-surface-container-high transition-colors active:bg-surface-variant transition-all group" href="#">
+<span class="material-symbols-outlined group-hover:text-primary transition-colors" data-icon="delete">delete</span>
+<span class="font-body-lg text-body-lg group-hover:text-primary transition-colors">Trash</span>
+</a>
+<a class="flex items-center gap-4 px-4 py-3 bg-primary-container text-on-primary-container rounded-full mx-2 my-1 group" href="#">
+<span class="material-symbols-outlined text-primary" data-icon="workspace_premium" style="font-variation-settings: 'FILL' 1;">workspace_premium</span>
+<span class="font-body-lg text-body-lg font-bold text-primary">Subscription</span>
+</a>
+<a class="flex items-center gap-4 px-4 py-3 text-on-surface-variant dark:text-on-surface-variant hover:bg-surface-variant/50 rounded-full mx-2 my-1 hover:bg-surface-container-high transition-colors active:bg-surface-variant transition-all group mt-auto" href="#">
+<span class="material-symbols-outlined group-hover:text-primary transition-colors" data-icon="help">help</span>
+<span class="font-body-lg text-body-lg group-hover:text-primary transition-colors">Help</span>
+</a>
+</nav>
+<!-- Main Content -->
+<main class="flex-1 overflow-y-auto px-margin-mobile md:px-margin-desktop py-lg">
+<div class="max-w-2xl mx-auto space-y-xl">
+<header class="mb-8">
+<h1 class="font-headline-lg text-headline-lg-mobile md:text-headline-lg text-on-surface mb-2">Settings</h1>
+<p class="font-body-md text-body-md text-on-surface-variant">Manage your Scanella preferences and account details.</p>
+</header>
+<!-- Account Section -->
+<section>
+<h2 class="font-title-lg text-title-lg text-primary mb-sm px-2">Account</h2>
+<div class="bg-surface rounded-xl neomorphic-surface divide-y divide-surface-variant overflow-hidden">
+<a class="flex items-center justify-between p-md hover:bg-surface-container-low transition-colors group" href="#">
+<div class="flex items-center gap-4">
+<div class="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center text-primary group-hover:scale-110 transition-transform">
+<span class="material-symbols-outlined" data-icon="person">person</span>
+</div>
+<div>
+<h3 class="font-body-lg text-body-lg text-on-surface">Profile Info</h3>
+</div>
+</div>
+<span class="material-symbols-outlined text-on-surface-variant group-hover:text-primary transition-colors">chevron_right</span>
+</a>
+<a class="flex items-center justify-between p-md hover:bg-surface-container-low transition-colors group" href="#">
+<div class="flex items-center gap-4">
+<div class="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center text-primary group-hover:scale-110 transition-transform">
+<span class="material-symbols-outlined" data-icon="workspace_premium">workspace_premium</span>
+</div>
+<div>
+<h3 class="font-body-lg text-body-lg text-on-surface">Subscription</h3>
+<p class="font-body-md text-body-md text-secondary">Free Plan</p>
+</div>
+</div>
+<span class="material-symbols-outlined text-on-surface-variant group-hover:text-primary transition-colors">chevron_right</span>
+</a>
+</div>
+</section>
+<!-- General Section -->
+<section>
+<h2 class="font-title-lg text-title-lg text-primary mb-sm px-2">General</h2>
+<div class="bg-surface rounded-xl neomorphic-surface divide-y divide-surface-variant overflow-hidden">
+<div class="flex items-center justify-between p-md">
+<div class="flex items-center gap-4">
+<div class="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center text-primary">
+<span class="material-symbols-outlined" data-icon="photo_library">photo_library</span>
+</div>
+<div>
+<h3 class="font-body-lg text-body-lg text-on-surface">Save to Gallery</h3>
+<p class="font-body-md text-body-md text-on-surface-variant">Automatically save scans to photos</p>
+</div>
+</div>
+<label class="flex items-center cursor-pointer">
+<div class="relative">
+<input checked="" class="sr-only" type="checkbox"/>
+<div class="track block bg-surface-container-highest w-12 h-7 rounded-full transition-colors neomorphic-pressed"></div>
+<div class="dot absolute left-1 top-1 bg-surface w-5 h-5 rounded-full transition-transform neomorphic-surface"></div>
+</div>
+</label>
+</div>
+<a class="flex items-center justify-between p-md hover:bg-surface-container-low transition-colors group" href="#">
+<div class="flex items-center gap-4">
+<div class="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center text-primary group-hover:scale-110 transition-transform">
+<span class="material-symbols-outlined" data-icon="notifications">notifications</span>
+</div>
+<div>
+<h3 class="font-body-lg text-body-lg text-on-surface">Notifications</h3>
+</div>
+</div>
+<span class="material-symbols-outlined text-on-surface-variant group-hover:text-primary transition-colors">chevron_right</span>
+</a>
+</div>
+</section>
+<!-- Import/Export Section -->
+<section>
+<h2 class="font-title-lg text-title-lg text-primary mb-sm px-2">Import &amp; Export</h2>
+<div class="bg-surface rounded-xl neomorphic-surface overflow-hidden">
+<a class="flex items-center justify-between p-md hover:bg-surface-container-low transition-colors group" href="#">
+<div class="flex items-center gap-4">
+<div class="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center text-primary group-hover:scale-110 transition-transform">
+<span class="material-symbols-outlined" data-icon="picture_as_pdf">picture_as_pdf</span>
+</div>
+<div>
+<h3 class="font-body-lg text-body-lg text-on-surface">Default Format</h3>
+<p class="font-body-md text-body-md text-on-surface-variant">Currently set to PDF</p>
+</div>
+</div>
+<div class="flex items-center gap-2">
+<span class="font-label-md text-label-md bg-secondary/10 text-secondary px-3 py-1 rounded-full">PDF</span>
+<span class="material-symbols-outlined text-on-surface-variant group-hover:text-primary transition-colors">chevron_right</span>
+</div>
+</a>
+</div>
+</section>
+<!-- About Section -->
+<section>
+<h2 class="font-title-lg text-title-lg text-primary mb-sm px-2">About</h2>
+<div class="bg-surface rounded-xl neomorphic-surface divide-y divide-surface-variant overflow-hidden">
+<a class="flex items-center justify-between p-md hover:bg-surface-container-low transition-colors group" href="#">
+<div class="flex items-center gap-4">
+<div class="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center text-primary group-hover:scale-110 transition-transform">
+<span class="material-symbols-outlined" data-icon="info">info</span>
+</div>
+<div>
+<h3 class="font-body-lg text-body-lg text-on-surface">Scanella Version</h3>
+</div>
+</div>
+<span class="font-body-md text-body-md text-on-surface-variant">v1.0.42</span>
+</a>
+<a class="flex items-center justify-between p-md hover:bg-surface-container-low transition-colors group" href="#">
+<div class="flex items-center gap-4">
+<div class="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center text-primary group-hover:scale-110 transition-transform">
+<span class="material-symbols-outlined" data-icon="policy">policy</span>
+</div>
+<div>
+<h3 class="font-body-lg text-body-lg text-on-surface">Privacy Policy</h3>
+</div>
+</div>
+<span class="material-symbols-outlined text-on-surface-variant group-hover:text-primary transition-colors">chevron_right</span>
+</a>
+</div>
+</section>
+</div>
+</main>
+</div>
+<!-- BottomNavBar (Mobile) -->
+<nav class="md:hidden bg-surface dark:bg-surface-dim fixed bottom-0 w-full z-50 rounded-t-xl bg-surface dark:bg-surface-dim shadow-[0_-4px_8px_rgba(0,0,0,0.05)] shadow-[0_-4px_12px_rgba(0,0,0,0.05),0_-2px_4px_rgba(255,255,255,0.8)] flex justify-around items-center h-16 px-4 pb-safe">
+<a class="flex flex-col items-center justify-center text-on-surface-variant dark:text-on-surface-variant opacity-70 hover:text-primary dark:hover:text-primary-fixed transition-colors active:scale-90 transition-transform duration-200" href="#">
+<span class="material-symbols-outlined mb-1" data-icon="description">description</span>
+<span class="font-label-lg text-label-lg">Scans</span>
+</a>
+<a class="flex flex-col items-center justify-center text-on-surface-variant dark:text-on-surface-variant opacity-70 hover:text-primary dark:hover:text-primary-fixed transition-colors active:scale-90 transition-transform duration-200" href="#">
+<span class="material-symbols-outlined mb-1" data-icon="folder">folder</span>
+<span class="font-label-lg text-label-lg">Folders</span>
+</a>
+<a class="flex flex-col items-center justify-center text-on-surface-variant dark:text-on-surface-variant opacity-70 hover:text-primary dark:hover:text-primary-fixed transition-colors active:scale-90 transition-transform duration-200" href="#">
+<span class="material-symbols-outlined mb-1" data-icon="search">search</span>
+<span class="font-label-lg text-label-lg">Search</span>
+</a>
+<a class="flex flex-col items-center justify-center text-primary dark:text-primary-fixed font-bold bg-secondary-container/20 rounded-xl px-4 py-1 hover:text-primary dark:hover:text-primary-fixed transition-colors active:scale-90 transition-transform duration-200" href="#">
+<span class="material-symbols-outlined mb-1" data-icon="person" style="font-variation-settings: 'FILL' 1;">person</span>
+<span class="font-label-lg text-label-lg">Profile</span>
+</a>
+</nav>
+</body></html>

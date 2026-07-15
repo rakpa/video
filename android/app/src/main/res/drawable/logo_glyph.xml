@@ -1,0 +1,35 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="120dp"
+    android:height="120dp"
+    android:viewportWidth="100"
+    android:viewportHeight="100">
+
+    <!-- White scan brackets -->
+    <path android:strokeColor="#FFFFFF" android:strokeWidth="4"
+        android:strokeLineCap="round" android:strokeLineJoin="round"
+        android:pathData="M30,18 L18,18 L18,30" />
+    <path android:strokeColor="#FFFFFF" android:strokeWidth="4"
+        android:strokeLineCap="round" android:strokeLineJoin="round"
+        android:pathData="M70,18 L82,18 L82,30" />
+    <path android:strokeColor="#FFFFFF" android:strokeWidth="4"
+        android:strokeLineCap="round" android:strokeLineJoin="round"
+        android:pathData="M30,82 L18,82 L18,70" />
+    <path android:strokeColor="#FFFFFF" android:strokeWidth="4"
+        android:strokeLineCap="round" android:strokeLineJoin="round"
+        android:pathData="M70,82 L82,82 L82,70" />
+
+    <!-- Document body -->
+    <path android:fillColor="#FFFFFF"
+        android:pathData="M35,29 L56,29 L66,39 L66,71 L35,71 Z" />
+    <!-- Folded corner -->
+    <path android:fillColor="#C9C2FF"
+        android:pathData="M56,29 L56,39 L66,39 Z" />
+
+    <!-- Indigo text lines -->
+    <path android:strokeColor="#5B21B6" android:strokeWidth="3"
+        android:strokeLineCap="round" android:pathData="M41,50 L60,50" />
+    <path android:strokeColor="#5B21B6" android:strokeWidth="3"
+        android:strokeLineCap="round" android:pathData="M41,57 L54,57" />
+    <path android:strokeColor="#5B21B6" android:strokeWidth="3"
+        android:strokeLineCap="round" android:pathData="M41,64 L60,64" />
+</vector>

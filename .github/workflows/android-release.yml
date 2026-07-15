@@ -1,0 +1,56 @@
+name: Android Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      build_number:
+        description: 'Android versionCode'
+        type: string
+        default: '1'
+
+jobs:
+  appbundle:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Fail fast if signing secrets are missing
+        env:
+          KEYSTORE_PRESENT: ${{ secrets.ANDROID_KEYSTORE_B64 != '' }}
+        run: |
+          test "$KEYSTORE_PRESENT" = "true" || { echo "::error::ANDROID_KEYSTORE_B64 missing"; exit 1; }
+          test -n "${{ secrets.KEYSTORE_PASSWORD }}" || { echo "::error::KEYSTORE_PASSWORD missing"; exit 1; }
+          test -n "${{ secrets.KEY_ALIAS }}" || { echo "::error::KEY_ALIAS missing"; exit 1; }
+          test -n "${{ secrets.KEY_PASSWORD }}" || { echo "::error::KEY_PASSWORD missing"; exit 1; }
+
+      - name: Dependencies + codegen
+        run: |
+          flutter --version
+          flutter pub get
+          dart run build_runner build --delete-conflicting-outputs
+
+      - name: Decode Android keystore
+        run: |
+          printf '%s' "${{ secrets.ANDROID_KEYSTORE_B64 }}" | base64 --decode > android/app/upload-keystore.jks
+          cat > android/key.properties <<EOF
+          storeFile=app/upload-keystore.jks
+          storePassword=${{ secrets.KEYSTORE_PASSWORD }}
+          keyAlias=${{ secrets.KEY_ALIAS }}
+          keyPassword=${{ secrets.KEY_PASSWORD }}
+          EOF
+
+      - name: Build release AAB
+        run: flutter build appbundle --release --build-number="${{ inputs.build_number }}"
+
+      - name: Upload AAB artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-aab
+          path: build/app/outputs/bundle/release/*.aab
+          if-no-files-found: error
