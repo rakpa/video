@@ -751,6 +751,14 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
               },
             });
             setProgress((p) => ({ ...p, percent: 100, stage: 'done', speed: null, eta: null }));
+
+            // Large desktop files stream via the browser Downloads tray (fast path).
+            if (payload.browserManaged) {
+              setDelivering(false);
+              setPhase('success');
+              return;
+            }
+
             setDelivering(false);
 
             // Mobile H.264 (typical ≤1080p + clips): Save to Photos via a fresh tap.

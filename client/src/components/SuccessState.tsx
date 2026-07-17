@@ -66,7 +66,7 @@ export function SuccessState({ outputHeight, requestedLabel, mobileBrowser }: Pr
         <br />
         {mobileBrowser
           ? 'Check your Downloads or Files app if you do not see it yet.'
-          : 'Check your browser’s Downloads folder if you do not see it yet.'}
+          : 'Large files save through your browser’s download bar — watch progress there for full speed.'}
       </p>
     </motion.div>
   );

@@ -25,8 +25,10 @@ const BROWSER_UA =
  * Prefetch the next chunk while writing the current one so ffmpeg stays fed
  * between Range boundaries (big desktop speed win on long HD files).
  */
-const CHUNK_SIZE = 16 * 1024 * 1024;
-const CHUNK_TIMEOUT_MS = 90_000;
+const CHUNK_SIZE = 32 * 1024 * 1024;
+const CHUNK_TIMEOUT_MS = 120_000;
+/** How many Range chunks to keep prefetched ahead of the write cursor. */
+const PREFETCH_AHEAD = 2;
 
 function isLoopback(addr: string | undefined): boolean {
   return addr === '127.0.0.1' || addr === '::1' || addr === '::ffff:127.0.0.1';
@@ -116,7 +118,7 @@ async function fetchRangeChunk(
   });
 }
 
-/** Sequential Range chunks from the CDN, with one-chunk prefetch overlap. */
+/** Sequential Range chunks from the CDN, with multi-chunk prefetch overlap. */
 async function relayChunked(
   url: string,
   proxy: string,
@@ -126,26 +128,37 @@ async function relayChunked(
 ): Promise<void> {
   let offset = 0;
   let total: number | null = null;
-  let pending: Promise<UpstreamResponse> | null = null;
+  const pending = new Map<number, Promise<UpstreamResponse>>();
+
+  const enqueue = (off: number) => {
+    if (pending.has(off)) return;
+    if (total !== null && off >= total) return;
+    pending.set(off, fetchRangeChunk(url, proxy, off, referer));
+  };
 
   const cancelPending = async () => {
-    if (!pending) return;
-    try {
-      const p = await pending;
-      await p.body?.cancel().catch(() => undefined);
-    } catch {
-      /* ignore prefetch errors once aborted */
-    }
-    pending = null;
+    const jobs = [...pending.entries()];
+    pending.clear();
+    await Promise.all(
+      jobs.map(async ([, p]) => {
+        try {
+          const r = await p;
+          await r.body?.cancel().catch(() => undefined);
+        } catch {
+          /* ignore */
+        }
+      }),
+    );
   };
 
   try {
+    enqueue(0);
     while (!aborted() && (total === null || offset < total)) {
-      const upstream = pending ? await pending : await fetchRangeChunk(url, proxy, offset, referer);
-      pending = null;
+      const job = pending.get(offset) ?? fetchRangeChunk(url, proxy, offset, referer);
+      pending.delete(offset);
+      const upstream = await job;
 
       if (upstream.status === 200) {
-        // Upstream ignored Range — stream the single full response instead.
         if (!upstream.body) throw new Error('empty upstream body');
         if (!res.headersSent) res.status(200);
         await writeBody(upstream.body, res);
@@ -160,16 +173,14 @@ async function relayChunked(
         if (total !== null && !res.headersSent) res.setHeader('Content-Length', total);
       }
 
-      // Prefetch the next Range while writing this one so ffmpeg never waits on
-      // a cold TCP/TLS handshake between 16 MB boundaries.
-      const nextOffset = offset + CHUNK_SIZE;
-      if (total !== null && nextOffset < total && !aborted()) {
-        pending = fetchRangeChunk(url, proxy, nextOffset, referer);
+      // Keep PREFETCH_AHEAD chunks in flight so 500MB+ remuxes stay CDN-fed.
+      for (let i = 1; i <= PREFETCH_AHEAD; i++) {
+        enqueue(offset + CHUNK_SIZE * i);
       }
 
       await writeBody(upstream.body, res);
-      offset = nextOffset;
-      if (total === null) break; // unknown size — the first 206 had the whole range
+      offset += CHUNK_SIZE;
+      if (total === null) break;
     }
     res.end();
   } catch (err) {
@@ -327,6 +338,8 @@ function handleStreamDownload(req: Request, res: Response): void {
     '-loglevel',
     'error',
     '-nostdin',
+    '-fflags',
+    '+genpts',
     ...seekArgs,
     ...inputArgs(ffmpegInputUrl(ticket.id, 'video')),
   ];
@@ -350,6 +363,8 @@ function handleStreamDownload(req: Request, res: Response): void {
     ...durationArgs,
     '-c',
     'copy',
+    '-max_muxing_queue_size',
+    '9999',
     '-movflags',
     'frag_keyframe+empty_moov+default_base_moof',
     '-f',
@@ -359,8 +374,12 @@ function handleStreamDownload(req: Request, res: Response): void {
 
   const child = spawn(config.ffmpegPath, args, {
     windowsHide: true,
+    // Larger stdout buffer so 500MB remuxes don't stall on tiny pipe chunks.
     stdio: ['ignore', 'pipe', 'pipe'],
   });
+  if (child.stdout) {
+    child.stdout.setMaxListeners?.(20);
+  }
 
   let stderr = '';
   let released = false;

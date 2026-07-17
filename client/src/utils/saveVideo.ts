@@ -55,6 +55,11 @@ function looksLikeHtmlOrJson(buf: ArrayBuffer): boolean {
 export interface VideoFilePayload {
   blob: Blob;
   filename: string;
+  /**
+   * True when the browser download manager owns the transfer (large desktop
+   * files). In-app percent is only a handoff signal — watch the Downloads bar.
+   */
+  browserManaged?: boolean;
 }
 
 export type ShareResult = 'shared' | 'cancelled' | 'unavailable';
@@ -486,6 +491,8 @@ function triggerBlobDownload(payload: VideoFilePayload): void {
 /**
  * Cross-origin file delivery without reading the full MP4 into JS memory.
  * A hidden iframe receives the attachment response so the main page stays put.
+ * Chrome/Edge then stream straight to disk — much faster than fetch→blob for
+ * 100MB–500MB+ files on a fast connection.
  */
 function triggerCrossOriginDownload(url: string, filename?: string): void {
   const frameName = `vidcliply-dl-${Date.now()}`;
@@ -506,7 +513,21 @@ function triggerCrossOriginDownload(url: string, filename?: string): void {
   a.click();
   a.remove();
 
-  window.setTimeout(() => iframe.remove(), 120_000);
+  window.setTimeout(() => iframe.remove(), 180_000);
+}
+
+/**
+ * Desktop large-file path: let the browser download manager stream to disk.
+ * Fetching a 500MB remux into JS RAM is far slower than the user's internet.
+ */
+function startBrowserManagedDownload(
+  url: string,
+  filename: string,
+  onProgress?: (percent: number) => void,
+): VideoFilePayload {
+  onProgress?.(8);
+  triggerCrossOriginDownload(url, filename);
+  return { blob: new Blob(), filename, browserManaged: true };
 }
 
 /** Map low-level fetch/network errors to user-friendly copy. */
@@ -524,15 +545,20 @@ export function formatDownloadError(err: unknown): string {
   return 'Could not save the video. Please try again.';
 }
 
-/** Soft ceiling — above this, desktop may use iframe; mobile fails clearly. */
-const DIRECT_FETCH_MAX_BYTES = 280 * 1024 * 1024;
+/** Soft ceiling for in-memory fetch — above this, desktop uses the browser tray. */
+const DIRECT_FETCH_MAX_BYTES = 48 * 1024 * 1024;
 /** Phones OOM more easily — refuse giant remuxes instead of hanging the tab. */
 const DIRECT_FETCH_MAX_BYTES_MOBILE = 160 * 1024 * 1024;
+/**
+ * Desktop: hand off to Chrome/Edge Downloads once the file is bigger than this.
+ * Buffering hundreds of MB in JS is why a 500MB file felt slow on fast Wi‑Fi.
+ */
+const BROWSER_MANAGED_THRESHOLD_BYTES = 24 * 1024 * 1024;
 /** Abort if the remux body sends no bytes for this long (mobile radio + CDN stalls). */
 const STREAM_STALL_MS = 45_000;
 /** First-byte budget — ffmpeg may need CDN open + mux before headers/body start. */
 const STREAM_TTFB_MS = 90_000;
-/** Hard ceiling for one remux attempt (clips + HD finish well under this). */
+/** Hard ceiling for one in-memory remux attempt. */
 const STREAM_ABSOLUTE_TIMEOUT_MS = 12 * 60_000;
 
 export const STREAM_STALL_MSG =
@@ -564,12 +590,12 @@ export async function blobLooksH264(blob: Blob): Promise<boolean> {
 /**
  * Stream-through delivery for YouTube (and other direct streams).
  *
- * Always fetches with CORS + stall detection, then returns the finished MP4.
- * Desktop also triggers a blob file download. Mobile callers should present
- * Save to Gallery (share sheet) for H.264 — never a fake-success iframe.
+ * Small files: fetch with CORS + stall detection, then blob-save (reliable on
+ * Safari / in-app progress).
  *
- * Iframe attachment is only used for oversized desktop files where holding the
- * MP4 in RAM is unsafe.
+ * Large desktop files (≥ ~24MB, e.g. 500MB HD): hand off to the browser
+ * download manager immediately so bytes stream to disk at full TCP speed —
+ * not buffered in the JavaScript heap first.
  */
 export async function downloadDirectUrl(
   streamUrl: string,
@@ -585,27 +611,37 @@ export async function downloadDirectUrl(
   const mobile = isMobileDevice();
   const maxBytes = mobile ? DIRECT_FETCH_MAX_BYTES_MOBILE : DIRECT_FETCH_MAX_BYTES;
 
-  if (estimated != null && estimated > maxBytes) {
-    if (mobile) {
-      throw new Error(
-        'This video is too large to finish reliably on a phone. Try 720p/1080p, a shorter clip, or download on desktop.',
-      );
-    }
-    options?.onProgress?.(10);
-    triggerCrossOriginDownload(url, safeName);
-    await new Promise((r) => window.setTimeout(r, 2500));
+  // Desktop large / unknown-huge: browser Downloads tray streams to disk.
+  if (!mobile && estimated != null && estimated > BROWSER_MANAGED_THRESHOLD_BYTES) {
+    const payload = startBrowserManagedDownload(url, safeName, options?.onProgress);
+    await new Promise((r) => window.setTimeout(r, 1200));
     options?.onProgress?.(100);
-    // Synthetic payload — iframe owns delivery; caller should show success, not share.
-    return { blob: new Blob(), filename: safeName };
+    return payload;
+  }
+
+  if (mobile && estimated != null && estimated > maxBytes) {
+    throw new Error(
+      'This video is too large to finish reliably on a phone. Try 720p/1080p, a shorter clip, or download on desktop.',
+    );
   }
 
   let lastErr: unknown;
   const attempts = mobile ? 2 : isChromiumDesktop() ? 3 : 2;
   for (let attempt = 1; attempt <= attempts; attempt++) {
     try {
-      const payload = await downloadDirectViaFetch(url, safeName, estimated, maxBytes, options?.onProgress);
-      // Desktop / Android: also write Files. iOS often ignores async <a download>
-      // — MobileSavePrompt handles Photos via a fresh user tap.
+      const payload = await downloadDirectViaFetch(
+        url,
+        safeName,
+        estimated,
+        maxBytes,
+        options?.onProgress,
+        !mobile,
+      );
+      if (payload.browserManaged) {
+        await new Promise((r) => window.setTimeout(r, 1200));
+        options?.onProgress?.(100);
+        return payload;
+      }
       if (!mobile || !isIos()) {
         triggerBlobDownload(payload);
       }
@@ -623,7 +659,6 @@ export async function downloadDirectUrl(
         throw err;
       }
       if (err instanceof Error && /stream HTTP 503|stream HTTP 409/.test(err.message)) {
-        // Busy / already-in-progress — brief backoff then retry same ticket once.
         if (attempt < attempts) {
           options?.onProgress?.(Math.max(2, 3 * attempt));
           await new Promise((r) => window.setTimeout(r, 1200 * attempt));
@@ -638,11 +673,15 @@ export async function downloadDirectUrl(
     }
   }
 
-  // Never iframe-fake-success on mobile or Chromium — that was the stuck
-  // "Resuming… / Zero KB / looks done" inconsistency.
-  throw lastErr instanceof Error
-    ? lastErr
-    : new Error(STREAM_STALL_MSG);
+  // Last resort on desktop: browser-managed (faster than giving up on 500MB).
+  if (!mobile) {
+    const payload = startBrowserManagedDownload(url, safeName, options?.onProgress);
+    await new Promise((r) => window.setTimeout(r, 1200));
+    options?.onProgress?.(100);
+    return payload;
+  }
+
+  throw lastErr instanceof Error ? lastErr : new Error(STREAM_STALL_MSG);
 }
 
 async function downloadDirectViaFetch(
@@ -651,12 +690,12 @@ async function downloadDirectViaFetch(
   estimatedBytes: number | null,
   maxBytes: number,
   onProgress?: (percent: number) => void,
+  allowBrowserManagedUpgrade = false,
 ): Promise<VideoFilePayload> {
   onProgress?.(3);
 
   const controller = new AbortController();
   const absTimer = window.setTimeout(() => controller.abort(), STREAM_ABSOLUTE_TIMEOUT_MS);
-  // Generous TTFB first — tight 45s here aborted healthy remuxes still warming up.
   let stallTimer = window.setTimeout(() => controller.abort(), STREAM_TTFB_MS);
   const bumpStallWatchdog = () => {
     window.clearTimeout(stallTimer);
@@ -684,7 +723,6 @@ async function downloadDirectViaFetch(
     throw err;
   }
 
-  // First byte arrived with headers — reset stall clock for the body phase.
   bumpStallWatchdog();
 
   if (!res.ok || !res.body) {
@@ -708,6 +746,17 @@ async function downloadDirectViaFetch(
     Number(res.headers.get('x-expected-size')) ||
     (estimatedBytes && estimatedBytes > 0 ? estimatedBytes : 0);
 
+  // Headers say this is a big file — abort the RAM buffer and use Downloads tray.
+  if (allowBrowserManagedUpgrade && total > BROWSER_MANAGED_THRESHOLD_BYTES) {
+    clearWatchdogs();
+    try {
+      await res.body.cancel();
+    } catch {
+      /* ignore */
+    }
+    return startBrowserManagedDownload(url, filename, onProgress);
+  }
+
   const reader = res.body.getReader();
   const chunks: BlobPart[] = [];
   let received = 0;
@@ -729,6 +778,16 @@ async function downloadDirectViaFetch(
       bumpStallWatchdog();
       chunks.push(value as BlobPart);
       received += value.byteLength;
+
+      if (
+        allowBrowserManagedUpgrade &&
+        received > BROWSER_MANAGED_THRESHOLD_BYTES &&
+        (total === 0 || total > BROWSER_MANAGED_THRESHOLD_BYTES)
+      ) {
+        await reader.cancel().catch(() => undefined);
+        clearWatchdogs();
+        return startBrowserManagedDownload(url, filename, onProgress);
+      }
 
       if (received > maxBytes) {
         await reader.cancel().catch(() => undefined);
