@@ -223,7 +223,7 @@ export function EditorWorkspace({ initialFiles, onClose }: Props) {
           </div>
           <p className="mt-2 text-xs font-medium text-indigo-700/80">
             Speeding through your video on-device (not recording in real time). Video-only for speed —
-            a few minutes typically finishes much faster than before.
+            keep this tab open until it finishes.
           </p>
         </div>
       )}

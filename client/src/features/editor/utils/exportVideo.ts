@@ -14,12 +14,16 @@ function even(n: number): number {
   return v % 2 === 0 ? v : v + 1;
 }
 
-/** Aggressive size/FPS caps — long seeks were the bottleneck; pixels still matter for encode. */
+/**
+ * Speed-first profiles. Encode cost scales with pixels × frames — keep both low
+ * for multi-minute clips so export stays well under realtime.
+ */
 function exportProfile(totalDuration: number): { maxSide: number; fps: number; bitrate: number } {
-  if (totalDuration > 180) return { maxSide: 720, fps: 12, bitrate: 1_200_000 };
-  if (totalDuration > 90) return { maxSide: 854, fps: 14, bitrate: 1_500_000 };
-  if (totalDuration > 45) return { maxSide: 960, fps: 16, bitrate: 1_800_000 };
-  return { maxSide: 1280, fps: 20, bitrate: 2_200_000 };
+  if (totalDuration > 180) return { maxSide: 640, fps: 10, bitrate: 900_000 };
+  if (totalDuration > 90) return { maxSide: 720, fps: 12, bitrate: 1_200_000 };
+  if (totalDuration > 45) return { maxSide: 854, fps: 12, bitrate: 1_400_000 };
+  if (totalDuration > 20) return { maxSide: 960, fps: 15, bitrate: 1_800_000 };
+  return { maxSide: 1280, fps: 18, bitrate: 2_200_000 };
 }
 
 function canvasSizeFor(
@@ -51,6 +55,22 @@ function canvasSizeFor(
 
   const scale = Math.min(1, maxSide / Math.max(cropW, cropH));
   return { w: even(cropW * scale), h: even(cropH * scale) };
+}
+
+/** True when we can skip the 2D transform canvas and resize from the video directly. */
+function isSimpleTransform(clip: EditorClip, canvas: CanvasSettings): boolean {
+  const t = clip.transform;
+  const c = t.crop;
+  return (
+    t.rotation === 0 &&
+    !t.flipH &&
+    !t.flipV &&
+    c.x === 0 &&
+    c.y === 0 &&
+    c.w === 1 &&
+    c.h === 1 &&
+    canvas.aspect === 'source'
+  );
 }
 
 function supportsWebCodecs(): boolean {
@@ -90,7 +110,7 @@ function makeProgressReporter(onProgress?: (percent: number) => void) {
     if (!onProgress) return;
     const now = performance.now();
     const p = Math.min(100, Math.max(0, Math.round(percent)));
-    if (p >= 100 || p - last >= 2 || now - lastAt >= 250) {
+    if (p >= 100 || p - last >= 2 || now - lastAt >= 200) {
       last = p;
       lastAt = now;
       onProgress(p);
@@ -98,18 +118,55 @@ function makeProgressReporter(onProgress?: (percent: number) => void) {
   };
 }
 
-/** Pick the highest playbackRate the browser accepts for sped-up capture. */
+/** Highest playbackRate the browser will actually honor. */
 function maxPlaybackRate(video: HTMLVideoElement): number {
   for (const rate of [16, 8, 4, 2]) {
     try {
       video.playbackRate = rate;
-      if (Math.abs(video.playbackRate - rate) < 0.01) return rate;
+      if (Math.abs(video.playbackRate - rate) < 0.05) return rate;
     } catch {
       /* try lower */
     }
   }
   video.playbackRate = 1;
   return 1;
+}
+
+async function configureEncoder(
+  encoder: VideoEncoder,
+  outW: number,
+  outH: number,
+  bitrate: number,
+  fps: number,
+): Promise<void> {
+  const codecs = ['avc1.4D401F', 'avc1.42E01E', 'avc1.42001E', 'avc1.42001f'];
+  let lastErr: unknown;
+  for (const codec of codecs) {
+    const base = {
+      codec,
+      width: outW,
+      height: outH,
+      bitrate,
+      framerate: fps,
+      hardwareAcceleration: 'prefer-hardware' as const,
+      latencyMode: 'realtime' as const,
+      avc: { format: 'avc' as const },
+    } satisfies VideoEncoderConfig;
+
+    try {
+      if (typeof VideoEncoder.isConfigSupported === 'function') {
+        const support = await VideoEncoder.isConfigSupported(base);
+        if (!support.supported) continue;
+        encoder.configure((support.config as VideoEncoderConfig) ?? base);
+      } else {
+        encoder.configure(base);
+      }
+      return;
+    } catch (err) {
+      lastErr = err;
+    }
+  }
+  throw lastErr instanceof Error ? lastErr : new Error('No supported H.264 encoder config.');
 }
 
 /**
@@ -141,7 +198,6 @@ async function exportWithWebCodecs(options: ExportOptions, totalDuration: number
   const { fps, bitrate } = profile;
 
   const target = new ArrayBufferTarget();
-  // Video-only MP4 for speed — sequential play-through capture replaces slow seek-per-frame.
   const muxer = new Muxer({
     target,
     video: { codec: 'avc', width: outW, height: outH },
@@ -157,16 +213,7 @@ async function exportWithWebCodecs(options: ExportOptions, totalDuration: number
     },
   });
 
-  encoder.configure({
-    codec: 'avc1.42001f',
-    width: outW,
-    height: outH,
-    bitrate,
-    framerate: fps,
-    hardwareAcceleration: 'prefer-hardware',
-    latencyMode: 'realtime',
-    avc: { format: 'avc' },
-  } as VideoEncoderConfig);
+  await configureEncoder(encoder, outW, outH, bitrate, fps);
 
   const drawCanvas = document.createElement('canvas');
   drawCanvas.width = outW;
@@ -174,17 +221,16 @@ async function exportWithWebCodecs(options: ExportOptions, totalDuration: number
   const ctx = drawCanvas.getContext('2d', { alpha: false, desynchronized: true });
   if (!ctx) throw new Error('Could not open a drawing surface for export.');
 
-  let encodedFrames = 0;
-  let timelineMicros = 0;
-  const totalFramesEstimate = Math.max(1, Math.ceil(totalDuration * fps));
   const frameDurationMicros = Math.round(1_000_000 / fps);
   const keyEvery = Math.max(1, Math.round(fps * 2));
+  let timelineMicros = 0;
+  let encodedFrames = 0;
+  let durationDone = 0;
 
-  // Keep a detached video in the document so decode is not heavily throttled.
   const host = document.createElement('div');
   host.setAttribute('aria-hidden', 'true');
   host.style.cssText =
-    'position:fixed;width:1px;height:1px;opacity:0;pointer-events:none;overflow:hidden;left:-9999px;top:0';
+    'position:fixed;width:2px;height:2px;opacity:0;pointer-events:none;overflow:hidden;left:0;top:0;z-index:-1';
   document.body.appendChild(host);
 
   try {
@@ -192,156 +238,38 @@ async function exportWithWebCodecs(options: ExportOptions, totalDuration: number
       if (signal?.aborted) throw new Error('Export cancelled.');
       if (encodeError) throw encodeError;
 
-      const video = document.createElement('video');
-      video.src = clip.objectUrl;
-      video.muted = true;
-      video.playsInline = true;
-      video.preload = 'auto';
-      video.disablePictureInPicture = true;
-      host.appendChild(video);
-
-      await new Promise<void>((resolve, reject) => {
-        video.onloadeddata = () => resolve();
-        video.onerror = () => reject(new Error(`Could not load ${clip.name}`));
+      const clipFrames = await encodeClipPlaythrough({
+        clip,
+        canvas,
+        outW,
+        outH,
+        fps,
+        ctx,
+        drawCanvas,
+        host,
+        encoder,
+        encodeError: () => encodeError,
+        timelineMicros,
+        frameDurationMicros,
+        keyEvery,
+        signal,
+        onMediaProgress: (localPct) => {
+          const share = effectiveDuration(clip) / totalDuration;
+          report((durationDone / totalDuration + localPct * share) * 97);
+        },
       });
 
-      const start = clip.trimStart;
-      const end = clip.trimEnd;
-      const speed = Math.max(0.25, clip.transform.speed);
-      const outSpan = (end - start) / speed;
-      const expectedFrames = Math.max(1, Math.ceil(outSpan * fps));
-
-      await seekTo(video, start);
-      const captureRate = maxPlaybackRate(video);
-      // Source advances at captureRate * clip.speed relative to wall clock; we sample by media time.
-      video.playbackRate = Math.min(16, captureRate * speed);
-
-      let nextSrcSample = start;
-      const srcStep = speed / fps;
-      let clipFrameIndex = 0;
-      let finished = false;
-      let pumpBusy = false;
-
-      const encodeOneFrame = async () => {
-        if (clipFrameIndex >= expectedFrames) return;
-        drawFrame(ctx, video, clip, canvas, outW, outH);
-        const frame = new VideoFrame(drawCanvas, {
-          timestamp: timelineMicros + clipFrameIndex * frameDurationMicros,
-          duration: frameDurationMicros,
-        });
-        const keyFrame = clipFrameIndex % keyEvery === 0;
-        while (encoder.encodeQueueSize > 8) {
-          await new Promise((r) => setTimeout(r, 0));
-        }
-        encoder.encode(frame, { keyFrame });
-        frame.close();
-        clipFrameIndex += 1;
-        encodedFrames += 1;
-        report((encodedFrames / totalFramesEstimate) * 97);
-        nextSrcSample += srcStep;
-      };
-
-      await new Promise<void>((resolve, reject) => {
-        const fail = (err: Error) => {
-          cleanup();
-          reject(err);
-        };
-        const done = () => {
-          if (finished) return;
-          finished = true;
-          cleanup();
-          resolve();
-        };
-
-        let rvfcHandle = 0;
-        let rafHandle = 0;
-        const hasRvfc = typeof video.requestVideoFrameCallback === 'function';
-
-        const cleanup = () => {
-          video.pause();
-          video.onended = null;
-          video.onerror = null;
-          if (hasRvfc && rvfcHandle) {
-            try {
-              video.cancelVideoFrameCallback(rvfcHandle);
-            } catch {
-              /* ignore */
-            }
-          }
-          if (rafHandle) cancelAnimationFrame(rafHandle);
-        };
-
-        const schedule = () => {
-          if (finished) return;
-          if (hasRvfc) {
-            rvfcHandle = video.requestVideoFrameCallback((now, meta) => {
-              void pump(now, meta);
-            });
-          } else {
-            rafHandle = requestAnimationFrame(() => {
-              void pump();
-            });
-          }
-        };
-
-        const pump = async (_now?: number, meta?: VideoFrameCallbackMetadata) => {
-          if (finished || pumpBusy) return;
-          pumpBusy = true;
-          try {
-            if (signal?.aborted) {
-              fail(new Error('Export cancelled.'));
-              return;
-            }
-            if (encodeError) {
-              fail(encodeError);
-              return;
-            }
-
-            const mediaTime =
-              typeof meta?.mediaTime === 'number' ? meta.mediaTime : video.currentTime;
-
-            while (
-              clipFrameIndex < expectedFrames &&
-              nextSrcSample < end - 0.0005 &&
-              mediaTime + 0.0005 >= nextSrcSample
-            ) {
-              await encodeOneFrame();
-            }
-
-            if (mediaTime >= end - 0.04 || video.ended || clipFrameIndex >= expectedFrames) {
-              done();
-              return;
-            }
-            schedule();
-          } finally {
-            pumpBusy = false;
-          }
-        };
-
-        video.onended = () => done();
-        video.onerror = () => fail(new Error(`Playback failed while exporting ${clip.name}`));
-
-        void video
-          .play()
-          .then(() => schedule())
-          .catch((err) => fail(err instanceof Error ? err : new Error(String(err))));
-      });
-
-      // Fill any dropped samples from the last displayed frame (high playbackRate can skip).
-      while (clipFrameIndex < expectedFrames) {
-        if (signal?.aborted) throw new Error('Export cancelled.');
-        if (encodeError) throw encodeError;
-        await encodeOneFrame();
-      }
-
-      timelineMicros += expectedFrames * frameDurationMicros;
-      video.removeAttribute('src');
-      video.load();
-      video.remove();
+      encodedFrames += clipFrames;
+      timelineMicros += clipFrames * frameDurationMicros;
+      durationDone += effectiveDuration(clip);
+      report((durationDone / totalDuration) * 97);
     }
   } finally {
     host.remove();
   }
+
+  if (encodedFrames < 1) throw new Error('Export produced no frames. Please try again.');
+  if (encodeError) throw encodeError;
 
   await encoder.flush();
   encoder.close();
@@ -353,6 +281,219 @@ async function exportWithWebCodecs(options: ExportOptions, totalDuration: number
   const blob = new Blob([buffer as ArrayBuffer], { type: 'video/mp4' });
   if (blob.size < 64) throw new Error('Export produced an empty file. Please try again.');
   return blob;
+}
+
+/**
+ * Play the trimmed range as fast as the browser allows, sample at export FPS,
+ * and encode immediately. Missed samples are DROPPED — never backfilled.
+ * (The previous backfill re-encoded the last frame thousands of times.)
+ */
+async function encodeClipPlaythrough(args: {
+  clip: EditorClip;
+  canvas: CanvasSettings;
+  outW: number;
+  outH: number;
+  fps: number;
+  ctx: CanvasRenderingContext2D;
+  drawCanvas: HTMLCanvasElement;
+  host: HTMLElement;
+  encoder: VideoEncoder;
+  encodeError: () => Error | null;
+  timelineMicros: number;
+  frameDurationMicros: number;
+  keyEvery: number;
+  signal?: AbortSignal;
+  onMediaProgress?: (pct: number) => void;
+}): Promise<number> {
+  const {
+    clip,
+    canvas,
+    outW,
+    outH,
+    fps,
+    ctx,
+    drawCanvas,
+    host,
+    encoder,
+    encodeError,
+    timelineMicros,
+    frameDurationMicros,
+    keyEvery,
+    signal,
+    onMediaProgress,
+  } = args;
+
+  const simple = isSimpleTransform(clip, canvas);
+  const start = clip.trimStart;
+  const end = clip.trimEnd;
+  const speed = Math.max(0.25, clip.transform.speed);
+  const outSpan = Math.max(0.05, (end - start) / speed);
+  const srcStep = speed / fps;
+  const maxFrames = Math.max(1, Math.ceil(outSpan * fps) + 2);
+
+  const video = document.createElement('video');
+  video.src = clip.objectUrl;
+  video.muted = true;
+  video.defaultMuted = true;
+  video.playsInline = true;
+  video.preload = 'auto';
+  video.disablePictureInPicture = true;
+  video.style.cssText = 'width:2px;height:2px;';
+  host.appendChild(video);
+
+  await new Promise<void>((resolve, reject) => {
+    video.onloadeddata = () => resolve();
+    video.onerror = () => reject(new Error(`Could not load ${clip.name}`));
+  });
+
+  await seekTo(video, start);
+  video.playbackRate = Math.min(16, Math.max(1, maxPlaybackRate(video)));
+
+  let nextSrcSample = start;
+  let frameIndex = 0;
+  let finished = false;
+
+  /** Sync grab+encode — awaiting createImageBitmap inside rVFC was the speed killer. */
+  const encodeCurrent = (mediaTime: number): void => {
+    if (frameIndex >= maxFrames) return;
+    if (mediaTime + 0.0005 < nextSrcSample) return;
+
+    // Drop samples we already skipped past — never duplicate-fill.
+    while (nextSrcSample + srcStep <= mediaTime + 0.0005) {
+      nextSrcSample += srcStep;
+    }
+
+    // Soft backpressure: skip this sample if the encoder is jammed.
+    if (encoder.encodeQueueSize > 28) {
+      nextSrcSample += srcStep;
+      return;
+    }
+
+    if (simple) {
+      ctx.drawImage(video, 0, 0, outW, outH);
+    } else {
+      drawFrame(ctx, video, clip, canvas, outW, outH);
+    }
+
+    const frame = new VideoFrame(drawCanvas, {
+      timestamp: timelineMicros + frameIndex * frameDurationMicros,
+      duration: frameDurationMicros,
+    });
+    encoder.encode(frame, { keyFrame: frameIndex % keyEvery === 0 });
+    frame.close();
+    frameIndex += 1;
+    nextSrcSample += srcStep;
+    onMediaProgress?.(Math.min(1, Math.max(0, (mediaTime - start) / (end - start))));
+  };
+
+  await new Promise<void>((resolve, reject) => {
+    let rvfcHandle = 0;
+    let rafHandle = 0;
+    const hasRvfc = typeof video.requestVideoFrameCallback === 'function';
+
+    const cleanup = () => {
+      video.pause();
+      video.onended = null;
+      video.onerror = null;
+      video.ontimeupdate = null;
+      if (hasRvfc && rvfcHandle) {
+        try {
+          video.cancelVideoFrameCallback(rvfcHandle);
+        } catch {
+          /* ignore */
+        }
+      }
+      if (rafHandle) cancelAnimationFrame(rafHandle);
+    };
+
+    const done = () => {
+      if (finished) return;
+      finished = true;
+      cleanup();
+      resolve();
+    };
+
+    const fail = (err: Error) => {
+      if (finished) return;
+      finished = true;
+      cleanup();
+      reject(err);
+    };
+
+    const schedule = () => {
+      if (finished) return;
+      if (hasRvfc) {
+        rvfcHandle = video.requestVideoFrameCallback(onFrame);
+      } else {
+        rafHandle = requestAnimationFrame(() => onFrame());
+      }
+    };
+
+    const onFrame = (_now?: number, meta?: VideoFrameCallbackMetadata) => {
+      if (finished) return;
+      try {
+        if (signal?.aborted) {
+          fail(new Error('Export cancelled.'));
+          return;
+        }
+        const err = encodeError();
+        if (err) {
+          fail(err);
+          return;
+        }
+
+        const mediaTime =
+          typeof meta?.mediaTime === 'number' ? meta.mediaTime : video.currentTime;
+
+        if (mediaTime >= end - 0.03 || video.ended || frameIndex >= maxFrames) {
+          if (frameIndex === 0 || (mediaTime >= nextSrcSample && frameIndex < maxFrames)) {
+            encodeCurrent(Math.min(mediaTime, end - 0.001));
+          }
+          done();
+          return;
+        }
+
+        encodeCurrent(mediaTime);
+        schedule();
+      } catch (err) {
+        fail(err instanceof Error ? err : new Error(String(err)));
+      }
+    };
+
+    video.onended = () => done();
+    video.onerror = () => fail(new Error(`Playback failed while exporting ${clip.name}`));
+    // Backup when rVFC is sparse at high playbackRate.
+    video.ontimeupdate = () => {
+      if (finished) return;
+      onFrame();
+    };
+
+    void video
+      .play()
+      .then(() => schedule())
+      .catch((err) => fail(err instanceof Error ? err : new Error(String(err))));
+  });
+
+  // Rare: high-speed play delivered almost nothing → coarse seek sampling (not per-frame).
+  if (frameIndex < 2 && end - start > 0.2) {
+    const step = Math.max(srcStep, (end - start) / Math.min(maxFrames, 120));
+    for (let t = start; t < end && frameIndex < maxFrames; t += step) {
+      if (signal?.aborted) throw new Error('Export cancelled.');
+      const err = encodeError();
+      if (err) throw err;
+      await seekTo(video, Math.min(t, end - 0.001));
+      nextSrcSample = t;
+      encodeCurrent(t);
+      onMediaProgress?.(Math.min(1, (t - start) / (end - start)));
+    }
+  }
+
+  video.removeAttribute('src');
+  video.load();
+  video.remove();
+
+  if (frameIndex < 1) throw new Error(`No frames captured from ${clip.name}.`);
+  return frameIndex;
 }
 
 async function exportWithMediaRecorder(
@@ -374,7 +515,6 @@ async function exportWithMediaRecorder(
   const ctx = drawCanvas.getContext('2d');
   if (!ctx) throw new Error('Could not open a drawing surface for export.');
 
-  // Fallback: still wall-clock, but muted + high playbackRate to finish sooner.
   const canvasStream = drawCanvas.captureStream(profile.fps);
   const mimeType = pickMime();
   const chunks: BlobPart[] = [];
@@ -388,10 +528,11 @@ async function exportWithMediaRecorder(
   };
   const done = new Promise<Blob>((resolve, reject) => {
     recorder.onerror = () => reject(new Error('Export failed while recording.'));
-    recorder.onstop = () => resolve(new Blob(chunks, { type: mimeType.includes('mp4') ? 'video/mp4' : 'video/webm' }));
+    recorder.onstop = () =>
+      resolve(new Blob(chunks, { type: mimeType.includes('mp4') ? 'video/mp4' : 'video/webm' }));
   });
 
-  recorder.start(200);
+  recorder.start(250);
   let elapsed = 0;
   try {
     for (const clip of clips) {
@@ -434,7 +575,6 @@ function pickMime(): string {
   return 'video/webm';
 }
 
-/** MediaRecorder path: mute + max playbackRate so export is much shorter than realtime. */
 async function renderClipFastPlayback(args: {
   clip: EditorClip;
   canvas: CanvasSettings;
@@ -460,7 +600,7 @@ async function renderClipFastPlayback(args: {
   const end = clip.trimEnd;
   const span = Math.max(0.05, end - start);
   await seekTo(video, start);
-  video.playbackRate = Math.min(16, maxPlaybackRate(video) * Math.max(0.25, clip.transform.speed));
+  video.playbackRate = Math.min(16, maxPlaybackRate(video));
   await video.play();
 
   await new Promise<void>((resolve, reject) => {
