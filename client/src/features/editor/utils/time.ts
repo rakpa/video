@@ -12,6 +12,21 @@ export function formatEditorTime(seconds: number): string {
   return `${m}:${String(s).padStart(2, '0')}`;
 }
 
+/** Parse `m:ss`, `h:mm:ss`, or plain seconds into a number. */
+export function parseEditorTime(raw: string): number | null {
+  const text = raw.trim();
+  if (!text) return null;
+  if (/^\d+(\.\d+)?$/.test(text)) {
+    const n = Number(text);
+    return Number.isFinite(n) && n >= 0 ? n : null;
+  }
+  const parts = text.split(':').map((p) => Number(p));
+  if (parts.some((p) => !Number.isFinite(p) || p < 0)) return null;
+  if (parts.length === 2) return parts[0] * 60 + parts[1];
+  if (parts.length === 3) return parts[0] * 3600 + parts[1] * 60 + parts[2];
+  return null;
+}
+
 export function loadVideoMeta(
   file: File,
 ): Promise<{ objectUrl: string; duration: number; width: number; height: number }> {
