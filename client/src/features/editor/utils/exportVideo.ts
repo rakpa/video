@@ -15,15 +15,18 @@ function even(n: number): number {
 }
 
 /**
- * Speed-first profiles. Encode cost scales with pixels × frames — keep both low
- * for multi-minute clips so export stays well under realtime.
+ * Quality-first profiles. Keep up to 1080p/1920 long-side and full frame rate.
+ * Speed comes from sync WebCodecs encode — not from crushing resolution/FPS.
  */
-function exportProfile(totalDuration: number): { maxSide: number; fps: number; bitrate: number } {
-  if (totalDuration > 180) return { maxSide: 640, fps: 10, bitrate: 900_000 };
-  if (totalDuration > 90) return { maxSide: 720, fps: 12, bitrate: 1_200_000 };
-  if (totalDuration > 45) return { maxSide: 854, fps: 12, bitrate: 1_400_000 };
-  if (totalDuration > 20) return { maxSide: 960, fps: 15, bitrate: 1_800_000 };
-  return { maxSide: 1280, fps: 18, bitrate: 2_200_000 };
+function exportProfile(totalDuration: number): { maxSide: number; fps: number } {
+  const maxSide = 1920;
+  const fps = totalDuration > 600 ? 24 : 30;
+  return { maxSide, fps };
+}
+
+/** Solid visual bitrate from output size (≈0.14 bits/pixel/frame). */
+function bitrateFor(w: number, h: number, fps: number): number {
+  return Math.min(14_000_000, Math.max(3_000_000, Math.round(w * h * fps * 0.14)));
 }
 
 function canvasSizeFor(
@@ -118,9 +121,12 @@ function makeProgressReporter(onProgress?: (percent: number) => void) {
   };
 }
 
-/** Highest playbackRate the browser will actually honor. */
-function maxPlaybackRate(video: HTMLVideoElement): number {
-  for (const rate of [16, 8, 4, 2]) {
+/**
+ * Capture playback rate for export. Prefer a moderate speed so we still finish
+ * faster than realtime without skipping most export-FPS samples.
+ */
+function exportPlaybackRate(video: HTMLVideoElement): number {
+  for (const rate of [4, 2]) {
     try {
       video.playbackRate = rate;
       if (Math.abs(video.playbackRate - rate) < 0.05) return rate;
@@ -139,7 +145,8 @@ async function configureEncoder(
   bitrate: number,
   fps: number,
 ): Promise<void> {
-  const codecs = ['avc1.4D401F', 'avc1.42E01E', 'avc1.42001E', 'avc1.42001f'];
+  // Prefer High / Main over Baseline for better compression at the same bitrate.
+  const codecs = ['avc1.640028', 'avc1.4D4028', 'avc1.4D401F', 'avc1.42E01E', 'avc1.42001E'];
   let lastErr: unknown;
   for (const codec of codecs) {
     const base = {
@@ -149,7 +156,7 @@ async function configureEncoder(
       bitrate,
       framerate: fps,
       hardwareAcceleration: 'prefer-hardware' as const,
-      latencyMode: 'realtime' as const,
+      latencyMode: 'quality' as const,
       avc: { format: 'avc' as const },
     } satisfies VideoEncoderConfig;
 
@@ -195,7 +202,8 @@ async function exportWithWebCodecs(options: ExportOptions, totalDuration: number
   const profile = exportProfile(totalDuration);
   const primary = clips[0];
   const { w: outW, h: outH } = canvasSizeFor(primary, canvas, profile.maxSide);
-  const { fps, bitrate } = profile;
+  const { fps } = profile;
+  const bitrate = bitrateFor(outW, outH, fps);
 
   const target = new ArrayBufferTarget();
   const muxer = new Muxer({
@@ -220,6 +228,8 @@ async function exportWithWebCodecs(options: ExportOptions, totalDuration: number
   drawCanvas.height = outH;
   const ctx = drawCanvas.getContext('2d', { alpha: false, desynchronized: true });
   if (!ctx) throw new Error('Could not open a drawing surface for export.');
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = 'high';
 
   const frameDurationMicros = Math.round(1_000_000 / fps);
   const keyEvery = Math.max(1, Math.round(fps * 2));
@@ -347,7 +357,7 @@ async function encodeClipPlaythrough(args: {
   });
 
   await seekTo(video, start);
-  video.playbackRate = Math.min(16, Math.max(1, maxPlaybackRate(video)));
+  video.playbackRate = exportPlaybackRate(video);
 
   let nextSrcSample = start;
   let frameIndex = 0;
@@ -358,15 +368,16 @@ async function encodeClipPlaythrough(args: {
     if (frameIndex >= maxFrames) return;
     if (mediaTime + 0.0005 < nextSrcSample) return;
 
-    // Drop samples we already skipped past — never duplicate-fill.
-    while (nextSrcSample + srcStep <= mediaTime + 0.0005) {
-      nextSrcSample += srcStep;
-    }
+    // Encoder busy: retry this sample on the next callback (do not skip).
+    if (encoder.encodeQueueSize > 24) return;
 
-    // Soft backpressure: skip this sample if the encoder is jammed.
-    if (encoder.encodeQueueSize > 28) {
-      nextSrcSample += srcStep;
-      return;
+    // If we fell behind, catch up by encoding from the current frame once per
+    // overdue sample only when within one step; otherwise advance to the nearest
+    // due sample without multi-dropping a long stretch of motion.
+    if (nextSrcSample + srcStep <= mediaTime + 0.0005) {
+      const behind = Math.floor((mediaTime - nextSrcSample) / srcStep);
+      // Allow at most a tiny catch-up skip (1 sample) to stay realtime-capable.
+      if (behind > 1) nextSrcSample += srcStep * (behind - 1);
     }
 
     if (simple) {
@@ -509,11 +520,14 @@ async function exportWithMediaRecorder(
   const profile = exportProfile(totalDuration);
   const primary = clips[0];
   const { w: outW, h: outH } = canvasSizeFor(primary, canvas, profile.maxSide);
+  const bitrate = bitrateFor(outW, outH, profile.fps);
   const drawCanvas = document.createElement('canvas');
   drawCanvas.width = outW;
   drawCanvas.height = outH;
   const ctx = drawCanvas.getContext('2d');
   if (!ctx) throw new Error('Could not open a drawing surface for export.');
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = 'high';
 
   const canvasStream = drawCanvas.captureStream(profile.fps);
   const mimeType = pickMime();
@@ -521,7 +535,7 @@ async function exportWithMediaRecorder(
 
   const recorder = new MediaRecorder(canvasStream, {
     mimeType,
-    videoBitsPerSecond: profile.bitrate,
+    videoBitsPerSecond: bitrate,
   });
   recorder.ondataavailable = (e) => {
     if (e.data.size > 0) chunks.push(e.data);
@@ -600,7 +614,7 @@ async function renderClipFastPlayback(args: {
   const end = clip.trimEnd;
   const span = Math.max(0.05, end - start);
   await seekTo(video, start);
-  video.playbackRate = Math.min(16, maxPlaybackRate(video));
+  video.playbackRate = exportPlaybackRate(video);
   await video.play();
 
   await new Promise<void>((resolve, reject) => {
