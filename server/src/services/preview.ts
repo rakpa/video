@@ -375,7 +375,7 @@ async function fetchInstagramPreview(url: string): Promise<VideoInfo | null> {
       return buildInstagramPreview(id, og);
     },
     async () => {
-      const info = await waitForCachedVideoInfo(clean, 12000);
+      const info = await waitForCachedVideoInfo(clean, 7000);
       if (!info?.thumbnail) return null;
       notePreviewImage(info.thumbnail);
       return {
