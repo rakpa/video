@@ -29,15 +29,17 @@ export interface PassthroughOptions {
  * copy-remuxes the CDN video+audio into the response, so the browser download
  * starts immediately at full quality with no server-side temp file.
  *
- * YouTube full videos and clips (720p–4K) use this path. Instagram desktop can
- * stream progressive Reels (no clip) when galleryPrep is off.
+ * YouTube full videos and clips (720p–4K) use this path. Instagram streams
+ * progressive Reels (no clip) on desktop AND mobile: IG tickets are only issued
+ * for progressive H.264 (see resolveFromCache), so the relayed bytes are
+ * already gallery-safe — no server download + remux job needed for galleryPrep.
  */
 export function canDirectPassthrough(options: PassthroughOptions): boolean {
   if (!config.directPassthrough) return false;
 
   const platform = detectPlatform(options.url);
   if (platform?.id !== 'youtube' && platform?.id !== 'instagram') return false;
-  if (options.galleryPrep) return false;
+  if (options.galleryPrep && platform.id !== 'instagram') return false;
   // Clips: YouTube only (ffmpeg -ss/-t while remuxing to the browser).
   if (options.clip && platform.id !== 'youtube') return false;
   // Instagram stays ≤1080p progressive. YouTube may stream 2K/4K (VP9/AV1 remux).

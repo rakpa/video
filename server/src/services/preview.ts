@@ -1,5 +1,7 @@
+import { fetch as undiciFetch, ProxyAgent, type Dispatcher } from 'undici';
 import type { PlatformId } from './platform.js';
 import type { VideoInfo } from './ytdlp.js';
+import { currentProxy } from '../config.js';
 import { ensureInfoJsonCache, readCachedVideoInfo, waitForCachedVideoInfo } from './ytdlp.js';
 import { fetchYoutubePreview } from './previewYoutube.js';
 import { warmThumbCache } from '../routes/thumb.js';
@@ -47,6 +49,29 @@ const FETCH_HEADERS = {
   Accept: 'text/html,application/xhtml+xml',
   'Accept-Language': 'en-US,en;q=0.9',
 };
+
+/**
+ * Instagram serves datacenter IPs a login redirect (no og tags / embed JSON),
+ * which pushed every preview onto the slow yt-dlp fallback (~5s to first
+ * thumbnail). Scrape through the same proxy yt-dlp extracts with so the fast
+ * embed-page scrape actually succeeds. Falls back to plain fetch when no proxy
+ * is configured (local dev).
+ */
+const scrapeDispatchers = new Map<string, Dispatcher>();
+
+function scrapeThroughProxy(
+  url: string,
+  init: { headers?: Record<string, string>; signal?: AbortSignal; redirect?: 'follow' | 'error' | 'manual' },
+): Promise<Response> {
+  const proxy = currentProxy();
+  if (!proxy) return fetch(url, init);
+  let dispatcher = scrapeDispatchers.get(proxy);
+  if (!dispatcher) {
+    dispatcher = new ProxyAgent(proxy);
+    scrapeDispatchers.set(proxy, dispatcher);
+  }
+  return undiciFetch(url, { ...init, dispatcher }) as unknown as Promise<Response>;
+}
 
 /** Race scrapes — resolve as soon as any URL returns an image (or best metadata when all finish). */
 async function raceForMetadata(
@@ -113,11 +138,12 @@ function parseOgDurationSeconds(html: string): number | null {
 async function scrapeOpenGraphOnce(
   url: string,
   timeoutMs = 5000,
+  viaProxy = false,
 ): Promise<{ title?: string; image?: string; durationSeconds?: number | null } | null> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
-    const res = await fetch(url, {
+    const res = await (viaProxy ? scrapeThroughProxy : fetch)(url, {
       headers: FETCH_HEADERS,
       redirect: 'follow',
       signal: controller.signal,
@@ -160,10 +186,13 @@ async function fetchInstagramOembed(
   clean: string,
 ): Promise<{ title?: string; image?: string; author?: string } | null> {
   try {
-    const res = await fetch(`https://www.instagram.com/oembed/?url=${encodeURIComponent(clean)}`, {
-      headers: FETCH_HEADERS,
-      signal: AbortSignal.timeout(2500),
-    });
+    const res = await scrapeThroughProxy(
+      `https://www.instagram.com/oembed/?url=${encodeURIComponent(clean)}`,
+      {
+        headers: FETCH_HEADERS,
+        signal: AbortSignal.timeout(2500),
+      },
+    );
     if (!res.ok) return null;
     const data = (await res.json()) as {
       title?: string;
@@ -333,9 +362,12 @@ async function fetchInstagramPreview(url: string): Promise<VideoInfo | null> {
       return buildInstagramPreview(id, og);
     },
     async () => {
+      // Generous budgets: these race against the 12s yt-dlp fallback below, so a
+      // longer timeout never delays the preview — it only lets a slightly slow
+      // proxied scrape win (~1–2s) instead of aborting into the ~5s yt-dlp wait.
       const og = await raceForMetadata([
-        () => scrapeOpenGraphOnce(embed, 800),
-        () => scrapeOpenGraphOnce(clean, 1400),
+        () => scrapeOpenGraphOnce(embed, 4000, true),
+        () => scrapeOpenGraphOnce(clean, 4500, true),
       ]);
       if (!og?.title && !og?.image) return null;
       notePreviewImage(og.image);
