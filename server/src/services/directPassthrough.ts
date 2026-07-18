@@ -132,7 +132,7 @@ export async function resolveDirectDownload(
     await Promise.race([
       ensureInfoJsonCache(trimmed),
       new Promise<void>((_, reject) =>
-        setTimeout(() => reject(new Error('passthrough info warm timeout')), 14_000),
+        setTimeout(() => reject(new Error('passthrough info warm timeout')), 8000),
       ),
     ]);
   } catch (err) {
