@@ -23,7 +23,7 @@ export function extractYoutubeId(url: string): string | null {
 
 /**
  * Instant YouTube preview from the browser (oEmbed + thumbnail fallback).
- * Does not depend on the Render API, so thumbnails/titles load even when yt-dlp is blocked.
+ * Does not depend on our API, so thumbnails/titles load even when yt-dlp is blocked.
  */
 export async function fetchClientYoutubePreview(url: string): Promise<VideoInfo | null> {
   const id = extractYoutubeId(url);

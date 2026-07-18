@@ -129,7 +129,7 @@ export function buildSelector(
 
 /**
  * IG/FB: prefer a single progressive H.264 MP4 so gallery prep is a cheap
- * faststart remux — not a RAM-heavy HEVC transcode on Render's 512 MB tier.
+ * faststart remux — not a RAM-heavy HEVC transcode on a low-memory host.
  */
 function socialGallerySelector(
   quality: QualityDef,

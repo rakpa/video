@@ -31,9 +31,9 @@ Ship the current work to GitHub and Vercel for this repo.
   `vercel deploy` is not possible. (Re-check with `which vercel` /
   `printenv | grep -i vercel`; if a token ever appears, `vercel --prod
   --token=$VERCEL_TOKEN` is an option.)
-- The **backend/API runs on Render** (see `render.yaml`), not Vercel. Vercel only
+- The **backend/API runs on Railway** (see `railway.toml` + `Dockerfile`), not Vercel. Vercel only
   hosts the React frontend in `client/`. If a change touches `server/`, note that
-  it deploys via Render (auto-deploys on `main` push too), not Vercel.
+  it deploys via Railway (auto-deploys on `main` push too), not Vercel.
 
 ## Procedure
 
@@ -77,7 +77,7 @@ Ship the current work to GitHub and Vercel for this repo.
 7. **Report**: state that git is pushed and whether the Vercel build was
    triggered via the hook. Remind the user the live URL updates once Vercel
    finishes the build (it can't be polled from here without a token). If only
-   frontend changed, that's all; if `server/` changed, mention Render redeploys too.
+   frontend changed, that's all; if `server/` changed, mention Railway redeploys too.
 
 ## Notes
 - Never create a pull request unless the user explicitly asks.

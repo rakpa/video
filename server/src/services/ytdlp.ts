@@ -459,7 +459,7 @@ function youtubeHardeningArgs(playerClient: string): string[] {
   if (config.ytdlpPotBaseUrl) {
     args.push('--extractor-args', `youtubepot-bgutilhttp:base_url=${config.ytdlpPotBaseUrl}`);
   }
-  // Use a writable copy: yt-dlp rewrites the cookies file on exit and Render's
+  // Use a writable copy: yt-dlp rewrites the cookies file on exit and a
   // secret mount is read-only (crashes the process otherwise).
   const cookiesPath = getUsableCookiesPath();
   if (cookiesPath) args.push('--cookies', cookiesPath);
@@ -508,9 +508,9 @@ function ytDlpFailureMessage(stderr: string): string {
       if (!cookies.hasGoogle || !cookies.hasYoutube) {
         return 'Cookies file is missing Google or YouTube entries. Re-export cookies from both accounts.google.com and youtube.com, then redeploy.';
       }
-      return 'YouTube blocked this server even with cookies. Re-export a fresh cookies.txt (after logging in on Google + YouTube) and redeploy. Render datacenter IPs are often blocked by YouTube.';
+      return 'YouTube blocked this server even with cookies. Re-export a fresh cookies.txt (after logging in on Google + YouTube) and redeploy. Datacenter IPs are often blocked by YouTube.';
     }
-    return 'YouTube blocked automated access from this server. Add a cookies.txt on Render (secret file) and set YTDLP_COOKIES, then redeploy.';
+    return 'YouTube blocked automated access from this server. Add a cookies.txt to the server and set YTDLP_COOKIES, then redeploy.';
   }
   if (s.includes('requested format is not available')) {
     return 'This video does not provide the requested quality/codec combination. Try a lower quality or switch to “Most compatible”.';

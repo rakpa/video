@@ -10,10 +10,14 @@ All previous improvements (retry logic, better error messages, deployment docs) 
 
 ---
 
-## Backend Deployment (Render)
+## Backend Deployment (Railway)
 
-Deploy using the existing `render.yaml` blueprint.
+Connect this repo to a Railway service (root directory = repo root; it builds
+from the `Dockerfile` per `railway.toml`). Railway auto-deploys on every push
+to the connected branch (`main`). See `railway.toml` for optional tuning env
+vars (worker slots, Redis for the durable 2K/4K quota, `YTDLP_PROXY`, …).
 
 ## Frontend Environment Variable
 
-Set `VITE_API_URL` in Vercel to your Render backend URL.
+Set `VITE_API_URL` in Vercel to your Railway backend URL (no trailing slash),
+and set `CLIENT_ORIGIN` on Railway to your exact Vercel domain(s) for CORS.

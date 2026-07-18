@@ -1,7 +1,7 @@
 import type { Request } from 'express';
 
 /**
- * Render/Cloudflare/proxies can occasionally deliver JSON bodies as a raw string.
+ * Cloudflare/host proxies can occasionally deliver JSON bodies as a raw string.
  * Our routes expect an object, so normalize here to avoid runtime throws.
  */
 export function readJsonBody(req: Request): { [key: string]: any } {

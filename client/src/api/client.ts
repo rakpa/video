@@ -17,7 +17,7 @@ export class ApiError extends Error {
   }
 }
 
-/** Enough attempts to survive Render free-tier cold starts (~50s wake). */
+/** Enough attempts to survive a backend cold start / brief redeploy. */
 const COLD_START_RETRY = { retries: 8, delayMs: 5000, backoffFactor: 1.4 } as const;
 
 /** Preview is lightweight — fail fast then retry so thumbnails appear quickly. */
@@ -25,7 +25,7 @@ const PREVIEW_RETRY = { retries: 2, delayMs: 700, backoffFactor: 1.3 } as const;
 
 function apiFailureMessage(res: Response, isJson: boolean): string {
   if (res.status === 502 || res.status === 503 || res.status === 504) {
-    return 'The download service is waking up (Render free tier). Wait ~1 minute and try again.';
+    return 'The download service is briefly unavailable (waking up or redeploying). Please wait a moment and try again.';
   }
   if (!isJson) {
     return import.meta.env.PROD && !import.meta.env.VITE_API_URL
@@ -42,8 +42,8 @@ async function postJson<T>(path: string, body: unknown): Promise<T> {
 
   let res: Response;
   try {
-    // Retry with backoff so a sleeping free-tier backend (Render) gets a chance
-    // to wake up instead of immediately surfacing "could not reach" on cold start.
+    // Retry with backoff so a sleeping/redeploying backend gets a chance to
+    // come up instead of immediately surfacing "could not reach" on cold start.
     res = await retryFetch(
       apiUrl(path),
       {
@@ -74,7 +74,7 @@ async function postJson<T>(path: string, body: unknown): Promise<T> {
   return data as T;
 }
 
-/** Wake the API (Render free tier cold start) before heavier yt-dlp work. */
+/** Wake the API (cold start / redeploy) before heavier yt-dlp work. */
 export function pingApiWarmup(): void {
   if (!isApiConfigured()) return;
   void fetch(apiUrl('/api/health')).catch(() => undefined);
@@ -381,7 +381,7 @@ export function subscribeProgress(jobId: string, handlers: ProgressHandlers): ()
   };
 
   /**
-   * Resilient fallback when the SSE stream drops. Free-tier hosts (Render) and
+   * Resilient fallback when the SSE stream drops. Hosting proxies (Railway) and
    * flaky mobile networks routinely break the event stream mid-download even
    * though the job keeps running server-side. Rather than fail the whole
    * download on a transient blip, we poll the job status — recovering progress,

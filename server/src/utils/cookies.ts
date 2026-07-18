@@ -36,9 +36,9 @@ export function getCookiesStatus(): CookiesStatus {
 
 /**
  * yt-dlp rewrites the cookies file when it closes (to persist refreshed
- * session tokens). On Render, Secret Files are mounted READ-ONLY at
- * /etc/secrets, so that write throws `OSError: Read-only file system` and
- * crashes yt-dlp on exit — even after extraction succeeded. To avoid this we
+ * session tokens). Hosts that mount secrets READ-ONLY (e.g. /etc/secrets)
+ * make that write throw `OSError: Read-only file system` and
+ * crash yt-dlp on exit — even after extraction succeeded. To avoid this we
  * copy the configured cookies to a writable temp file once and hand yt-dlp
  * that copy instead. The path lives OUTSIDE config.tmpRoot so the temp sweeper
  * never deletes it.

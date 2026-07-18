@@ -1,6 +1,6 @@
 /**
  * Reliable fetch with retry and exponential backoff.
- * Especially useful for free-tier backends that sleep (Render, Railway, etc).
+ * Especially useful for backends that sleep or restart on deploy (Railway etc).
  */
 
 export interface RetryOptions {
@@ -30,7 +30,7 @@ export async function retryFetch(
       const res = await fetch(url, init);
 
       // Only retry the gateway codes that signal a sleeping/booting free-tier
-      // backend (Render cold start). A plain 500 is a real application error
+      // backend (cold start / redeploy). A plain 500 is a real application error
       // (e.g. the video is unavailable or has no formats) — surface it
       // immediately instead of making the user wait through the full backoff.
       const isColdStart = res.status === 502 || res.status === 503 || res.status === 504;

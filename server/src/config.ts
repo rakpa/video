@@ -107,13 +107,11 @@ export const config = {
   cpuCount: os.cpus().length,
 
   /**
-   * Render free tier = 512 MB RAM. yt-dlp + ffmpeg HEVC transcode can exceed that
-   * unless downloads are serialized and ffmpeg uses minimal threads/buffers.
-   * Auto-enabled on Render; override with LOW_MEMORY_MODE=false to disable.
+   * Small hosts (≤512 MB RAM) can't run yt-dlp + ffmpeg HEVC transcodes unless
+   * downloads are serialized and ffmpeg uses minimal threads/buffers.
+   * Opt in with LOW_MEMORY_MODE=true (Railway Hobby has plenty of RAM — leave off).
    */
-  lowMemoryMode:
-    process.env.LOW_MEMORY_MODE !== 'false' &&
-    (process.env.LOW_MEMORY_MODE === 'true' || process.env.RENDER === 'true'),
+  lowMemoryMode: process.env.LOW_MEMORY_MODE === 'true',
 
   /** Parallel worker slots on this server (NOT a user limit — extra users wait in queue). */
   get maxConcurrentJobs(): number {
@@ -139,7 +137,7 @@ export const config = {
   // --- yt-dlp hardening for cloud hosts (YouTube bot-detection) ---
   // Path to a Netscape-format cookies.txt so yt-dlp can authenticate. This is
   // the most reliable fix for "Sign in to confirm you're not a bot" errors that
-  // hit datacenter IPs (Render/AWS/GCP). Empty = no cookies (works locally).
+  // hit datacenter IPs (Railway/AWS/GCP). Empty = no cookies (works locally).
   ytdlpCookies: (process.env.YTDLP_COOKIES ?? '').trim(),
   // Proxy pool for yt-dlp — the most reliable fix for datacenter-IP blocks.
   // One or many proxies via YTDLP_PROXY (comma/space/newline-separated), each a

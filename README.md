@@ -6,23 +6,21 @@ A polished, production-ready web app to download videos from **YouTube, Facebook
 
 ---
 
-## ☁️ Deploy (frontend on Vercel + backend on Render)
+## ☁️ Deploy (frontend on Vercel + backend on Railway)
 
-This app has **two halves**: a static **frontend** (Vercel) and a **download backend** that runs `yt-dlp` + `ffmpeg` (must run on a real server — **not** Vercel). The backend is pre-configured for Render via `render.yaml`.
+This app has **two halves**: a static **frontend** (Vercel) and a **download backend** that runs `yt-dlp` + `ffmpeg` (must run on a real server — **not** Vercel). The backend is pre-configured for Railway via `railway.toml` + `Dockerfile`.
 
-### 1. Deploy the backend to Render (one click)
+### 1. Deploy the backend to Railway
 
-[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/rakpa/video)
-
-This reads `render.yaml`, creates the `clipvault-api` Web Service (Docker, Free plan), and installs `ffmpeg` + `yt-dlp` from the `Dockerfile`. Auto-deploys on every push to the connected branch. Copy the URL it gives you (e.g. `https://clipvault-api-xxxx.onrender.com`).
-
-> Free tier sleeps after ~15 min idle; the first request then takes ~50s to wake — that's the "wait a minute for the API to wake up" notice in the UI.
+1. [railway.app](https://railway.app) → **New Project → Deploy from GitHub repo** → pick this repo (service root = repo root; it builds from the `Dockerfile`).
+2. Add a **Redis** database and reference its `REDIS_URL` in the API service so the per-IP 2K/4K quota survives restarts (see `railway.toml` comments for optional tuning vars).
+3. Railway auto-deploys on every push to the connected branch. Copy the public URL it gives you (e.g. `https://your-api.up.railway.app`). `/api/health` reports the deployed commit.
 
 ### 2. Point the frontend at it (Vercel)
 
-1. Vercel → project → **Settings → Environment Variables** → set `VITE_API_URL` to your Render URL (no trailing slash).
+1. Vercel → project → **Settings → Environment Variables** → set `VITE_API_URL` to your Railway URL (no trailing slash).
 2. **Redeploy** on Vercel (Vite bakes env vars in at build time).
-3. On Render, ensure `CLIENT_ORIGIN` equals your exact Vercel domain (else CORS blocks requests).
+3. On Railway, ensure `CLIENT_ORIGIN` equals your exact Vercel domain (else CORS blocks requests).
 
 ---
 

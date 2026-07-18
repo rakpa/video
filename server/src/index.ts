@@ -100,11 +100,8 @@ app.get('/api/health', (_req, res) => {
   const cookies = getCookiesStatus();
   res.json({
     ok: true,
-    // Deployed commit (Render/Railway inject these) — confirms a deploy went live.
-    version:
-      process.env.RENDER_GIT_COMMIT?.slice(0, 7) ??
-      process.env.RAILWAY_GIT_COMMIT_SHA?.slice(0, 7) ??
-      null,
+    // Deployed commit (Railway injects this) — confirms a deploy went live.
+    version: process.env.RAILWAY_GIT_COMMIT_SHA?.slice(0, 7) ?? null,
     ytdlpVersion,
     cookies: {
       configured: Boolean(cookies.path),
