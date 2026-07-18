@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { proxyFetch } from '../utils/proxyFetch.js';
 
 export const thumbRouter = Router();
 
@@ -12,6 +13,15 @@ const THUMB_FETCH_HEADERS = {
   Accept: 'image/avif,image/webp,image/*,*/*;q=0.8',
 };
 
+function needsProxyForThumbHost(host: string): boolean {
+  return (
+    /(?:^|\.)cdninstagram\.com$/i.test(host) ||
+    /(?:^|\.)fbcdn\.net$/i.test(host) ||
+    /(?:^|\.)instagram\.com$/i.test(host) ||
+    /(?:^|\.)facebook\.com$/i.test(host)
+  );
+}
+
 async function fetchThumbIntoCache(target: URL): Promise<void> {
   const cacheKey = target.href;
   const cached = thumbCache.get(cacheKey);
@@ -20,12 +30,16 @@ async function fetchThumbIntoCache(target: URL): Promise<void> {
   let inflight = thumbInflight.get(cacheKey);
   if (!inflight) {
     inflight = (async () => {
-      const upstream = await fetch(target.href, {
+      // IG/FB CDNs often throttle or challenge datacenter IPs — use the same
+      // residential proxy as yt-dlp so the first paint isn't a multi-second miss.
+      const viaProxy = needsProxyForThumbHost(target.hostname);
+      const upstream = await proxyFetch(target.href, {
         headers: {
           ...THUMB_FETCH_HEADERS,
           Referer: `${target.protocol}//${target.host}/`,
         },
-        signal: AbortSignal.timeout(6000),
+        timeoutMs: 5000,
+        viaProxy,
       });
       if (!upstream.ok || !upstream.body) return;
 

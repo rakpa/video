@@ -2,8 +2,9 @@ import type { PlatformId } from './platform.js';
 import type { VideoInfo } from './ytdlp.js';
 import { ensureInfoJsonCache, readCachedVideoInfo, waitForCachedVideoInfo } from './ytdlp.js';
 import { fetchYoutubePreview } from './previewYoutube.js';
-import { warmThumbCache } from '../routes/thumb.js';
+import { warmThumbCache, warmThumbCacheReady } from '../routes/thumb.js';
 import { cleanInstagramUrl, extractInstagramShortcode } from './instagram.js';
+import { proxyFetch } from '../utils/proxyFetch.js';
 export { extractYoutubeId, fetchYoutubePreview } from './previewYoutube.js';
 
 const OG_CACHE_TTL_MS = 10 * 60 * 1000;
@@ -109,18 +110,29 @@ function parseOgDurationSeconds(html: string): number | null {
   return Number.isFinite(n) && n > 0 ? Math.round(n) : null;
 }
 
+function looksLikeLoginWall(html: string): boolean {
+  return (
+    /accounts\/login/i.test(html) ||
+    /\"requireLogin\"\s*:\s*true/i.test(html) ||
+    /name=["']username["']/i.test(html) ||
+    (/login_form/i.test(html) && !/og:image/i.test(html))
+  );
+}
+
 /** Scrape og:title / og:image — stop reading HTML once an image tag is found. */
 async function scrapeOpenGraphOnce(
   url: string,
   timeoutMs = 5000,
 ): Promise<{ title?: string; image?: string; durationSeconds?: number | null } | null> {
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
-    const res = await fetch(url, {
+    // Route through the residential proxy — datacenter IPs get Instagram login HTML.
+    const res = await proxyFetch(url, {
       headers: FETCH_HEADERS,
       redirect: 'follow',
       signal: controller.signal,
+      timeoutMs,
+      viaProxy: true,
     });
     if (!res.ok || !res.body) return null;
 
@@ -140,6 +152,20 @@ async function scrapeOpenGraphOnce(
         controller.abort();
         return { title, image, durationSeconds: parseOgDurationSeconds(html) };
       }
+      // Login / JS shell with no media — bail instead of draining 600KB.
+      if (html.length > 8_000 && looksLikeLoginWall(html)) {
+        controller.abort();
+        return null;
+      }
+      if (
+        html.length > 24_000 &&
+        !metaContent(html, 'og:image') &&
+        !extractEmbeddedImage(html) &&
+        !/"display_url"|"thumbnail_src"|"thumbnail_url"/.test(html)
+      ) {
+        controller.abort();
+        return null;
+      }
     }
 
     const title = metaContent(html, 'og:title') ?? metaContent(html, 'twitter:title');
@@ -151,8 +177,6 @@ async function scrapeOpenGraphOnce(
     return { title, image, durationSeconds: parseOgDurationSeconds(html) };
   } catch {
     return null;
-  } finally {
-    clearTimeout(timer);
   }
 }
 
@@ -160,11 +184,24 @@ async function fetchInstagramOembed(
   clean: string,
 ): Promise<{ title?: string; image?: string; author?: string } | null> {
   try {
-    const res = await fetch(`https://www.instagram.com/oembed/?url=${encodeURIComponent(clean)}`, {
-      headers: FETCH_HEADERS,
-      signal: AbortSignal.timeout(2500),
-    });
+    // Manual redirects: a 302 to /accounts/login means the IP is blocked —
+    // don't follow and burn 2s parsing an HTML login page as JSON.
+    const res = await proxyFetch(
+      `https://www.instagram.com/oembed/?url=${encodeURIComponent(clean)}`,
+      {
+        headers: {
+          ...FETCH_HEADERS,
+          Accept: 'application/json',
+        },
+        redirect: 'manual',
+        timeoutMs: 1800,
+        viaProxy: true,
+      },
+    );
+    if (res.status >= 300 && res.status < 400) return null;
     if (!res.ok) return null;
+    const ctype = res.headers.get('content-type') ?? '';
+    if (!ctype.includes('json')) return null;
     const data = (await res.json()) as {
       title?: string;
       author_name?: string;
@@ -218,6 +255,11 @@ function notePreviewImage(image?: string): void {
   if (image) warmThumbCache(image);
 }
 
+/** Warm thumb bytes briefly so the client's first /api/thumb is a cache hit. */
+async function notePreviewImageReady(image?: string, maxWaitMs = 450): Promise<void> {
+  if (image) await warmThumbCacheReady(image, maxWaitMs);
+}
+
 function buildInstagramPreview(
   id: string,
   og: { title?: string; image?: string; author?: string; durationSeconds?: number | null },
@@ -246,21 +288,23 @@ async function raceSocialPreview(
     let fallback: VideoInfo | null = null;
     let done = false;
 
+    const settle = (result: VideoInfo | null) => {
+      if (done) return;
+      if (result?.thumbnail) {
+        done = true;
+        resolve(result);
+        return;
+      }
+      pending--;
+      if (result && !fallback) fallback = result;
+      if (pending === 0) {
+        done = true;
+        resolve(fallback);
+      }
+    };
+
     for (const task of tasks) {
-      void task().then((result) => {
-        if (done) return;
-        if (result?.thumbnail) {
-          done = true;
-          resolve(result);
-          return;
-        }
-        pending--;
-        if (result && !fallback) fallback = result;
-        if (pending === 0) {
-          done = true;
-          resolve(fallback);
-        }
-      });
+      void task().then(settle).catch(() => settle(null));
     }
   });
 }
@@ -269,14 +313,22 @@ async function fetchFacebookOembed(
   url: string,
 ): Promise<{ title?: string; image?: string; author?: string } | null> {
   try {
-    const res = await fetch(
+    const res = await proxyFetch(
       `https://www.facebook.com/plugins/video/oembed.json/?url=${encodeURIComponent(url)}`,
       {
-        headers: FETCH_HEADERS,
-        signal: AbortSignal.timeout(3500),
+        headers: {
+          ...FETCH_HEADERS,
+          Accept: 'application/json',
+        },
+        redirect: 'manual',
+        timeoutMs: 2500,
+        viaProxy: true,
       },
     );
+    if (res.status >= 300 && res.status < 400) return null;
     if (!res.ok) return null;
+    const ctype = res.headers.get('content-type') ?? '';
+    if (!ctype.includes('json')) return null;
     const data = (await res.json()) as {
       title?: string;
       author_name?: string;
@@ -301,15 +353,13 @@ async function fetchInstagramPreview(url: string): Promise<VideoInfo | null> {
 
   const cached = ogCache.get(cacheKey);
   if (cached && cached.expires > Date.now() && cached.data.image) {
-    // Fire-and-forget warm — don't delay the preview JSON; client's /api/thumb
-    // shares the same in-flight CDN fetch.
-    notePreviewImage(cached.data.image);
+    await notePreviewImageReady(cached.data.image);
     return buildInstagramPreview(id, cached.data);
   }
 
   const warm = readCachedVideoInfo(clean);
   if (warm?.thumbnail) {
-    notePreviewImage(warm.thumbnail);
+    await notePreviewImageReady(warm.thumbnail);
     return {
       id: warm.id || id,
       title: warm.title,
@@ -321,31 +371,34 @@ async function fetchInstagramPreview(url: string): Promise<VideoInfo | null> {
     };
   }
 
+  // Kick yt-dlp early as a fallback — oEmbed/OG via proxy usually win first.
   void ensureInfoJsonCache(clean).catch(() => undefined);
 
   const hit = await raceSocialPreview([
-    // oEmbed is usually fastest (~300–800 ms) — try it first on its own.
+    // oEmbed through residential proxy is usually fastest (~300–800 ms).
     async () => {
       const og = await fetchInstagramOembed(clean);
       if (!og?.image) return null;
-      notePreviewImage(og.image);
+      await notePreviewImageReady(og.image);
       ogCache.set(cacheKey, { data: og, expires: Date.now() + OG_CACHE_TTL_MS });
       return buildInstagramPreview(id, og);
     },
     async () => {
       const og = await raceForMetadata([
-        () => scrapeOpenGraphOnce(embed, 800),
-        () => scrapeOpenGraphOnce(clean, 1400),
+        () => scrapeOpenGraphOnce(embed, 1200),
+        () => scrapeOpenGraphOnce(clean, 1600),
       ]);
       if (!og?.title && !og?.image) return null;
-      notePreviewImage(og.image);
+      if (og.image) await notePreviewImageReady(og.image);
+      else notePreviewImage(og.image);
       if (og.image) ogCache.set(cacheKey, { data: og, expires: Date.now() + OG_CACHE_TTL_MS });
       return buildInstagramPreview(id, og);
     },
     async () => {
-      const info = await waitForCachedVideoInfo(clean, 12000);
+      // Shorter wait — if oEmbed/OG fail, /api/info shares the same yt-dlp cache.
+      const info = await waitForCachedVideoInfo(clean, 8000);
       if (!info?.thumbnail) return null;
-      notePreviewImage(info.thumbnail);
+      await notePreviewImageReady(info.thumbnail);
       return {
         id: info.id || id,
         title: info.title,
@@ -386,7 +439,7 @@ async function fetchFacebookPreview(url: string): Promise<VideoInfo | null> {
   const cacheKey = `fb:${trimmed}`;
   const cached = ogCache.get(cacheKey);
   if (cached && cached.expires > Date.now() && cached.data.image) {
-    notePreviewImage(cached.data.image);
+    await notePreviewImageReady(cached.data.image);
     return {
       id: '',
       title: cached.data.title?.replace(/\s*\|\s*Facebook.*$/i, '').trim() || 'Facebook video',
@@ -394,13 +447,13 @@ async function fetchFacebookPreview(url: string): Promise<VideoInfo | null> {
       durationSeconds: null,
       thumbnail: cached.data.image ?? null,
       sourceMaxHeight: null,
-    formats: [],
+      formats: [],
     };
   }
 
   const warm = readCachedVideoInfo(trimmed);
   if (warm?.thumbnail) {
-    notePreviewImage(warm.thumbnail);
+    await notePreviewImageReady(warm.thumbnail);
     return {
       id: warm.id,
       title: warm.title,
@@ -408,7 +461,7 @@ async function fetchFacebookPreview(url: string): Promise<VideoInfo | null> {
       durationSeconds: warm.durationSeconds,
       thumbnail: warm.thumbnail,
       sourceMaxHeight: null,
-    formats: [],
+      formats: [],
     };
   }
 
@@ -419,7 +472,7 @@ async function fetchFacebookPreview(url: string): Promise<VideoInfo | null> {
     async () => {
       const og = await fetchFacebookOembed(trimmed);
       if (!og?.image && !og?.title) return null;
-      notePreviewImage(og.image);
+      if (og.image) await notePreviewImageReady(og.image);
       ogCache.set(cacheKey, { data: og, expires: Date.now() + OG_CACHE_TTL_MS });
       return {
         id: '',
@@ -436,7 +489,7 @@ async function fetchFacebookPreview(url: string): Promise<VideoInfo | null> {
         scrapeUrls.map((u, i) => () => scrapeOpenGraphOnce(u, i === 0 ? 1200 : 2200)),
       );
       if (!og?.title && !og?.image) return null;
-      notePreviewImage(og.image);
+      if (og.image) await notePreviewImageReady(og.image);
       ogCache.set(cacheKey, { data: og, expires: Date.now() + OG_CACHE_TTL_MS });
       return {
         id: '',
@@ -449,9 +502,9 @@ async function fetchFacebookPreview(url: string): Promise<VideoInfo | null> {
       };
     },
     async () => {
-      const info = await waitForCachedVideoInfo(trimmed, 12000);
+      const info = await waitForCachedVideoInfo(trimmed, 8000);
       if (!info?.thumbnail) return null;
-      notePreviewImage(info.thumbnail);
+      await notePreviewImageReady(info.thumbnail);
       return {
         id: info.id,
         title: info.title,

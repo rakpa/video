@@ -66,10 +66,12 @@ export async function fetchClientInstagramPreview(url: string): Promise<VideoInf
   };
 
   try {
+    // Browser oEmbed is almost always CORS-blocked — fail fast so the API race wins.
     const res = await fetch(`https://www.instagram.com/oembed/?url=${encodeURIComponent(clean)}`, {
-      signal: AbortSignal.timeout(2800),
+      signal: AbortSignal.timeout(400),
     });
-    if (res.ok) {
+    const ctype = res.headers.get('content-type') ?? '';
+    if (res.ok && ctype.includes('json')) {
       const data = (await res.json()) as {
         title?: string;
         author_name?: string;

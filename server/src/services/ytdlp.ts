@@ -760,7 +760,7 @@ export async function waitForCachedVideoInfo(url: string, maxWaitMs = 15000): Pr
   while (Date.now() < deadline) {
     const info = readCachedVideoInfo(url);
     if (info?.thumbnail) return info;
-    await new Promise((r) => setTimeout(r, 300));
+    await new Promise((r) => setTimeout(r, 120));
   }
   return null;
 }

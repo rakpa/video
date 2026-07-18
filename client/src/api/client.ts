@@ -102,7 +102,7 @@ async function fetchPreviewFromApi(url: string): Promise<VideoPreviewResult | nu
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ url }),
-        signal: AbortSignal.timeout(9000),
+        signal: AbortSignal.timeout(6000),
       },
       PREVIEW_RETRY,
     );

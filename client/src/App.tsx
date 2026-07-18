@@ -693,9 +693,13 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
           ? cleanInstagramUrl(fetchedUrl.current || url)
           : fetchedUrl.current || url;
 
-      // YouTube (full + clip, 720p–4K) → stream-through to the browser (user-side).
-      // Instagram/FB keep gallery prep separately.
-      const useMobileStream = mobile && isYoutube;
+      // YouTube (full + clip) + Instagram Reels (≤1080p, no clip) → stream-through
+      // so the phone starts receiving bytes in a few seconds (no full server job).
+      // FB / clips / 2K+ keep gallery H.264 prep. After stream, H.264 blobs still
+      // open the Save-to-Gallery sheet on mobile.
+      const useMobileStream =
+        mobile &&
+        (isYoutube || (isInstagram && !highRes && !clip && clipMode !== 'clip'));
       const galleryPrep = mobile && !useMobileStream;
       // Gallery share sheet only when not streaming to the browser download bar.
       const useGallerySheet = mobile && !useMobileStream && (isNativeMobileApp() || !highRes);
@@ -718,7 +722,8 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
           licenseToken(),
           {
             fast: isIgFb || (mobile && !highRes),
-            reuse: !useMobileStream && !mobile && !clip && !highRes,
+            // Reuse warm/completed jobs (and R2) for viral Reels when the job path runs.
+            reuse: !clip && !highRes,
             clip,
             galleryPrep,
           },
