@@ -973,15 +973,15 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
                 transition={{ duration: 0.25 }}
                 className="space-y-5"
               >
-                {phase === 'preview' && (info?.platform === 'instagram' || info?.platform === 'facebook' || !info) && (
-                  <div className="glass flex items-center gap-3 rounded-2xl px-4 py-3 text-sm text-slate-600 shadow-card">
-                    <div className="h-4 w-4 animate-spin rounded-full border-2 border-indigo-400 border-t-transparent" />
-                    <span>
-                      {info?.platform === 'instagram'
-                        ? 'Loading Instagram Reel preview… This usually takes 1–4 seconds. Please wait.'
-                        : info?.platform === 'facebook'
-                        ? 'Loading Facebook video preview… Please wait a moment.'
-                        : 'Loading preview…'}
+                {phase === 'preview' && (info?.platform === 'instagram' || info?.platform === 'facebook' || detectPlatform(url.trim())?.id === 'instagram' || detectPlatform(url.trim())?.id === 'facebook' || !info) && (
+                  <div className="glass flex items-center gap-3 rounded-2xl border border-indigo-200 bg-indigo-50/60 px-4 py-3.5 text-sm font-medium text-indigo-700 shadow-card">
+                    <div className="h-5 w-5 animate-spin rounded-full border-[2.5px] border-indigo-500 border-t-transparent flex-shrink-0" />
+                    <span className="leading-snug">
+                      {detectPlatform(url.trim())?.id === 'instagram' || info?.platform === 'instagram'
+                        ? 'Processing Instagram Reel… Fetching preview & thumbnail. Please wait.'
+                        : detectPlatform(url.trim())?.id === 'facebook' || info?.platform === 'facebook'
+                        ? 'Processing Facebook video… Please wait a moment.'
+                        : 'Processing link…'}
                     </span>
                   </div>
                 )}

@@ -30,9 +30,9 @@ export interface PassthroughOptions {
  * starts immediately at full quality with no server-side temp file.
  *
  * YouTube full videos and clips (720p–4K) use this path. Instagram streams
- * progressive Reels (no clip) on desktop AND mobile: IG tickets are only issued
- * for progressive H.264 (see resolveFromCache), so the relayed bytes are
- * already gallery-safe — no server download + remux job needed for galleryPrep.
+ * progressive Reels (no clip) on desktop AND mobile — we now also support fast
+ * merge (DASH) when no single progressive file exists. This makes direct
+ * passthrough work for far more Reels instead of falling back to slower job path.
  */
 export function canDirectPassthrough(options: PassthroughOptions): boolean {
   if (!config.directPassthrough) return false;
@@ -42,7 +42,7 @@ export function canDirectPassthrough(options: PassthroughOptions): boolean {
   if (options.galleryPrep && platform.id !== 'instagram') return false;
   // Clips: YouTube only (ffmpeg -ss/-t while remuxing to the browser).
   if (options.clip && platform.id !== 'youtube') return false;
-  // Instagram stays ≤1080p progressive. YouTube may stream 2K/4K (VP9/AV1 remux).
+  // Instagram stays ≤1080p. YouTube may stream 2K/4K (VP9/AV1 remux).
   if (platform.id === 'instagram' && options.quality.height > 1080) return false;
   // Saturated stream slots → let the request queue through the job pipeline.
   if (!hasStreamCapacity()) return false;
@@ -83,11 +83,10 @@ function resolveFromCache(
   const picked = pickStreamMergeFormats(entry.path, maxHeight);
   if (!picked) return null;
 
-  // Instagram Reels are progressive H.264 MP4s — refuse merge tickets (rare for IG)
-  // if somehow only separate tracks exist without a progressive candidate that
-  // pickStreamMergeFormats preferred. Progressive is required for reliable CDN relay.
-  if (platform?.id === 'instagram' && picked.kind !== 'progressive') return null;
-
+  // We now allow both progressive and merge for Instagram. Many modern Reels
+  // only expose DASH (separate video+audio). Allowing merge here lets them use
+  // the fast direct stream path instead of falling back to the slower full job.
+  // The remux is still a cheap copy and keeps everything gallery-safe.
   const filename = safeFilename(
     clip
       ? `VidCliply_${picked.height}p_clip${clipFilenameSuffix(clip)}`
