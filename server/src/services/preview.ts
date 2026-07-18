@@ -30,15 +30,27 @@ function metaContent(html: string, prop: string): string | undefined {
 }
 
 function extractEmbeddedImage(html: string): string | undefined {
+  // Modern IG (2025-2026) often puts real thumbnail in inline JSON blobs
+  // (image_versions2, video_versions, display_uri, thumbnail_url, cover_artwork etc.)
+  // rather than simple og: tags (frequently stripped or login-walled).
+  // Expanded patterns + unescape to catch more cases without full yt-dlp.
   const patterns = [
     /"display_url":"([^"]+)"/,
     /"thumbnail_src":"([^"]+)"/,
     /"og:image":"([^"]+)"/,
     /"image":"(https:\\\/\\\/[^"]+)"/,
+    /"thumbnail_url":"([^"]+)"/,
+    /"display_uri":"([^"]+)"/,
+    /"cover_artwork_uri":"([^"]+)"/,
+    /"image_versions2"[^}]*"url":"([^"]+)"/,
+    /"video_versions"[^}]*"url":"([^"]+)"/,
   ];
   for (const re of patterns) {
     const hit = html.match(re)?.[1];
-    if (hit) return decodeHtml(hit);
+    if (hit) {
+      // basic unescape common in IG JSON
+      return decodeHtml(hit.replace(/\\\\/g, '/').replace(/\\/\\/g, '/'));
+    }
   }
   return undefined;
 }
@@ -153,7 +165,10 @@ async function scrapeOpenGraphOnce(
     const reader = res.body.getReader();
     const decoder = new TextDecoder();
     let html = '';
-    while (html.length < 160_000) {
+    // Increased buffer: modern IG embed pages are JS/JSON heavy; thumbnail data
+    // (esp. in video_versions/image_versions2 blobs) often appears deeper than 160k.
+    // This lets fast path succeed far more often → 1-3s thumb instead of 5s+ yt-dlp.
+    while (html.length < 400_000) {
       const { done, value } = await reader.read();
       if (done) break;
       html += decoder.decode(value, { stream: true });
@@ -190,7 +205,7 @@ async function fetchInstagramOembed(
       `https://www.instagram.com/oembed/?url=${encodeURIComponent(clean)}`,
       {
         headers: FETCH_HEADERS,
-        signal: AbortSignal.timeout(2500),
+        signal: AbortSignal.timeout(3500),
       },
     );
     if (!res.ok) return null;
