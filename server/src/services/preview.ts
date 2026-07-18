@@ -44,6 +44,9 @@ function extractEmbeddedImage(html: string): string | undefined {
     /"cover_artwork_uri":"([^"]+)"/,
     /"image_versions2"[^}]*"url":"([^"]+)"/,
     /"video_versions"[^}]*"url":"([^"]+)"/,
+    /"thumbnail_url":"([^"]+)"/i,
+    /"cover_artwork_uri":"([^"]+)"/i,
+    /"image_versions2"[\s\S]{0,200}?"url":"([^"]+)"/,
   ];
   for (const re of patterns) {
     const hit = html.match(re)?.[1];
@@ -168,7 +171,7 @@ async function scrapeOpenGraphOnce(
     // Increased buffer: modern IG embed pages are JS/JSON heavy; thumbnail data
     // (esp. in video_versions/image_versions2 blobs) often appears deeper than 160k.
     // This lets fast path succeed far more often → 1-3s thumb instead of 5s+ yt-dlp.
-    while (html.length < 400_000) {
+    while (html.length < 500_000) {
       const { done, value } = await reader.read();
       if (done) break;
       html += decoder.decode(value, { stream: true });
@@ -381,8 +384,8 @@ async function fetchInstagramPreview(url: string): Promise<VideoInfo | null> {
       // longer timeout never delays the preview — it only lets a slightly slow
       // proxied scrape win (~1–2s) instead of aborting into the ~5s yt-dlp wait.
       const og = await raceForMetadata([
-        () => scrapeOpenGraphOnce(embed, 4000, true),
-        () => scrapeOpenGraphOnce(clean, 4500, true),
+        () => scrapeOpenGraphOnce(embed, 4500, true),
+        () => scrapeOpenGraphOnce(clean, 5000, true),
       ]);
       if (!og?.title && !og?.image) return null;
       notePreviewImage(og.image);
@@ -390,7 +393,7 @@ async function fetchInstagramPreview(url: string): Promise<VideoInfo | null> {
       return buildInstagramPreview(id, og);
     },
     async () => {
-      const info = await waitForCachedVideoInfo(clean, 7000);
+      const info = await waitForCachedVideoInfo(clean, 5000);
       if (!info?.thumbnail) return null;
       notePreviewImage(info.thumbnail);
       return {
@@ -480,7 +483,7 @@ async function fetchFacebookPreview(url: string): Promise<VideoInfo | null> {
     },
     async () => {
       const og = await raceForMetadata(
-        scrapeUrls.map((u, i) => () => scrapeOpenGraphOnce(u, i === 0 ? 1200 : 2200)),
+        scrapeUrls.map((u, i) => () => scrapeOpenGraphOnce(u, i === 0 ? 1500 : 2500)),
       );
       if (!og?.title && !og?.image) return null;
       notePreviewImage(og.image);
@@ -496,7 +499,7 @@ async function fetchFacebookPreview(url: string): Promise<VideoInfo | null> {
       };
     },
     async () => {
-      const info = await waitForCachedVideoInfo(trimmed, 12000);
+      const info = await waitForCachedVideoInfo(trimmed, 5000);
       if (!info?.thumbnail) return null;
       notePreviewImage(info.thumbnail);
       return {

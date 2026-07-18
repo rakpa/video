@@ -114,6 +114,7 @@ function resolveFromCache(
 /**
  * Resolve a stream-through ticket from warm info-json (no blocking extract).
  * Falls back to a short info-json warm when /api/info has not finished yet.
+ * We now cap at 5s max so download "processing" never exceeds user expectation.
  */
 export async function resolveDirectDownload(
   url: string,
@@ -124,14 +125,13 @@ export async function resolveDirectDownload(
   const cached = resolveFromCache(trimmed, maxHeight, clip);
   if (cached) return cached;
 
-  // Wait long enough for a cold yt-dlp extract — a 4.5s cutover to the job
-  // path was a major source of "sometimes stream / sometimes stuck job"
-  // inconsistency on mobile. Prefer a slightly slower stream start over roulette.
+  // Cap at 5s so "processing your download" never shows longer than user wants.
+  // Most cases now hit cache from preview warm-up. Fallback to job is clean & fast.
   try {
     await Promise.race([
       ensureInfoJsonCache(trimmed),
       new Promise<void>((_, reject) =>
-        setTimeout(() => reject(new Error('passthrough info warm timeout')), 8000),
+        setTimeout(() => reject(new Error('passthrough info warm timeout')), 5000),
       ),
     ]);
   } catch (err) {
