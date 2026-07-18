@@ -292,7 +292,7 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
 
   useStripeReturn(useCallback(() => refreshEntitlement(), [refreshEntitlement]));
 
-  /** Scroll to the amber limit banner — retries while AnimatePresence mounts the node. */
+  /** Scroll to the limit banner — retries while AnimatePresence mounts the node. */
   const scrollToLimitSection = useCallback(() => {
     const run = (): boolean => {
       const el = document.getElementById(HIGH_RES_LIMIT_ID);
@@ -871,9 +871,9 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
       ? 'downloading'
       : phase === 'success'
         ? 'success'
-        : phase === 'ready' || phase === 'preview' || phase === 'error'
-          ? 'ready'
-          : null;
+      : phase === 'ready' || phase === 'preview' || phase === 'error'
+        ? 'ready'
+      : null;
 
   const showQualityPanel =
     Boolean(info) &&
@@ -958,7 +958,7 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
                 message={error}
                 onDismiss={() => setError(null)}
                 onRetry={fetchedUrl.current ? () => handleFetch(fetchedUrl.current) : undefined}
-              />
+              )
             )}
           </AnimatePresence>
 
@@ -973,6 +973,19 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
                 transition={{ duration: 0.25 }}
                 className="space-y-5"
               >
+                {phase === 'preview' && (info?.platform === 'instagram' || info?.platform === 'facebook' || !info) && (
+                  <div className="glass flex items-center gap-3 rounded-2xl px-4 py-3 text-sm text-slate-600 shadow-card">
+                    <div className="h-4 w-4 animate-spin rounded-full border-2 border-indigo-400 border-t-transparent" />
+                    <span>
+                      {info?.platform === 'instagram'
+                        ? 'Loading Instagram Reel preview… This usually takes 1–4 seconds. Please wait.'
+                        : info?.platform === 'facebook'
+                        ? 'Loading Facebook video preview… Please wait a moment.'
+                        : 'Loading preview…'}
+                    </span>
+                  </div>
+                )}
+
                 {!previewCardReady || !info ? (
                   <VideoPreviewSkeleton />
                 ) : (
