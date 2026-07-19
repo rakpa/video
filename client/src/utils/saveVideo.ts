@@ -547,13 +547,19 @@ export function formatDownloadError(err: unknown): string {
 
 /** Soft ceiling for in-memory fetch — above this, desktop uses the browser tray. */
 const DIRECT_FETCH_MAX_BYTES = 48 * 1024 * 1024;
-/** Phones OOM more easily — refuse giant remuxes instead of hanging the tab. */
+/**
+ * Phones OOM more easily above this — hand off to the browser Downloads/Files
+ * tray instead of buffering (or erroring) in JS. Long YouTube HD remuxes
+ * (e.g. 18 min) routinely exceed this estimate.
+ */
 const DIRECT_FETCH_MAX_BYTES_MOBILE = 160 * 1024 * 1024;
 /**
  * Desktop: hand off to Chrome/Edge Downloads once the file is bigger than this.
  * Buffering hundreds of MB in JS is why a 500MB file felt slow on fast Wi‑Fi.
  */
 const BROWSER_MANAGED_THRESHOLD_BYTES = 24 * 1024 * 1024;
+/** Brief pause after cancelling a fetch so the stream ticket clears before a second GET. */
+const STREAM_HANDOFF_MS = 500;
 /** Abort if the remux body sends no bytes for this long (mobile radio + CDN stalls). */
 const STREAM_STALL_MS = 45_000;
 /** First-byte budget — ffmpeg may need CDN open + mux before headers/body start. */
@@ -591,11 +597,11 @@ export async function blobLooksH264(blob: Blob): Promise<boolean> {
  * Stream-through delivery for YouTube (and other direct streams).
  *
  * Small files: fetch with CORS + stall detection, then blob-save (reliable on
- * Safari / in-app progress).
+ * Safari / in-app progress + mobile Save to Gallery).
  *
- * Large desktop files (≥ ~24MB, e.g. 500MB HD): hand off to the browser
- * download manager immediately so bytes stream to disk at full TCP speed —
- * not buffered in the JavaScript heap first.
+ * Large files: hand off to the browser download manager so bytes stream to
+ * disk/Files — desktop ≥ ~24MB, mobile when the remux is too big for phone RAM
+ * (long YouTube HD). Never error out with “too large on a phone”.
  */
 export async function downloadDirectUrl(
   streamUrl: string,
@@ -610,19 +616,14 @@ export async function downloadDirectUrl(
   const estimated = options?.estimatedBytes ?? null;
   const mobile = isMobileDevice();
   const maxBytes = mobile ? DIRECT_FETCH_MAX_BYTES_MOBILE : DIRECT_FETCH_MAX_BYTES;
+  const browserManagedAt = mobile ? maxBytes : BROWSER_MANAGED_THRESHOLD_BYTES;
 
-  // Desktop large / unknown-huge: browser Downloads tray streams to disk.
-  if (!mobile && estimated != null && estimated > BROWSER_MANAGED_THRESHOLD_BYTES) {
+  // Known-large remux: browser Downloads/Files streams to disk (no JS RAM buffer).
+  if (estimated != null && estimated > browserManagedAt) {
     const payload = startBrowserManagedDownload(url, safeName, options?.onProgress);
     await new Promise((r) => window.setTimeout(r, 1200));
     options?.onProgress?.(100);
     return payload;
-  }
-
-  if (mobile && estimated != null && estimated > maxBytes) {
-    throw new Error(
-      'This video is too large to finish reliably on a phone. Try 720p/1080p, a shorter clip, or download on desktop.',
-    );
   }
 
   let lastErr: unknown;
@@ -635,6 +636,8 @@ export async function downloadDirectUrl(
         estimated,
         maxBytes,
         options?.onProgress,
+        // Desktop upgrades early (~24MB). Mobile keeps fetching for Save to
+        // Gallery until the hard RAM ceiling, then hands off to Files.
         !mobile,
       );
       if (payload.browserManaged) {
@@ -653,8 +656,7 @@ export async function downloadDirectUrl(
         err instanceof Error &&
         (err.message === HTML_INSTEAD_OF_VIDEO_MSG ||
           err.message === INVALID_VIDEO_FILE_MSG ||
-          err.message === STREAM_STALL_MSG ||
-          /too large/i.test(err.message))
+          err.message === STREAM_STALL_MSG)
       ) {
         throw err;
       }
@@ -673,15 +675,12 @@ export async function downloadDirectUrl(
     }
   }
 
-  // Last resort on desktop: browser-managed (faster than giving up on 500MB).
-  if (!mobile) {
-    const payload = startBrowserManagedDownload(url, safeName, options?.onProgress);
-    await new Promise((r) => window.setTimeout(r, 1200));
-    options?.onProgress?.(100);
-    return payload;
-  }
-
-  throw lastErr instanceof Error ? lastErr : new Error(STREAM_STALL_MSG);
+  // Last resort: browser-managed (desktop + mobile long videos → Files).
+  void lastErr;
+  const payload = startBrowserManagedDownload(url, safeName, options?.onProgress);
+  await new Promise((r) => window.setTimeout(r, 1200));
+  options?.onProgress?.(100);
+  return payload;
 }
 
 async function downloadDirectViaFetch(
@@ -746,15 +745,25 @@ async function downloadDirectViaFetch(
     Number(res.headers.get('x-expected-size')) ||
     (estimatedBytes && estimatedBytes > 0 ? estimatedBytes : 0);
 
-  // Headers say this is a big file — abort the RAM buffer and use Downloads tray.
-  if (allowBrowserManagedUpgrade && total > BROWSER_MANAGED_THRESHOLD_BYTES) {
+  const handoffToBrowser = async (): Promise<VideoFilePayload> => {
     clearWatchdogs();
     try {
-      await res.body.cancel();
+      await res.body?.cancel();
     } catch {
       /* ignore */
     }
+    // Let the server clear transferActive before the Downloads-tray GET.
+    await new Promise((r) => window.setTimeout(r, STREAM_HANDOFF_MS));
     return startBrowserManagedDownload(url, filename, onProgress);
+  };
+
+  // Headers say this is a big file — abort the RAM buffer and use Downloads tray.
+  if (allowBrowserManagedUpgrade && total > BROWSER_MANAGED_THRESHOLD_BYTES) {
+    return handoffToBrowser();
+  }
+  // Mobile: Content-Length already past the phone RAM ceiling → Files, not error.
+  if (isMobileDevice() && total > maxBytes) {
+    return handoffToBrowser();
   }
 
   const reader = res.body.getReader();
@@ -786,16 +795,16 @@ async function downloadDirectViaFetch(
       ) {
         await reader.cancel().catch(() => undefined);
         clearWatchdogs();
+        await new Promise((r) => window.setTimeout(r, STREAM_HANDOFF_MS));
         return startBrowserManagedDownload(url, filename, onProgress);
       }
 
       if (received > maxBytes) {
         await reader.cancel().catch(() => undefined);
-        throw new Error(
-          isMobileDevice()
-            ? 'This video is too large to finish reliably on a phone. Try 720p/1080p, a shorter clip, or download on desktop.'
-            : 'stream too large for in-memory download',
-        );
+        clearWatchdogs();
+        // Phone RAM ceiling hit mid-stream — continue in Downloads/Files.
+        await new Promise((r) => window.setTimeout(r, STREAM_HANDOFF_MS));
+        return startBrowserManagedDownload(url, filename, onProgress);
       }
       const now = performance.now();
       if (now - lastProgressAt < 120 && received > 64 * 1024) continue;
