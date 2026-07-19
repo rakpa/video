@@ -52,7 +52,7 @@ function extractEmbeddedImage(html: string): string | undefined {
     const hit = html.match(re)?.[1];
     if (hit) {
       // basic unescape common in IG JSON
-      return decodeHtml(hit.replace(/\\\\/g, '/').replace(/\\/\\/g, '/'));
+      return decodeHtml(hit.replace(/\\\\/g, '/').replace(/\\\//g, '/'));
     }
   }
   return undefined;
