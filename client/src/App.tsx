@@ -958,7 +958,7 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
                 message={error}
                 onDismiss={() => setError(null)}
                 onRetry={fetchedUrl.current ? () => handleFetch(fetchedUrl.current) : undefined}
-              )
+              />
             )}
           </AnimatePresence>
 
