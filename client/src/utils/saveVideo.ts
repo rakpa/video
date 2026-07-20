@@ -545,17 +545,17 @@ export function formatDownloadError(err: unknown): string {
   return 'Could not save the video. Please try again.';
 }
 
-/** Soft ceiling for in-memory fetch — above this, desktop uses the browser tray. */
+/** Soft ceiling for in-memory fetch on desktop — above this, use the browser tray. */
 const DIRECT_FETCH_MAX_BYTES = 48 * 1024 * 1024;
 /**
- * Phones OOM more easily above this — hand off to the browser Downloads/Files
- * tray instead of buffering (or erroring) in JS. Long YouTube HD remuxes
- * (e.g. 18 min) routinely exceed this estimate.
+ * Hard ceiling while buffering in JS on a phone. Above this mid-stream we hand
+ * off to Downloads/Files (never throw). Long YouTube HD remuxes often exceed it.
  */
 const DIRECT_FETCH_MAX_BYTES_MOBILE = 160 * 1024 * 1024;
 /**
- * Desktop: hand off to Chrome/Edge Downloads once the file is bigger than this.
- * Buffering hundreds of MB in JS is why a 500MB file felt slow on fast Wi‑Fi.
+ * Hand off to the browser download manager above this size (desktop + mobile).
+ * Buffering hundreds of MB in JS is why long YouTube HD felt broken on phones
+ * and slow on desktop Wi‑Fi — stream straight to Downloads/Files instead.
  */
 const BROWSER_MANAGED_THRESHOLD_BYTES = 24 * 1024 * 1024;
 /** Brief pause after cancelling a fetch so the stream ticket clears before a second GET. */
@@ -599,9 +599,9 @@ export async function blobLooksH264(blob: Blob): Promise<boolean> {
  * Small files: fetch with CORS + stall detection, then blob-save (reliable on
  * Safari / in-app progress + mobile Save to Gallery).
  *
- * Large files: hand off to the browser download manager so bytes stream to
- * disk/Files — desktop ≥ ~24MB, mobile when the remux is too big for phone RAM
- * (long YouTube HD). Never error out with “too large on a phone”.
+ * Large files (≥ ~24MB): hand off to the browser download manager so bytes
+ * stream to disk/Files on desktop AND mobile — long YouTube HD must not be
+ * refused with “too large on a phone”.
  */
 export async function downloadDirectUrl(
   streamUrl: string,
@@ -616,10 +616,10 @@ export async function downloadDirectUrl(
   const estimated = options?.estimatedBytes ?? null;
   const mobile = isMobileDevice();
   const maxBytes = mobile ? DIRECT_FETCH_MAX_BYTES_MOBILE : DIRECT_FETCH_MAX_BYTES;
-  const browserManagedAt = mobile ? maxBytes : BROWSER_MANAGED_THRESHOLD_BYTES;
 
-  // Known-large remux: browser Downloads/Files streams to disk (no JS RAM buffer).
-  if (estimated != null && estimated > browserManagedAt) {
+  // Known-large remux (desktop + mobile): browser Downloads/Files → disk.
+  // This is the path that used to work for long YouTube on phones.
+  if (estimated != null && estimated > BROWSER_MANAGED_THRESHOLD_BYTES) {
     const payload = startBrowserManagedDownload(url, safeName, options?.onProgress);
     await new Promise((r) => window.setTimeout(r, 1200));
     options?.onProgress?.(100);
@@ -636,9 +636,8 @@ export async function downloadDirectUrl(
         estimated,
         maxBytes,
         options?.onProgress,
-        // Desktop upgrades early (~24MB). Mobile keeps fetching for Save to
-        // Gallery until the hard RAM ceiling, then hands off to Files.
-        !mobile,
+        // Upgrade to Downloads/Files once size crosses ~24MB (both platforms).
+        true,
       );
       if (payload.browserManaged) {
         await new Promise((r) => window.setTimeout(r, 1200));
