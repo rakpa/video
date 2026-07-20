@@ -548,12 +548,16 @@ export function formatDownloadError(err: unknown): string {
 /** Soft ceiling for in-memory fetch on desktop — above this, use the browser tray. */
 const DIRECT_FETCH_MAX_BYTES = 48 * 1024 * 1024;
 /**
- * Phone in-memory ceiling for stream fetch. Long YouTube HD (~18 min 1080p)
- * is often 150–350MB — must fit here so we can show in-app progress. Safari’s
- * attachment sheet stays on “Downloading… Zero KB” for remux pipes (no
- * Content-Length), so iframe handoff is not an option on mobile.
+ * Phone in-memory ceiling while streaming a remux into JS. Above this mid-stream
+ * we stop — App should have already chosen the job path for huge estimates.
  */
-const DIRECT_FETCH_MAX_BYTES_MOBILE = 450 * 1024 * 1024;
+const DIRECT_FETCH_MAX_BYTES_MOBILE = 500 * 1024 * 1024;
+/**
+ * Mobile: if the stream estimate is above this, skip in-memory fetch and use
+ * the server job (real file + Content-Length) so Safari shows download progress.
+ * DASH size estimates are often inflated, but 18‑min 1080p routinely clears 300MB.
+ */
+export const MOBILE_STREAM_JOB_BYTES = 280 * 1024 * 1024;
 /**
  * Desktop only: hand off to Chrome/Edge Downloads above this size.
  * Do NOT use this on mobile Safari — remux streams have no Content-Length and
@@ -626,13 +630,8 @@ export async function downloadDirectUrl(
     return payload;
   }
 
-  // Mobile oversized estimate: still fetch with progress when under a soft
-  // ceiling; above that, fail clearly rather than open a stuck Zero KB sheet.
-  if (mobile && estimated != null && estimated > maxBytes) {
-    throw new Error(
-      'This video is too large for a reliable phone download. Try 720p, a shorter clip, or download on desktop.',
-    );
-  }
+  // Do NOT refuse on estimate alone — DASH filesize_approx is often inflated.
+  // App.tsx routes truly huge mobile estimates to the job pipeline instead.
 
   let lastErr: unknown;
   const attempts = mobile ? 2 : isChromiumDesktop() ? 3 : 2;
@@ -666,8 +665,7 @@ export async function downloadDirectUrl(
         err instanceof Error &&
         (err.message === HTML_INSTEAD_OF_VIDEO_MSG ||
           err.message === INVALID_VIDEO_FILE_MSG ||
-          err.message === STREAM_STALL_MSG ||
-          /too large for a reliable phone download/i.test(err.message))
+          err.message === STREAM_STALL_MSG)
       ) {
         throw err;
       }
@@ -776,18 +774,6 @@ async function downloadDirectViaFetch(
   if (allowBrowserManagedUpgrade && total > BROWSER_MANAGED_THRESHOLD_BYTES) {
     return handoffToBrowser();
   }
-  // Mobile: refuse giant remuxes clearly — do not open Safari’s Zero KB sheet.
-  if (!allowBrowserManagedUpgrade && total > maxBytes) {
-    clearWatchdogs();
-    try {
-      await res.body.cancel();
-    } catch {
-      /* ignore */
-    }
-    throw new Error(
-      'This video is too large for a reliable phone download. Try 720p, a shorter clip, or download on desktop.',
-    );
-  }
 
   const reader = res.body.getReader();
   const chunks: BlobPart[] = [];
@@ -825,11 +811,7 @@ async function downloadDirectViaFetch(
       if (received > maxBytes) {
         await reader.cancel().catch(() => undefined);
         clearWatchdogs();
-        throw new Error(
-          isMobileDevice()
-            ? 'This video is too large for a reliable phone download. Try 720p, a shorter clip, or download on desktop.'
-            : 'stream too large for in-memory download',
-        );
+        throw new Error(STREAM_STALL_MSG);
       }
       const now = performance.now();
       if (now - lastProgressAt < 120 && received > 64 * 1024) continue;

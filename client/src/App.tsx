@@ -43,6 +43,7 @@ import {
   formatDownloadError,
   blobLooksH264,
   isNativeMobileApp,
+  MOBILE_STREAM_JOB_BYTES,
   type ShareResult,
   type VideoFilePayload,
 } from './utils/saveVideo';
@@ -695,10 +696,18 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
 
       // YouTube (full + clip, 720p–4K) → stream-through to the browser (user-side).
       // Instagram/FB keep gallery prep separately.
-      const useMobileStream = mobile && isYoutube;
-      const galleryPrep = mobile && !useMobileStream;
+      // Long mobile YouTube: skip stream remux (no Content-Length → Safari Zero KB /
+      // phone RAM OOM). Use the job pipeline so /api/file has a real size.
+      const longMobileYoutube =
+        mobile &&
+        isYoutube &&
+        !clip &&
+        clipMode !== 'clip' &&
+        (info.durationSeconds ?? 0) >= 10 * 60;
+      const useMobileStream = mobile && isYoutube && !longMobileYoutube;
+      const galleryPrep = mobile && !useMobileStream && !longMobileYoutube;
       // Gallery share sheet only when not streaming to the browser download bar.
-      const useGallerySheet = mobile && !useMobileStream && (isNativeMobileApp() || !highRes);
+      const useGallerySheet = mobile && !useMobileStream && !longMobileYoutube && (isNativeMobileApp() || !highRes);
 
       setMobileSavePayload(null);
       setDelivering(false);
@@ -711,18 +720,43 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
 
       try {
         const effectiveMode: CodecMode = isIgFb ? 'compatible' : mode;
-        const startResult = await startDownloadJob(
+        const jobOpts = {
+          fast: isIgFb || (mobile && !highRes),
+          reuse: !useMobileStream && !mobile && !clip && !highRes,
+          clip,
+          galleryPrep,
+          forceJob: longMobileYoutube,
+        };
+        let startResult = await startDownloadJob(
           currentUrl,
           quality,
           effectiveMode,
           licenseToken(),
-          {
-            fast: isIgFb || (mobile && !highRes),
-            reuse: !useMobileStream && !mobile && !clip && !highRes,
-            clip,
-            galleryPrep,
-          },
+          jobOpts,
         );
+
+        // Safety net: short videos can still return a huge DASH estimate — fall
+        // back to the job path instead of refusing or opening Safari Zero KB.
+        if (
+          startResult.kind === 'direct' &&
+          mobile &&
+          typeof startResult.estimatedBytes === 'number' &&
+          startResult.estimatedBytes > MOBILE_STREAM_JOB_BYTES
+        ) {
+          setProgress((p) => ({
+            ...p,
+            percent: 1,
+            stage: 'preparing',
+            speed: null,
+            eta: null,
+          }));
+          startResult = await startDownloadJob(currentUrl, quality, effectiveMode, licenseToken(), {
+            ...jobOpts,
+            galleryPrep: false,
+            forceJob: true,
+            reuse: !clip && !highRes,
+          });
+        }
 
         if (startResult.kind === 'direct') {
           // Stream-through: remux CDN → device. Keep the live percent bar visible

@@ -47,7 +47,7 @@ downloadRouter.get('/download/quota', async (req, res) => {
  */
 downloadRouter.post('/download', async (req, res) => {
   const body = readJsonBody(req);
-  const { url, quality, mode, license, fast, reuse, galleryPrep, galleryMaxHeight } = body;
+  const { url, quality, mode, license, fast, reuse, galleryPrep, galleryMaxHeight, forceJob } = body;
 
   const v = validateUrl(url);
   if (!v.ok) return res.status(400).json({ error: v.message });
@@ -103,7 +103,11 @@ downloadRouter.post('/download', async (req, res) => {
   // Stream-through: /api/stream remuxes the CDN stream(s) straight into the
   // browser's download at full selected quality (no temp file, no worker slot).
   // YouTube HD and Instagram progressive Reels use this path.
+  // forceJob: mobile clients skip passthrough when the remux is too large for
+  // phone RAM — the job writes a real file with Content-Length so Safari can
+  // show download progress (remux pipes have no length → “Zero KB”).
   if (
+    !forceJob &&
     canDirectPassthrough({
       url: trimmedUrl,
       quality: q,
