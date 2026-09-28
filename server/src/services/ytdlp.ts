@@ -58,6 +58,9 @@ interface RawFormat {
   width?: number;
   vcodec?: string;
   acodec?: string;
+  /** yt-dlp: 10 for the original audio track, -1 for auto-dubbed ones. */
+  language_preference?: number;
+  format_note?: string;
   filesize?: number;
   filesize_approx?: number;
   tbr?: number; // total bitrate kbps
@@ -66,6 +69,17 @@ interface RawFormat {
 function isH264Vcodec(vcodec: string | undefined): boolean {
   const l = (vcodec ?? '').toLowerCase();
   return l.includes('avc') || l.includes('h264') || l.startsWith('avc1');
+}
+
+/**
+ * Rank audio so the ORIGINAL language track wins. Auto-dubbed videos expose
+ * dozens of same-size AAC tracks (Arabic, Hindi, …); sorting by size alone
+ * picked an arbitrary dub instead of the uploader's language.
+ */
+function audioLangRank(f: RawFormat): number {
+  if (/\boriginal\b/i.test(f.format_note ?? '')) return 2;
+  const pref = f.language_preference ?? 0;
+  return pref > 0 ? 2 : pref < 0 ? 0 : 1;
 }
 
 /**
@@ -125,7 +139,7 @@ export function pickBestSocialFormat(
         ? sizeOf(a) - sizeOf(b)
         : tierHeight(b) - tierHeight(a) || sizeOf(a) - sizeOf(b),
     );
-    audios.sort((a, b) => sizeOf(a) - sizeOf(b));
+    audios.sort((a, b) => audioLangRank(b) - audioLangRank(a) || sizeOf(a) - sizeOf(b));
     return {
       selector: `${videos[0].format_id!}+${audios[0].format_id!}`,
       singleFileH264: false,
@@ -176,7 +190,7 @@ export function pickBestYoutubeH264Format(
     .sort((a, b) => tierHeight(b) - tierHeight(a) || sizeOf(a) - sizeOf(b));
   const audios = formats
     .filter((f) => f.format_id && (f.acodec ?? 'none') !== 'none')
-    .sort((a, b) => sizeOf(a) - sizeOf(b));
+    .sort((a, b) => audioLangRank(b) - audioLangRank(a) || sizeOf(a) - sizeOf(b));
 
   const bestDash =
     videos.length > 0 && audios.length > 0 ? { video: videos[0], audio: audios[0] } : null;
@@ -295,7 +309,7 @@ export function pickStreamMergeFormats(
         (f.vcodec ?? 'none') === 'none' &&
         (f.acodec ?? '').toLowerCase().includes('mp4a'),
     )
-    .sort((a, b) => sizeOf(b) - sizeOf(a));
+    .sort((a, b) => audioLangRank(b) - audioLangRank(a) || sizeOf(b) - sizeOf(a));
 
   const title =
     (raw.title ?? 'video')
@@ -381,7 +395,7 @@ export function pickBestYoutubeDashFormat(
 
   const audios = formats
     .filter((f) => f.format_id && (f.acodec ?? 'none') !== 'none' && (f.vcodec ?? 'none') === 'none')
-    .sort((a, b) => sizeOf(a) - sizeOf(b));
+    .sort((a, b) => audioLangRank(b) - audioLangRank(a) || sizeOf(a) - sizeOf(b));
 
   if (!videos.length || !audios.length) return null;
   return { selector: `${videos[0].format_id!}+${audios[0].format_id!}` };
