@@ -459,5 +459,36 @@ function handleStreamDownload(req: Request, res: Response): void {
   );
 }
 
+/**
+ * GET /api/stream/:ticketId/check → { ok, upstreamStatus }
+ * One-byte Range probe of the CDN track through the ticket's proxy (no ffmpeg).
+ * Desktop hands large files to the browser download manager, which cannot
+ * report a 502 back to the page — the client probes here first so a dead
+ * stream shows a real error instead of "Your video is saving…".
+ * Must be registered before /stream/:ticketId/:fileName.
+ */
+streamRouter.get('/stream/:ticketId/check', async (req, res) => {
+  const ticket = getStreamTicket(req.params.ticketId);
+  if (!ticket) return res.status(404).json({ ok: false, error: 'That download link has expired. Please try again.' });
+
+  const headers: Record<string, string> = { Range: 'bytes=0-0', 'User-Agent': BROWSER_UA };
+  const referer = platformReferer(ticket.sourceUrl);
+  if (referer) headers.Referer = referer;
+  try {
+    const upstream = await undiciFetch(ticket.selection.videoUrl, {
+      dispatcher: dispatcherFor(ticket.proxy),
+      headers,
+      signal: AbortSignal.timeout(8_000),
+    });
+    await upstream.body?.cancel().catch(() => undefined);
+    const ok = upstream.status === 200 || upstream.status === 206;
+    if (!ok) logger.warn(`stream check: upstream HTTP ${upstream.status} for ${ticket.sourceUrl.slice(0, 60)}`);
+    return res.status(ok ? 200 : 502).json({ ok, upstreamStatus: upstream.status });
+  } catch (err) {
+    logger.warn('stream check failed:', (err as Error).message);
+    return res.status(502).json({ ok: false, upstreamStatus: null });
+  }
+});
+
 streamRouter.get('/stream/:ticketId', handleStreamDownload);
 streamRouter.get('/stream/:ticketId/:fileName', handleStreamDownload);

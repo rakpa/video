@@ -540,6 +540,9 @@ export function formatDownloadError(err: unknown): string {
     if (/index\.html/i.test(err.message) || /<!doctype|<html/i.test(err.message)) {
       return HTML_INSTEAD_OF_VIDEO_MSG;
     }
+    if (/^stream HTTP 50[24]$/.test(err.message)) {
+      return STREAM_UNAVAILABLE_MSG;
+    }
     return err.message;
   }
   return 'Could not save the video. Please try again.';
@@ -578,6 +581,43 @@ export const STREAM_STALL_MSG =
 
 export const STREAM_BUSY_MSG =
   'The download service is busy right now. Please wait a few seconds and try again.';
+
+export const STREAM_UNAVAILABLE_MSG =
+  "We couldn't start this download — the video server refused the stream. Please try again in a moment.";
+
+/**
+ * The browser download manager can't report a failed response back to the page,
+ * so probe the stream ticket (1-byte CDN check on the API) before handing off.
+ * Throws STREAM_UNAVAILABLE_MSG when the stream is dead; any non-JSON reply
+ * (API not yet updated) is treated as OK so deploy order can't break downloads.
+ */
+async function assertStreamReachable(streamUrl: string): Promise<void> {
+  let checkUrl: string;
+  try {
+    const u = new URL(streamUrl);
+    const m = u.pathname.match(/^(.*\/api\/stream\/[^/]+)/);
+    if (!m) return;
+    u.pathname = `${m[1]}/check`;
+    u.search = '';
+    checkUrl = u.toString();
+  } catch {
+    return;
+  }
+
+  let res: Response;
+  try {
+    res = await fetch(checkUrl, { signal: AbortSignal.timeout(10_000) });
+  } catch {
+    return; // Probe itself unreachable — let the real download surface any error.
+  }
+  if (!(res.headers.get('content-type') ?? '').includes('application/json')) {
+    await res.body?.cancel().catch(() => undefined);
+    return;
+  }
+  const data = (await res.json().catch(() => null)) as { ok?: boolean; error?: string } | null;
+  if (res.ok && data?.ok) return;
+  throw new Error(data?.error || STREAM_UNAVAILABLE_MSG);
+}
 
 function safeDownloadFilename(filename: string): string {
   const base = (filename || 'VidCliply-video.mp4').replace(/[^\w.\- ]+/g, '_').trim().slice(0, 120);
@@ -624,6 +664,7 @@ export async function downloadDirectUrl(
 
   // Desktop large only — never iframe on mobile (Safari Zero KB on remux).
   if (!mobile && estimated != null && estimated > BROWSER_MANAGED_THRESHOLD_BYTES) {
+    await assertStreamReachable(url);
     const payload = startBrowserManagedDownload(url, safeName, options?.onProgress);
     await new Promise((r) => window.setTimeout(r, 1200));
     options?.onProgress?.(100);
@@ -687,6 +728,7 @@ export async function downloadDirectUrl(
   // Desktop last resort: browser-managed. Mobile: surface the real error —
   // iframe fallback is what caused Zero KB.
   if (!mobile) {
+    await assertStreamReachable(url);
     const payload = startBrowserManagedDownload(url, safeName, options?.onProgress);
     await new Promise((r) => window.setTimeout(r, 1200));
     options?.onProgress?.(100);

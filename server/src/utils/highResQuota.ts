@@ -43,6 +43,11 @@ function isWrongTypeError(err: unknown): boolean {
   return err instanceof Error && /WRONGTYPE/i.test(err.message);
 }
 
+/** EVAL rejected by the server (scripting disabled/unsupported), not a connectivity failure. */
+function isScriptUnsupportedError(err: unknown): boolean {
+  return err instanceof Error && /unknown command|NOSCRIPT|scripting|not allowed|NOPERM/i.test(err.message);
+}
+
 /**
  * INCR with recovery when a key was accidentally written as a non-integer type.
  * Returns the value after increment, or throws on unrecoverable errors.
@@ -72,9 +77,14 @@ return redis.call('INCR', KEYS[1])
 
 if (redisUrl) {
   redisClient = new IORedis(redisUrl, {
-    maxRetriesPerRequest: 3,
+    // Fail fast: the quota check sits in front of every 2K/4K download, and a
+    // down Redis used to stall each request ~70s (3 reserve attempts × 3 ioredis
+    // retries × 10s connect) before the SQLite fallback kicked in.
+    maxRetriesPerRequest: 1,
+    enableOfflineQueue: false,
+    commandTimeout: 1_500,
     lazyConnect: false,
-    connectTimeout: 10_000,
+    connectTimeout: 3_000,
     // Railway private networking can be IPv4 or IPv6.
     family: 0,
     retryStrategy: (times) => Math.min(times * 200, 3_000),
@@ -99,6 +109,9 @@ if (redisUrl) {
           const result = await client.eval(RESERVE_LUA, 1, key, String(limit));
           return Number(result) || 0;
         }
+        // Connection/timeout errors: don't pay a second round-trip — let the
+        // caller fall back to SQLite.
+        if (!isScriptUnsupportedError(err)) throw err;
         // Lua unavailable on some managed Redis tiers — fall back to INCR + rollback.
         const after = await redisIncr(client, key);
         if (after > limit) {
@@ -208,7 +221,8 @@ export async function reserveHighResSlot(
 
   if (store) {
     const key = keyFor(ip);
-    for (let attempt = 0; attempt < 3; attempt++) {
+    const attempts = 2;
+    for (let attempt = 0; attempt < attempts; attempt++) {
       try {
         const after = await store.reserve(key, limit);
         if (after <= 0) {
@@ -217,8 +231,8 @@ export async function reserveHighResSlot(
         }
         return { allowed: true, used: after };
       } catch (err) {
-        if (attempt < 2) {
-          await sleep(200 * (attempt + 1));
+        if (attempt < attempts - 1) {
+          await sleep(200);
           continue;
         }
         logger.error(

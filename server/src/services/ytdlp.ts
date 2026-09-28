@@ -55,6 +55,7 @@ interface RawFormat {
   url?: string;
   protocol?: string;
   height?: number;
+  width?: number;
   vcodec?: string;
   acodec?: string;
   filesize?: number;
@@ -65,6 +66,17 @@ interface RawFormat {
 function isH264Vcodec(vcodec: string | undefined): boolean {
   const l = (vcodec ?? '').toLowerCase();
   return l.includes('avc') || l.includes('h264') || l.startsWith('avc1');
+}
+
+/**
+ * Quality tier of a format ("1080p" etc.) = its SHORT side. Vertical Reels/Shorts
+ * report height as the long side (720×1280 → height 1280), so comparing raw
+ * height against a 1080 cap skipped the real HD track and delivered 360×640.
+ */
+function tierHeight(f: RawFormat): number {
+  const h = f.height ?? 0;
+  const w = f.width ?? 0;
+  return h > 0 && w > 0 ? Math.min(w, h) : h;
 }
 
 /**
@@ -88,7 +100,7 @@ export function pickBestSocialFormat(
 
   const progressive = formats.filter((f) => {
     if (!f.format_id || !f.url) return false;
-    const h = f.height ?? 9999;
+    const h = f.height ? tierHeight(f) : 9999;
     if (h > maxHeight) return false;
     if (!isH264Vcodec(f.vcodec)) return false;
     if ((f.acodec ?? 'none') === 'none') return false;
@@ -98,20 +110,20 @@ export function pickBestSocialFormat(
   if (progressive.length > 0) {
     progressive.sort((a, b) => {
       if (preferSmallest) return sizeOf(a) - sizeOf(b);
-      return (b.height ?? 0) - (a.height ?? 0) || sizeOf(a) - sizeOf(b);
+      return tierHeight(b) - tierHeight(a) || sizeOf(a) - sizeOf(b);
     });
     return { selector: String(progressive[0].format_id), singleFileH264: true };
   }
 
   const videos = formats.filter(
-    (f) => f.format_id && isH264Vcodec(f.vcodec) && (f.height ?? 9999) <= maxHeight,
+    (f) => f.format_id && isH264Vcodec(f.vcodec) && (f.height ? tierHeight(f) : 9999) <= maxHeight,
   );
   const audios = formats.filter((f) => f.format_id && (f.acodec ?? 'none') !== 'none');
   if (videos.length && audios.length) {
     videos.sort((a, b) =>
       preferSmallest
         ? sizeOf(a) - sizeOf(b)
-        : (b.height ?? 0) - (a.height ?? 0) || sizeOf(a) - sizeOf(b),
+        : tierHeight(b) - tierHeight(a) || sizeOf(a) - sizeOf(b),
     );
     audios.sort((a, b) => sizeOf(a) - sizeOf(b));
     return {
@@ -145,23 +157,23 @@ export function pickBestYoutubeH264Format(
   const progressive = formats
     .filter((f) => {
       if (!f.format_id || !f.url) return false;
-      const h = f.height ?? 0;
+      const h = tierHeight(f);
       if (h <= 0 || h > maxHeight) return false;
       if (!isH264Vcodec(f.vcodec)) return false;
       if ((f.acodec ?? 'none') === 'none') return false;
       return true;
     })
-    .sort((a, b) => (b.height ?? 0) - (a.height ?? 0) || sizeOf(a) - sizeOf(b));
+    .sort((a, b) => tierHeight(b) - tierHeight(a) || sizeOf(a) - sizeOf(b));
 
   const videos = formats
     .filter(
       (f) =>
         f.format_id &&
         isH264Vcodec(f.vcodec) &&
-        (f.height ?? 0) > 0 &&
-        (f.height ?? 0) <= maxHeight,
+        tierHeight(f) > 0 &&
+        tierHeight(f) <= maxHeight,
     )
-    .sort((a, b) => (b.height ?? 0) - (a.height ?? 0) || sizeOf(a) - sizeOf(b));
+    .sort((a, b) => tierHeight(b) - tierHeight(a) || sizeOf(a) - sizeOf(b));
   const audios = formats
     .filter((f) => f.format_id && (f.acodec ?? 'none') !== 'none')
     .sort((a, b) => sizeOf(a) - sizeOf(b));
@@ -169,8 +181,8 @@ export function pickBestYoutubeH264Format(
   const bestDash =
     videos.length > 0 && audios.length > 0 ? { video: videos[0], audio: audios[0] } : null;
   const bestProg = progressive[0];
-  const dashH = bestDash?.video.height ?? 0;
-  const progH = bestProg?.height ?? 0;
+  const dashH = bestDash ? tierHeight(bestDash.video) : 0;
+  const progH = bestProg ? tierHeight(bestProg) : 0;
 
   if (bestDash && dashH >= progH) {
     return {
@@ -254,22 +266,22 @@ export function pickStreamMergeFormats(
       if (!usable(f)) return false;
       if ((f.acodec ?? 'none') === 'none') return false;
       if (!isH264Vcodec(f.vcodec)) return false;
-      const h = f.height ?? 0;
+      const h = tierHeight(f);
       return h > 0 && h <= maxHeight;
     })
-    .sort((a, b) => (b.height ?? 0) - (a.height ?? 0) || sizeOf(a) - sizeOf(b));
+    .sort((a, b) => tierHeight(b) - tierHeight(a) || sizeOf(a) - sizeOf(b));
 
   const videos = formats
     .filter((f) => {
       if (!usable(f)) return false;
       if ((f.acodec ?? 'none') !== 'none') return false;
       if (!videoOk(f.vcodec)) return false;
-      const h = f.height ?? 0;
+      const h = tierHeight(f);
       return h > 0 && h <= maxHeight;
     })
     .sort(
       (a, b) =>
-        (b.height ?? 0) - (a.height ?? 0) ||
+        tierHeight(b) - tierHeight(a) ||
         (highRes ? codecScore(b.vcodec) - codecScore(a.vcodec) : 0) ||
         sizeOf(a) - sizeOf(b),
     );
@@ -294,8 +306,8 @@ export function pickStreamMergeFormats(
   const bestProg = progressive[0];
   const bestVideo = videos[0];
   const bestAudio = audios[0];
-  const dashHeight = bestVideo?.height ?? 0;
-  const progHeight = bestProg?.height ?? 0;
+  const dashHeight = bestVideo ? tierHeight(bestVideo) : 0;
+  const progHeight = bestProg ? tierHeight(bestProg) : 0;
 
   // 2K/4K almost never have tall progressive H.264 — prefer DASH whenever it is taller.
   if (bestVideo?.url && bestAudio?.url && (highRes || dashHeight > progHeight)) {
@@ -354,7 +366,7 @@ export function pickBestYoutubeDashFormat(
   const videos = formats
     .filter((f) => {
       if (!f.format_id) return false;
-      const h = f.height ?? 0;
+      const h = tierHeight(f);
       if (h <= 0 || h > maxHeight) return false;
       if ((f.vcodec ?? 'none') === 'none') return false;
       if ((f.acodec ?? 'none') !== 'none') return false;
@@ -362,7 +374,7 @@ export function pickBestYoutubeDashFormat(
     })
     .sort(
       (a, b) =>
-        (b.height ?? 0) - (a.height ?? 0) ||
+        tierHeight(b) - tierHeight(a) ||
         codecScore(b.vcodec) - codecScore(a.vcodec) ||
         sizeOf(a) - sizeOf(b),
     );
@@ -588,7 +600,7 @@ function pickThumbnail(raw: RawDump): string | null {
  */
 function estimateSize(raw: RawDump, height: number, durationSeconds: number | null): number | null {
   const candidates = (raw.formats ?? []).filter(
-    (f) => (f.height ?? 0) > 0 && (f.height ?? 0) <= height && f.vcodec !== 'none',
+    (f) => tierHeight(f) > 0 && tierHeight(f) <= height && f.vcodec !== 'none',
   );
   if (candidates.length === 0) return null;
 
@@ -619,7 +631,7 @@ function parseInfoDump(stdout: string): VideoInfo {
     );
   }
 
-  const rawSourceMax = Math.max(0, ...(raw.formats ?? []).map((f) => f.height ?? 0));
+  const rawSourceMax = Math.max(0, ...(raw.formats ?? []).map(tierHeight));
 
   const formats: AvailableFormat[] = (Object.values(QUALITIES) as QualityDef[]).map((q) => ({
     id: q.id,
