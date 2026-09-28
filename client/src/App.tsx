@@ -71,6 +71,7 @@ import { SuccessState } from './components/SuccessState';
 import { ErrorBanner } from './components/ErrorBanner';
 import { Footer } from './components/Footer';
 import { COMPANY } from './config/company';
+import { HIDE_PRO } from './config/build';
 
 const HOME_FAQ = [
   {
@@ -132,11 +133,15 @@ export default function App() {
   if (CONTENT_ROUTES[route]) {
     return <ContentPage path={route} theme={theme} onToggleTheme={toggle} />;
   }
-  if (route === '/pricing') {
+  if (route === '/pricing' && !HIDE_PRO) {
     return <PricingPage theme={theme} onToggleTheme={toggle} />;
   }
   if (route === '/video-editor' || route === '/editor') {
     return <VideoEditorPage theme={theme} onToggleTheme={toggle} />;
+  }
+  // iOS build (HIDE_PRO): no paid tier — send /pricing back to the downloader.
+  if (route === '/pricing' && HIDE_PRO) {
+    return <DownloaderApp theme={theme} onToggleTheme={toggle} />;
   }
   // Unknown path: show a real not-found page instead of silently rendering the
   // homepage (a soft-404 that hurts SEO and confuses users).
@@ -876,8 +881,8 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
 
   const qualityLabel = info?.formats.find((f) => f.id === activeQuality)?.label ?? '';
   const selectedFmt = info?.formats.find((f) => f.id === selected);
-  const showProUpgrade = !limitReached && Boolean(selectedFmt && selectedFmt.premium && !isPro());
-  const showInlineLimit = showLimitSection && Boolean(selectedFmt && selectedFmt.height >= HIGH_RES_MIN_PX);
+  const showProUpgrade = !HIDE_PRO && !limitReached && Boolean(selectedFmt && selectedFmt.premium && !isPro());
+  const showInlineLimit = !HIDE_PRO && showLimitSection && Boolean(selectedFmt && selectedFmt.height >= HIGH_RES_MIN_PX);
 
   const dismissProUpgrade = useCallback(() => {
     if (!info) return;

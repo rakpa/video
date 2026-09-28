@@ -3,6 +3,7 @@ import { LEGAL_LINKS } from '../pages/LegalPages';
 import { CONTENT_ROUTES } from '../pages/ContentPages';
 import { COMPANY } from '../config/company';
 import { BrandLogo } from './BrandLogo';
+import { HIDE_PRO } from '../config/build';
 
 const GUIDE_LINKS = [
   { path: '/how-to-download-videos', label: 'How to download' },
@@ -54,7 +55,7 @@ export function Footer() {
               <FootLink onClick={() => goToSection('how-it-works')}>How it works</FootLink>
               <FootLink onClick={() => goToSection('features')}>Features</FootLink>
               <FootLink onClick={() => navigate('/video-editor')}>Video Editor</FootLink>
-              <FootLink onClick={() => navigate('/pricing')}>Pricing</FootLink>
+              {!HIDE_PRO && <FootLink onClick={() => navigate('/pricing')}>Pricing</FootLink>}
             </div>
           </div>
 
