@@ -25,10 +25,16 @@ const BROWSER_UA =
  * Prefetch the next chunk while writing the current one so ffmpeg stays fed
  * between Range boundaries (big desktop speed win on long HD files).
  */
-const CHUNK_SIZE = 32 * 1024 * 1024;
+const CHUNK_SIZE = 8 * 1024 * 1024;
 const CHUNK_TIMEOUT_MS = 120_000;
-/** How many Range chunks to keep prefetched ahead of the write cursor. */
-const PREFETCH_AHEAD = 2;
+/**
+ * Range chunks downloaded concurrently ahead of the write cursor. Each chunk is
+ * read fully into memory, so these connections really transfer in parallel —
+ * a single residential-proxy connection tops out around 1 MB/s. Bounded memory:
+ * PARALLEL_CHUNKS × CHUNK_SIZE per track (32 MB).
+ */
+const PARALLEL_CHUNKS = 4;
+const CHUNK_ATTEMPTS = 3;
 
 function isLoopback(addr: string | undefined): boolean {
   return addr === '127.0.0.1' || addr === '::1' || addr === '::ffff:127.0.0.1';
@@ -118,7 +124,51 @@ async function fetchRangeChunk(
   });
 }
 
-/** Sequential Range chunks from the CDN, with multi-chunk prefetch overlap. */
+/** Download one Range chunk fully into memory, retrying transient failures. */
+async function fetchChunkBuffer(
+  url: string,
+  proxy: string,
+  offset: number,
+  referer: string | undefined,
+  aborted: () => boolean,
+): Promise<Buffer> {
+  let lastErr: unknown;
+  for (let attempt = 1; attempt <= CHUNK_ATTEMPTS && !aborted(); attempt++) {
+    try {
+      const upstream = await fetchRangeChunk(url, proxy, offset, referer);
+      if (upstream.status !== 206) {
+        await upstream.body?.cancel().catch(() => undefined);
+        throw new Error(`upstream chunk failed with HTTP ${upstream.status}`);
+      }
+      return Buffer.from(await upstream.arrayBuffer());
+    } catch (err) {
+      lastErr = err;
+      if (attempt < CHUNK_ATTEMPTS) await new Promise((r) => setTimeout(r, 300 * attempt));
+    }
+  }
+  throw lastErr instanceof Error ? lastErr : new Error('chunk download aborted');
+}
+
+async function writeBuffer(res: Response, buf: Buffer): Promise<void> {
+  if (res.destroyed) return;
+  if (!res.write(buf)) {
+    await new Promise<void>((resolve) => {
+      const done = () => {
+        res.off('drain', done);
+        res.off('close', done);
+        resolve();
+      };
+      res.once('drain', done);
+      res.once('close', done);
+    });
+  }
+}
+
+/**
+ * Range chunks from the CDN. The first chunk streams straight through (fast
+ * first byte); the following chunks download PARALLEL_CHUNKS at a time into
+ * memory and are written in order.
+ */
 async function relayChunked(
   url: string,
   proxy: string,
@@ -126,69 +176,49 @@ async function relayChunked(
   aborted: () => boolean,
   referer?: string,
 ): Promise<void> {
-  let offset = 0;
-  let total: number | null = null;
-  const pending = new Map<number, Promise<UpstreamResponse>>();
+  const first = await fetchRangeChunk(url, proxy, 0, referer);
 
-  const enqueue = (off: number) => {
-    if (pending.has(off)) return;
-    if (total !== null && off >= total) return;
-    pending.set(off, fetchRangeChunk(url, proxy, off, referer));
-  };
-
-  const cancelPending = async () => {
-    const jobs = [...pending.entries()];
-    pending.clear();
-    await Promise.all(
-      jobs.map(async ([, p]) => {
-        try {
-          const r = await p;
-          await r.body?.cancel().catch(() => undefined);
-        } catch {
-          /* ignore */
-        }
-      }),
-    );
-  };
-
-  try {
-    enqueue(0);
-    while (!aborted() && (total === null || offset < total)) {
-      const job = pending.get(offset) ?? fetchRangeChunk(url, proxy, offset, referer);
-      pending.delete(offset);
-      const upstream = await job;
-
-      if (upstream.status === 200) {
-        if (!upstream.body) throw new Error('empty upstream body');
-        if (!res.headersSent) res.status(200);
-        await writeBody(upstream.body, res);
-        break;
-      }
-      if (upstream.status !== 206 || !upstream.body) {
-        throw new Error(`upstream chunk failed with HTTP ${upstream.status}`);
-      }
-
-      if (total === null) {
-        total = parseTotalSize(upstream.headers.get('content-range'));
-        if (total !== null && !res.headersSent) res.setHeader('Content-Length', total);
-      }
-
-      // Keep PREFETCH_AHEAD chunks in flight so 500MB+ remuxes stay CDN-fed.
-      for (let i = 1; i <= PREFETCH_AHEAD; i++) {
-        enqueue(offset + CHUNK_SIZE * i);
-      }
-
-      await writeBody(upstream.body, res);
-      offset += CHUNK_SIZE;
-      if (total === null) break;
-    }
+  if (first.status === 200) {
+    // Upstream ignored Range — relay the whole body as-is.
+    if (!first.body) throw new Error('empty upstream body');
+    if (!res.headersSent) res.status(200);
+    await writeBody(first.body, res);
     res.end();
-  } catch (err) {
-    await cancelPending();
-    throw err;
-  } finally {
-    if (aborted()) await cancelPending();
+    return;
   }
+  if (first.status !== 206 || !first.body) {
+    await first.body?.cancel().catch(() => undefined);
+    throw new Error(`upstream chunk failed with HTTP ${first.status}`);
+  }
+
+  const total = parseTotalSize(first.headers.get('content-range'));
+  if (total !== null && !res.headersSent) res.setHeader('Content-Length', total);
+
+  const inflight = new Map<number, Promise<Buffer>>();
+  let nextOffset = CHUNK_SIZE;
+  const schedule = () => {
+    while (total !== null && !aborted() && inflight.size < PARALLEL_CHUNKS && nextOffset < total) {
+      const p = fetchChunkBuffer(url, proxy, nextOffset, referer, aborted);
+      p.catch(() => undefined); // surfaced when awaited in order
+      inflight.set(nextOffset, p);
+      nextOffset += CHUNK_SIZE;
+    }
+  };
+
+  schedule();
+  await writeBody(first.body, res);
+
+  for (let offset = CHUNK_SIZE; total !== null && offset < total; offset += CHUNK_SIZE) {
+    if (aborted()) return;
+    schedule();
+    const job = inflight.get(offset);
+    if (!job) break;
+    const buf = await job;
+    inflight.delete(offset);
+    schedule();
+    await writeBuffer(res, buf);
+  }
+  res.end();
 }
 
 /**
