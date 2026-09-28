@@ -1,6 +1,7 @@
 import { Redis as UpstashRedis } from '@upstash/redis';
 import { Redis as IORedis } from 'ioredis';
 import { logger } from './logger.js';
+import { attachThrottledRedisLogging, redisRetryStrategy } from './redisLog.js';
 
 /** Shared Redis for quota, download cache, and (later) BullMQ. */
 let client: IORedis | UpstashRedis | null = null;
@@ -12,18 +13,29 @@ const upstashToken = process.env.UPSTASH_REDIS_REST_TOKEN;
 
 if (redisUrl) {
   client = new IORedis(redisUrl, {
-    maxRetriesPerRequest: 3,
+    // Fail fast — callers already treat errors as a cache miss, and the
+    // download path must never wait on a missing Redis.
+    maxRetriesPerRequest: 1,
+    enableOfflineQueue: false,
+    commandTimeout: 1_500,
     lazyConnect: false,
-    connectTimeout: 10_000,
+    connectTimeout: 3_000,
     family: 0,
-    retryStrategy: (times) => Math.min(times * 200, 3_000),
+    retryStrategy: redisRetryStrategy,
     ...(redisUrl.startsWith('rediss://') ? { tls: {} } : {}),
   });
-  (client as IORedis).on('error', (err: Error) => logger.warn(`Redis error: ${err.message}`));
+  attachThrottledRedisLogging(client as IORedis, 'Redis');
   mode = 'ioredis';
 } else if (upstashUrl && upstashToken) {
   client = new UpstashRedis({ url: upstashUrl, token: upstashToken });
   mode = 'upstash';
+}
+
+/** Command failures while disconnected are already covered by the throttled connection log. */
+function warnCommand(op: string, err: unknown): void {
+  const msg = (err as Error).message ?? String(err);
+  if (/Stream isn't writeable|Connection is closed/i.test(msg)) return;
+  logger.warn(`Redis ${op} failed: ${msg}`);
 }
 
 export function isRedisAvailable(): boolean {
@@ -42,7 +54,7 @@ export async function redisGet(key: string): Promise<string | null> {
     const v = await (client as UpstashRedis).get<string | null>(key);
     return v ?? null;
   } catch (err) {
-    logger.warn(`Redis GET failed: ${(err as Error).message}`);
+    warnCommand('GET', err);
     return null;
   }
 }
@@ -58,7 +70,7 @@ export async function redisSet(key: string, value: string, ttlSeconds?: number):
     if (ttlSeconds) await (client as UpstashRedis).set(key, value, { ex: ttlSeconds });
     else await (client as UpstashRedis).set(key, value);
   } catch (err) {
-    logger.warn(`Redis SET failed: ${(err as Error).message}`);
+    warnCommand('SET', err);
   }
 }
 
@@ -68,7 +80,7 @@ export async function redisDel(key: string): Promise<void> {
     if (mode === 'ioredis') await (client as IORedis).del(key);
     else await (client as UpstashRedis).del(key);
   } catch (err) {
-    logger.warn(`Redis DEL failed: ${(err as Error).message}`);
+    warnCommand('DEL', err);
   }
 }
 
@@ -83,7 +95,7 @@ export async function redisSetNx(key: string, value: string, ttlSeconds: number)
     const result = await (client as UpstashRedis).set(key, value, { nx: true, ex: ttlSeconds });
     return result === 'OK';
   } catch (err) {
-    logger.warn(`Redis SETNX failed: ${(err as Error).message}`);
+    warnCommand('SETNX', err);
     return true;
   }
 }

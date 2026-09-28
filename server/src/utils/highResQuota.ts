@@ -2,6 +2,7 @@ import { Redis as UpstashRedis } from '@upstash/redis';
 import { Redis as IORedis } from 'ioredis';
 import { countHighResDownloadsByIp } from './downloadLogger.js';
 import { logger } from './logger.js';
+import { attachThrottledRedisLogging, redisRetryStrategy } from './redisLog.js';
 
 /**
  * Persistent per-IP counter for free 2K/4K downloads (any URL).
@@ -87,10 +88,10 @@ if (redisUrl) {
     connectTimeout: 3_000,
     // Railway private networking can be IPv4 or IPv6.
     family: 0,
-    retryStrategy: (times) => Math.min(times * 200, 3_000),
+    retryStrategy: redisRetryStrategy,
     ...(redisUrl.startsWith('rediss://') ? { tls: {} } : {}),
   });
-  redisClient.on('error', (err: Error) => logger.warn(`Quota Redis error: ${err.message}`));
+  attachThrottledRedisLogging(redisClient, 'Quota Redis');
 
   const client = redisClient;
   store = {
