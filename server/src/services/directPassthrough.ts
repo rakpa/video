@@ -1,4 +1,4 @@
-import { config, currentProxy } from '../config.js';
+import { config, currentProxy, rotateProxy } from '../config.js';
 import { getAnyFreshInfoJsonEntry } from './infoJsonCache.js';
 import { detectPlatform } from './platform.js';
 import type { QualityDef } from './formats.js';
@@ -165,6 +165,12 @@ async function verifyDirect(
   );
   releaseTicketSlot(ticket);
   invalidateInfoJson(url.trim());
+  // A 403 from googlevideo means this exit IP is refused — move the sticky
+  // proxy on so the next extraction (and every later user) gets a working IP.
+  if (results.some((r) => r.status === 403) && ticket.proxy && ticket.proxy === currentProxy()) {
+    const next = rotateProxy();
+    logger.info(`Stream proxy refused; rotated to ${next ? new URL(next).host : 'none'}`);
+  }
   return null;
 }
 
