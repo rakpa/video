@@ -536,34 +536,15 @@ streamRouter.get('/stream/:ticketId/check', async (req, res) => {
     });
     await upstream.body?.cancel().catch(() => undefined);
     const ok = upstream.status === 200 || upstream.status === 206;
-    // Diagnostics (no secrets): which player client minted the URL, which proxy
-    // host relays it, and whether the query-param range style is accepted.
+    // Diagnostics (no secrets): which player client minted the URL and which
+    // proxy host relays it.
     const media = new URL(ticket.selection.videoUrl);
     const diag: Record<string, unknown> = {
       client: media.searchParams.get('c'),
       proxyHost: ticket.proxy ? new URL(ticket.proxy).host : null,
-      urlIpMatchesNothing: media.searchParams.has('ip') ? 'has-ip' : 'no-ip',
     };
     if (!ok) {
       logger.warn(`stream check: upstream HTTP ${upstream.status} (${JSON.stringify(diag)}) for ${ticket.sourceUrl.slice(0, 60)}`);
-      try {
-        media.searchParams.set('range', '0-0');
-        const alt = await undiciFetch(media.toString(), {
-          dispatcher: dispatcherFor(ticket.proxy),
-          headers: { 'User-Agent': BROWSER_UA },
-          signal: AbortSignal.timeout(8_000),
-        });
-        await alt.body?.cancel().catch(() => undefined);
-        diag.rangeParamStatus = alt.status;
-        const direct = await undiciFetch(ticket.selection.videoUrl, {
-          headers,
-          signal: AbortSignal.timeout(8_000),
-        });
-        await direct.body?.cancel().catch(() => undefined);
-        diag.noProxyStatus = direct.status;
-      } catch (e) {
-        diag.probeError = (e as Error).message;
-      }
     }
     return res.status(ok ? 200 : 502).json({ ok, upstreamStatus: upstream.status, ...diag });
   } catch (err) {
