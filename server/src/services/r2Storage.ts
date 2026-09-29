@@ -34,13 +34,19 @@ export function objectKeyFor(cacheKey: string): string {
 }
 
 export async function r2ObjectExists(key: string): Promise<boolean> {
+  return (await r2HeadFilename(key)) !== null;
+}
+
+/** HEAD an object: null when missing, else the filename from its Content-Disposition ('' if none). */
+export async function r2HeadFilename(key: string): Promise<string | null> {
   const c = client();
-  if (!c) return false;
+  if (!c) return null;
   try {
-    await c.send(new HeadObjectCommand({ Bucket: config.r2.bucket, Key: key }));
-    return true;
+    const head = await c.send(new HeadObjectCommand({ Bucket: config.r2.bucket, Key: key }));
+    const m = /filename="([^"]+)"/.exec(head.ContentDisposition ?? '');
+    return m ? m[1] : '';
   } catch {
-    return false;
+    return null;
   }
 }
 
@@ -54,12 +60,14 @@ export async function resolveCachedArtifact(
   const r2Key = objectKeyFor(cacheKey);
 
   // R2 HEAD first — fast and works when Redis metadata is missing or slow.
-  if (!(await r2ObjectExists(r2Key))) return null;
+  // The stored Content-Disposition keeps the real title even without Redis.
+  const headName = await r2HeadFilename(r2Key);
+  if (headName === null) return null;
 
   const artifact = {
     r2Key,
     outputHeight: null,
-    filename: 'video.mp4',
+    filename: headName || 'video.mp4',
     bytes: 0,
     cachedAt: Date.now(),
   };

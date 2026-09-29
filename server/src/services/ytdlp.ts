@@ -249,7 +249,10 @@ export function pickStreamMergeFormats(
   } catch {
     return null;
   }
+  return pickStreamMergeFromRaw(raw, maxHeight);
+}
 
+function pickStreamMergeFromRaw(raw: RawDump, maxHeight: number): StreamMergeSelection | null {
   const formats = raw.formats ?? [];
   const durationSeconds = typeof raw.duration === 'number' && raw.duration > 0 ? raw.duration : null;
   const exactSizeOf = (f: RawFormat) =>
@@ -613,6 +616,11 @@ function pickThumbnail(raw: RawDump): string | null {
  * audio allowance derived from duration.
  */
 function estimateSize(raw: RawDump, height: number, durationSeconds: number | null): number | null {
+  // Size of exactly what the download will deliver (same format picker), so the
+  // quality cards match the real file instead of the largest format on offer.
+  const picked = pickStreamMergeFromRaw(raw, height);
+  if (picked?.estimatedBytes) return Math.round(picked.estimatedBytes);
+
   const candidates = (raw.formats ?? []).filter(
     (f) => tierHeight(f) > 0 && tierHeight(f) <= height && f.vcodec !== 'none',
   );
@@ -663,7 +671,9 @@ function parseInfoDump(stdout: string): VideoInfo {
     author: raw.uploader ?? raw.channel ?? 'Unknown',
     durationSeconds: duration,
     thumbnail: pickThumbnail(raw),
-    sourceMaxHeight: displaySourceMaxHeight(rawSourceMax),
+    // Raw tier height — the client applies displaySourceMaxHeight itself;
+    // sending the display value made it round up twice (1080 → 1440 → "2160p").
+    sourceMaxHeight: rawSourceMax > 0 ? rawSourceMax : null,
     formats,
   };
 }
@@ -684,8 +694,14 @@ async function extractAndCacheInfoJson(url: string): Promise<void> {
     let blocked = false;
     for (const client of clients) {
       try {
-        const stdout = await runJson([...INFO_ARGS, ...hardeningArgsForUrl(url, client), url]);
-        saveInfoJson(url, stdout, currentProxy() ?? '');
+        // Tag the dump with the proxy actually passed to yt-dlp — another request
+        // may rotate the shared cursor while this extraction runs, and the media
+        // URLs are IP-locked to the extracting proxy.
+        const args = hardeningArgsForUrl(url, client);
+        const proxyIdx = args.indexOf('--proxy');
+        const usedProxy = proxyIdx >= 0 ? args[proxyIdx + 1] : '';
+        const stdout = await runJson([...INFO_ARGS, ...args, url]);
+        saveInfoJson(url, stdout, usedProxy);
         return;
       } catch (err) {
         if (!(err instanceof YtDlpError)) throw err;

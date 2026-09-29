@@ -4,7 +4,15 @@ import { detectPlatform } from './platform.js';
 import type { QualityDef } from './formats.js';
 import type { ClipRange } from '../utils/clip.js';
 import { ensureInfoJsonCache, pickStreamMergeFormats } from './ytdlp.js';
-import { createStreamTicket, hasStreamCapacity } from './streamTickets.js';
+import {
+  createStreamTicket,
+  getStreamTicket,
+  hasStreamCapacity,
+  releaseTicketSlot,
+  setStreamTicketContentLength,
+} from './streamTickets.js';
+import { invalidateInfoJson } from './infoJsonCache.js';
+import { probeMediaUrl } from '../routes/stream.js';
 import { logger } from '../utils/logger.js';
 
 export interface DirectDownloadResult {
@@ -121,8 +129,56 @@ export async function resolveDirectDownload(
   maxHeight: number,
   clip: ClipRange | null = null,
 ): Promise<DirectDownloadResult | null> {
+  return resolveDirectDownloadOnce(url, maxHeight, clip);
+}
+
+/**
+ * Only hand out a stream link the CDN actually accepts. A refused link (403 —
+ * IP/proxy mismatch, expired or bot-flagged URL) would otherwise fail in the
+ * browser; instead drop the dump and let the caller use the job pipeline,
+ * which re-extracts and downloads server-side.
+ */
+async function verifyDirect(
+  result: DirectDownloadResult | null,
+  url: string,
+): Promise<DirectDownloadResult | null> {
+  if (!result) return null;
+  const ticketId = result.url.split('/')[3];
+  const ticket = getStreamTicket(ticketId);
+  if (!ticket) return null;
+  const referer = detectPlatform(url)?.id === 'instagram' ? 'https://www.instagram.com/' : undefined;
+  const probes = [probeMediaUrl(ticket.selection.videoUrl, ticket.proxy, referer)];
+  if (ticket.selection.audioUrl) probes.push(probeMediaUrl(ticket.selection.audioUrl, ticket.proxy, referer));
+  const results = await Promise.all(probes);
+  const ok = results.every((r) => r.status === 206 || r.status === 200);
+  if (ok) {
+    // Exact CDN sizes → accurate Content-Length / progress.
+    const total = results.reduce((s, r) => s + (r.total ?? 0), 0);
+    if (!hasClip(ticket) && total > 0 && results.every((r) => r.total)) {
+      setStreamTicketContentLength(ticket.id, total);
+      result.estimatedBytes = total;
+    }
+    return result;
+  }
+  logger.warn(
+    `Direct stream refused by CDN (${results.map((r) => r.status).join('/')}) — falling back to job for ${url.slice(0, 60)}`,
+  );
+  releaseTicketSlot(ticket);
+  invalidateInfoJson(url.trim());
+  return null;
+}
+
+function hasClip(ticket: { clip: ClipRange | null }): boolean {
+  return Boolean(ticket.clip && ticket.clip.endTime > ticket.clip.startTime);
+}
+
+async function resolveDirectDownloadOnce(
+  url: string,
+  maxHeight: number,
+  clip: ClipRange | null = null,
+): Promise<DirectDownloadResult | null> {
   const trimmed = url.trim();
-  const cached = resolveFromCache(trimmed, maxHeight, clip);
+  const cached = await verifyDirect(resolveFromCache(trimmed, maxHeight, clip), trimmed);
   if (cached) return cached;
 
   // Cap at 5s so "processing your download" never shows longer than user wants.
@@ -139,5 +195,5 @@ export async function resolveDirectDownload(
     return null;
   }
 
-  return resolveFromCache(trimmed, maxHeight, clip);
+  return verifyDirect(resolveFromCache(trimmed, maxHeight, clip), trimmed);
 }

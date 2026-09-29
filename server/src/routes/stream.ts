@@ -124,6 +124,30 @@ async function fetchRangeChunk(
   });
 }
 
+/**
+ * 1-byte Range probe of a CDN URL through the ticket's proxy. Returns the HTTP
+ * status (0 on network error) and, when available, the total size.
+ */
+export async function probeMediaUrl(
+  url: string,
+  proxy: string,
+  referer?: string,
+): Promise<{ status: number; total: number | null }> {
+  const headers: Record<string, string> = { Range: 'bytes=0-0', 'User-Agent': BROWSER_UA };
+  if (referer) headers.Referer = referer;
+  try {
+    const r = await undiciFetch(url, {
+      dispatcher: dispatcherFor(proxy),
+      headers,
+      signal: AbortSignal.timeout(6_000),
+    });
+    await r.body?.cancel().catch(() => undefined);
+    return { status: r.status, total: parseTotalSize(r.headers.get('content-range')) };
+  } catch {
+    return { status: 0, total: null };
+  }
+}
+
 /** Download one Range chunk fully into memory, retrying transient failures. */
 async function fetchChunkBuffer(
   url: string,
