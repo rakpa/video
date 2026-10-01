@@ -708,6 +708,9 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
         isYoutube &&
         !clip &&
         clipMode !== 'clip' &&
+        // The native app streams straight to a file (no blob in memory, no
+        // Safari download sheet), so long videos keep the fast stream path.
+        !isNativeMobileApp() &&
         (info.durationSeconds ?? 0) >= 10 * 60;
       const useMobileStream = mobile && isYoutube && !longMobileYoutube;
       const galleryPrep = mobile && !useMobileStream && !longMobileYoutube;
@@ -745,6 +748,7 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
         if (
           startResult.kind === 'direct' &&
           mobile &&
+          !isNativeMobileApp() &&
           typeof startResult.estimatedBytes === 'number' &&
           startResult.estimatedBytes > MOBILE_STREAM_JOB_BYTES
         ) {
@@ -1052,6 +1056,7 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
                       outputHeight={outputHeight}
                       requestedLabel={qualityLabel || undefined}
                       mobileBrowser={isMobileDevice() && !isNativeMobileApp()}
+                      onDownloadAnother={isNativeMobileApp() ? handleMobileDownloadAnother : undefined}
                     />
                   </div>
                 ) : info && isMobileDevice() && mobileSavePayload ? (

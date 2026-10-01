@@ -1,5 +1,7 @@
-import { isNativeApp } from '../utils/nativeSave';
+import { useState } from 'react';
 import { motion } from 'framer-motion';
+import { hasNativeFile, isNativeApp, lastNativeOutcome, shareLastNative } from '../utils/nativeSave';
+import { Button } from './Button';
 
 function verifiedLabel(height: number): string {
   if (height >= 2160) return '4K (2160p)';
@@ -14,12 +16,24 @@ interface Props {
   requestedLabel?: string;
   /** Mobile browser — Files/Downloads wording instead of desktop folder. */
   mobileBrowser?: boolean;
+  /** Native app: reset the page for the next link. */
+  onDownloadAnother?: () => void;
 }
 
 /** Shown after the file is delivered — replaces quality/download controls. */
-export function SuccessState({ outputHeight, requestedLabel, mobileBrowser }: Props) {
+export function SuccessState({ outputHeight, requestedLabel, mobileBrowser, onDownloadAnother }: Props) {
   const verified =
     typeof outputHeight === 'number' && outputHeight > 0 ? verifiedLabel(outputHeight) : null;
+  const native = isNativeApp();
+  const savedToPhotos = native && lastNativeOutcome() === 'photos';
+  const [sharing, setSharing] = useState(false);
+  const openShare = () => {
+    if (sharing) return;
+    setSharing(true);
+    void shareLastNative()
+      .catch(() => undefined)
+      .finally(() => setSharing(false));
+  };
 
   return (
     <motion.div
@@ -52,9 +66,15 @@ export function SuccessState({ outputHeight, requestedLabel, mobileBrowser }: Pr
         </motion.svg>
       </motion.div>
 
-      <h3 className="mt-5 text-2xl font-bold text-slate-900">Download started</h3>
+      <h3 className="mt-5 text-2xl font-bold text-slate-900">
+        {native ? (savedToPhotos ? 'Saved to Photos' : 'Download ready') : 'Download started'}
+      </h3>
       <p className="mx-auto mt-2 max-w-md text-sm leading-relaxed text-slate-500">
-        {isNativeApp() ? 'Your video is ready — choose where to save it.' : 'Your video is saving to your device now.'}
+        {native
+          ? savedToPhotos
+            ? 'Your video is in the Photos app, in Recents.'
+            : 'Your video is downloaded.'
+          : 'Your video is saving to your device now.'}
         {verified && (
           <>
             <br />
@@ -65,12 +85,24 @@ export function SuccessState({ outputHeight, requestedLabel, mobileBrowser }: Pr
           </>
         )}
         <br />
-        {isNativeApp()
-          ? 'Pick Save Video to add it to Photos, or Save to Files to choose a folder. Tap Download another to save again.'
+        {native
+          ? 'Want it somewhere else? Tap the button below and pick Save to Files to choose a folder.'
           : mobileBrowser
             ? 'Check your Downloads or Files app if you do not see it yet.'
             : 'Large files save through your browser’s download bar — watch progress there for full speed.'}
       </p>
+      {native && hasNativeFile() && (
+        <div className="mt-6 flex flex-col gap-3">
+          <Button variant="primary" size="lg" className="w-full" onClick={openShare} disabled={sharing}>
+            {sharing ? 'Opening…' : 'Save to Files / Share'}
+          </Button>
+          {onDownloadAnother && (
+            <Button variant="ghost" size="lg" className="w-full" onClick={onDownloadAnother}>
+              Download another
+            </Button>
+          )}
+        </div>
+      )}
     </motion.div>
   );
 }

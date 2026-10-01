@@ -84,7 +84,8 @@ fileRouter.get('/file/:jobId', async (req, res) => {
 
       // Mobile gallery save fetches the file into a blob for Web Share — R2 redirects
       // fail cross-origin (no CORS), so proxy the bytes through our API instead.
-      if (job.galleryPrep) {
+      // ?proxy=1 — native app fetch: R2 sends no CORS headers, so relay the bytes.
+      if (job.galleryPrep || req.query.proxy === '1') {
         await streamR2Object(r2Key, res, filename);
         setTimeout(() => void destroyJob(job.id), 120_000).unref();
         return;

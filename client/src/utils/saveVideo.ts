@@ -100,7 +100,7 @@ export function invokeGalleryShareFromGesture(
 ): void {
   if (isNativeApp()) {
     saveBlobNative(payload.blob, payload.filename)
-      .then((r) => onResult(r))
+      .then((r) => onResult(r === 'cancelled' ? 'cancelled' : 'shared'))
       .catch(() => onResult('unavailable'));
     return;
   }
@@ -130,7 +130,8 @@ export function invokeGalleryShareFromGesture(
 export async function shareVideoToGallery(payload: VideoFilePayload): Promise<ShareResult> {
   if (isNativeApp()) {
     try {
-      return await saveBlobNative(payload.blob, payload.filename);
+      const r = await saveBlobNative(payload.blob, payload.filename);
+      return r === 'cancelled' ? 'cancelled' : 'shared';
     } catch {
       return 'unavailable';
     }
@@ -920,7 +921,9 @@ export async function downloadFileToDevice(jobId: string): Promise<void> {
   if (!isApiConfigured()) throw new Error(API_NOT_CONFIGURED_MSG);
 
   if (isNativeApp()) {
-    await saveUrlNative(url, 'VidCliply-video.mp4');
+    // ?proxy=1: the API streams the cached file itself instead of redirecting
+    // to R2 (the storage host sends no CORS headers, so a fetch would fail).
+    await saveUrlNative(`${url}${url.includes('?') ? '&' : '?'}proxy=1`, 'VidCliply-video.mp4');
     return;
   }
 
