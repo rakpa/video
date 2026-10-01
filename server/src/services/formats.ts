@@ -179,8 +179,10 @@ export function isQualityAvailable(sourceMaxHeight: number, qualityHeight: numbe
   if (sourceMaxHeight === 0) return true;
   const idx = QUALITY_TIERS.indexOf(qualityHeight as (typeof QUALITY_TIERS)[number]);
   if (idx < 0) return sourceMaxHeight >= qualityHeight;
-  const minSource = idx === 0 ? 1 : QUALITY_TIERS[idx - 1];
-  return sourceMaxHeight >= minSource;
+  // A tier is real only when the source is taller than the tier below it —
+  // otherwise a 1080p source was offered as "2K" and delivered 1080p.
+  if (idx === 0) return sourceMaxHeight >= 1;
+  return sourceMaxHeight > QUALITY_TIERS[idx - 1];
 }
 
 /** Highest meaningful quality label for UI ("Source video is up to Xp"). */

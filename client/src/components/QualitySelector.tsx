@@ -5,6 +5,7 @@ import { formatBytes } from '../utils/format';
 import { displaySourceMaxHeight } from '../utils/qualityAvailability';
 import { isPro } from '../lib/license';
 import { HIDE_PRO } from '../config/build';
+import { FREE_TIER_MAX_HEIGHT } from '../lib/plan';
 
 interface Props {
   formats: AvailableFormat[];
@@ -66,7 +67,8 @@ export function QualitySelector({ formats, selected, onSelect, mode, onModeChang
   const visibleFormats = useMemo(
     () =>
       resolvedFormats
-        .filter((f) => !HIDE_PRO || f.height <= maxHeight)
+        // iOS build: free tiers only (no PRO cards — nothing can be purchased in-app).
+        .filter((f) => !HIDE_PRO || f.height <= FREE_TIER_MAX_HEIGHT)
         .map((f) => ({
           ...f,
           available: f.available && (mode === 'best' || f.height <= COMPATIBLE_MAX_HEIGHT),
