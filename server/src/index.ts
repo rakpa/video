@@ -60,6 +60,7 @@ app.use(
 // Capture the running yt-dlp version once at startup so /api/health can report
 // it — the surest way to tell whether a deploy actually picked up a fresh binary.
 let ytdlpVersion = 'unknown';
+const startedAt = new Date().toISOString();
 execFile(config.ytdlpPath, ['--version'], { windowsHide: true }, (err, stdout) => {
   if (!err) ytdlpVersion = stdout.trim();
   else logger.warn('Could not read yt-dlp version:', err.message);
@@ -103,6 +104,7 @@ app.get('/api/health', (_req, res) => {
     // Deployed commit (Railway injects this) — confirms a deploy went live.
     version: process.env.RAILWAY_GIT_COMMIT_SHA?.slice(0, 7) ?? null,
     ytdlpVersion,
+    startedAt,
     cookies: {
       configured: Boolean(cookies.path),
       found: cookies.exists,
