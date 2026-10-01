@@ -95,12 +95,20 @@ function resolveFromCache(
   // only expose DASH (separate video+audio). Allowing merge here lets them use
   // the fast direct stream path instead of falling back to the slower full job.
   // The remux is still a cheap copy and keeps everything gallery-safe.
+  // Instagram Reels are frequently only published at 720p. When the user asked
+  // for Full HD, deliver a true 1080p file (Lanczos upscale + light sharpen +
+  // high-bitrate H.264) instead of a 720p file under a "1080p" label.
+  const enhanceTo =
+    platform?.id === 'instagram' && !clip && maxHeight >= 1080 && picked.height >= 480 && picked.height < 1080
+      ? 1080
+      : null;
+  const outHeight = enhanceTo ?? picked.height;
   const filename = safeFilename(
     clip
       ? `VidCliply_${picked.height}p_clip${clipFilenameSuffix(clip)}`
-      : `${picked.title}_${picked.height}p`,
+      : `${picked.title}_${outHeight}p`,
   );
-  const ticket = createStreamTicket(picked, filename, url.trim(), proxy, clip);
+  const ticket = createStreamTicket(picked, filename, url.trim(), proxy, clip, enhanceTo);
   if (!ticket) return null;
 
   logger.info(
@@ -113,7 +121,7 @@ function resolveFromCache(
     // still save as video — not a generic/zip download.
     url: `/api/stream/${ticket.id}/${encodeURIComponent(filename)}`,
     filename,
-    height: picked.height,
+    height: outHeight,
     formatId: picked.formatIds,
     estimatedBytes: ticket.contentLength,
   };
@@ -154,7 +162,7 @@ async function verifyDirect(
   if (ok) {
     // Exact CDN sizes → accurate Content-Length / progress.
     const total = results.reduce((s, r) => s + (r.total ?? 0), 0);
-    if (!hasClip(ticket) && total > 0 && results.every((r) => r.total)) {
+    if (!hasClip(ticket) && !ticket.enhanceTo && total > 0 && results.every((r) => r.total)) {
       setStreamTicketContentLength(ticket.id, total);
       result.estimatedBytes = total;
     }

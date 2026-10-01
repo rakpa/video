@@ -375,7 +375,7 @@ function handleStreamDownload(req: Request, res: Response): void {
   // Progressive CDN relay (exact Content-Length) — including YouTube when
   // yt-dlp picked a muxed H.264 file. Skipping ffmpeg here is a large desktop
   // speed win; Safari Zero KB came from wrong remux Content-Length, not this path.
-  if (selection.kind === 'progressive' && !hasClip) {
+  if (selection.kind === 'progressive' && !hasClip && !ticket.enhanceTo) {
     handleProgressiveDownload(req, res, ticket);
     return;
   }
@@ -415,8 +415,24 @@ function handleStreamDownload(req: Request, res: Response): void {
   // wrong length leaves Safari stuck on "Downloading… Zero KB".
   args.push(
     ...durationArgs,
-    '-c',
-    'copy',
+    ...(ticket.enhanceTo
+      ? [
+          '-vf',
+          `scale=w=if(gt(iw\\,ih)\\,-2\\,${ticket.enhanceTo}):h=if(gt(iw\\,ih)\\,${ticket.enhanceTo}\\,-2):flags=lanczos,unsharp=5:5:0.7:3:3:0.3`,
+          '-c:v',
+          'libx264',
+          '-preset',
+          'veryfast',
+          '-crf',
+          '19',
+          '-profile:v',
+          'high',
+          '-pix_fmt',
+          'yuv420p',
+          '-c:a',
+          'copy',
+        ]
+      : ['-c', 'copy']),
     '-max_muxing_queue_size',
     '9999',
     '-movflags',

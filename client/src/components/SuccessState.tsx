@@ -1,3 +1,4 @@
+import { isNativeApp } from '../utils/nativeSave';
 import { motion } from 'framer-motion';
 
 function verifiedLabel(height: number): string {
@@ -53,7 +54,7 @@ export function SuccessState({ outputHeight, requestedLabel, mobileBrowser }: Pr
 
       <h3 className="mt-5 text-2xl font-bold text-slate-900">Download started</h3>
       <p className="mx-auto mt-2 max-w-md text-sm leading-relaxed text-slate-500">
-        Your video is saving to your device now.
+        {isNativeApp() ? 'Your video is ready — choose where to save it.' : 'Your video is saving to your device now.'}
         {verified && (
           <>
             <br />
@@ -64,9 +65,11 @@ export function SuccessState({ outputHeight, requestedLabel, mobileBrowser }: Pr
           </>
         )}
         <br />
-        {mobileBrowser
-          ? 'Check your Downloads or Files app if you do not see it yet.'
-          : 'Large files save through your browser’s download bar — watch progress there for full speed.'}
+        {isNativeApp()
+          ? 'Pick Save Video to add it to Photos, or Save to Files to choose a folder. Tap Download another to save again.'
+          : mobileBrowser
+            ? 'Check your Downloads or Files app if you do not see it yet.'
+            : 'Large files save through your browser’s download bar — watch progress there for full speed.'}
       </p>
     </motion.div>
   );

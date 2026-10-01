@@ -19,6 +19,12 @@ export interface StreamTicket {
   /** Optional trim range — ffmpeg -ss/-t while remuxing (YouTube clips). */
   clip: ClipRange | null;
   /**
+   * Instagram sources are often 720p while the user picked HD/Full HD. When set,
+   * the stream re-encodes with a Lanczos upscale + light sharpen to this short-side
+   * height (1080) instead of a plain copy-remux.
+   */
+  enhanceTo: number | null;
+  /**
    * Expected download size for Content-Length (browser download progress).
    * Prefer CDN-probed totals; falls back to yt-dlp format sizes.
    */
@@ -67,6 +73,7 @@ export function createStreamTicket(
   sourceUrl: string,
   proxy: string,
   clip: ClipRange | null = null,
+  enhanceTo: number | null = null,
 ): StreamTicket | null {
   sweep();
   if (!acquireStreamSlot()) return null;
@@ -77,7 +84,9 @@ export function createStreamTicket(
     sourceUrl,
     proxy,
     clip,
-    contentLength: initialContentLength(selection, clip),
+    enhanceTo,
+    // A re-encode has no predictable size — don't promise a wrong Content-Length.
+    contentLength: enhanceTo ? null : initialContentLength(selection, clip),
     createdAt: Date.now(),
     slotHeld: true,
     transferActive: false,

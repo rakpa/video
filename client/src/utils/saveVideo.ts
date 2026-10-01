@@ -1,8 +1,9 @@
 import { API_BASE, API_NOT_CONFIGURED_MSG, apiUrl, isApiConfigured } from '../config/api';
+import { isNativeApp, saveBlobNative, saveUrlNative } from './nativeSave';
 
 /** True on the installed Capacitor app — not mobile Safari/Chrome. */
 export function isNativeMobileApp(): boolean {
-  return false;
+  return isNativeApp();
 }
 
 /** Shown when the browser received HTML (often saved as index.html) instead of MP4. */
@@ -97,6 +98,12 @@ export function invokeGalleryShareFromGesture(
   payload: VideoFilePayload,
   onResult: (result: ShareResult) => void,
 ): void {
+  if (isNativeApp()) {
+    saveBlobNative(payload.blob, payload.filename)
+      .then((r) => onResult(r))
+      .catch(() => onResult('unavailable'));
+    return;
+  }
   if (!navigator.share) {
     onResult('unavailable');
     return;
@@ -121,6 +128,13 @@ export function invokeGalleryShareFromGesture(
 
 /** Open the iOS/Android share sheet (Save Video → Photos). */
 export async function shareVideoToGallery(payload: VideoFilePayload): Promise<ShareResult> {
+  if (isNativeApp()) {
+    try {
+      return await saveBlobNative(payload.blob, payload.filename);
+    } catch {
+      return 'unavailable';
+    }
+  }
   if (!navigator.share) return 'unavailable';
 
   const file = toShareFile(payload);
@@ -473,6 +487,11 @@ function resolveBrowserDownloadUrl(url: string): string {
 }
 
 function triggerBlobDownload(payload: VideoFilePayload): void {
+  if (isNativeApp()) {
+    // WKWebView ignores <a download> and would play the video inline.
+    void saveBlobNative(payload.blob, payload.filename).catch(() => undefined);
+    return;
+  }
   const objectUrl = URL.createObjectURL(payload.blob);
   try {
     const a = document.createElement('a');
@@ -661,6 +680,14 @@ export async function downloadDirectUrl(
   const estimated = options?.estimatedBytes ?? null;
   const mobile = isMobileDevice();
   const maxBytes = mobile ? DIRECT_FETCH_MAX_BYTES_MOBILE : DIRECT_FETCH_MAX_BYTES;
+
+  // Native app: stream to a file and open the share sheet (Save Video / Save to
+  // Files) — no in-memory blob, so long 1080p+ videos work too.
+  if (isNativeApp()) {
+    await saveUrlNative(url, safeName, options?.onProgress, estimated);
+    options?.onProgress?.(100);
+    return { blob: new Blob(), filename: safeName, browserManaged: true };
+  }
 
   // Desktop large only — never iframe on mobile (Safari Zero KB on remux).
   if (!mobile && estimated != null && estimated > BROWSER_MANAGED_THRESHOLD_BYTES) {
@@ -891,6 +918,11 @@ async function downloadDirectViaFetch(
 export async function downloadFileToDevice(jobId: string): Promise<void> {
   const url = resolveBrowserDownloadUrl(apiUrl(`/api/file/${jobId}`));
   if (!isApiConfigured()) throw new Error(API_NOT_CONFIGURED_MSG);
+
+  if (isNativeApp()) {
+    await saveUrlNative(url, 'VidCliply-video.mp4');
+    return;
+  }
 
   if (isCrossOriginApiUrl(url)) {
     triggerCrossOriginDownload(url, 'VidCliply-video.mp4');
