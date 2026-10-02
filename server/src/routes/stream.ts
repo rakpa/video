@@ -25,15 +25,16 @@ const BROWSER_UA =
  * Prefetch the next chunk while writing the current one so ffmpeg stays fed
  * between Range boundaries (big desktop speed win on long HD files).
  */
-const CHUNK_SIZE = 8 * 1024 * 1024;
+const CHUNK_SIZE = 2 * 1024 * 1024;
 const CHUNK_TIMEOUT_MS = 120_000;
 /**
  * Range chunks downloaded concurrently ahead of the write cursor. Each chunk is
  * read fully into memory, so these connections really transfer in parallel —
- * a single residential-proxy connection tops out around 1 MB/s. Bounded memory:
- * PARALLEL_CHUNKS × CHUNK_SIZE per track (64 MB).
+ * googlevideo throttles each connection (~4 MB/s, decaying within a range).
+ * Measured through the proxy: 8×8 MB = 18 MB/s, 16×2 MB = 28 MB/s (proxy
+ * ceiling ≈ 33 MB/s). Bounded memory: PARALLEL_CHUNKS × CHUNK_SIZE per track (32 MB).
  */
-const PARALLEL_CHUNKS = 8;
+const PARALLEL_CHUNKS = 16;
 const CHUNK_ATTEMPTS = 3;
 
 function isLoopback(addr: string | undefined): boolean {
@@ -67,7 +68,7 @@ function dispatcherFor(proxy: string): Dispatcher {
   let d = dispatchers.get(proxy);
   if (!d) {
     const pool = {
-      connections: 8,
+      connections: 48,
       pipelining: 1,
       keepAliveTimeout: 30_000,
       keepAliveMaxTimeout: 60_000,
@@ -537,74 +538,6 @@ function handleStreamDownload(req: Request, res: Response): void {
  * stream shows a real error instead of "Your video is saving…".
  * Must be registered before /stream/:ticketId/:fileName.
  */
-/** Pull bytes for up to `ms` over `conns` parallel connections; returns MB/s. */
-async function measureMbps(
-  url: string,
-  proxy: string | null,
-  conns: number,
-  ms: number,
-  rangeEach: number,
-): Promise<{ mbPerSec: number; status: number }> {
-  let bytes = 0;
-  let status = 0;
-  const started = Date.now();
-  const ac = new AbortController();
-  const timer = setTimeout(() => ac.abort(), ms);
-  await Promise.all(
-    Array.from({ length: conns }, async (_, i) => {
-      try {
-        const r = await undiciFetch(url, {
-          ...(proxy !== null ? { dispatcher: dispatcherFor(proxy) } : {}),
-          headers: {
-            Range: `bytes=${i * rangeEach}-${(i + 1) * rangeEach - 1}`,
-            'User-Agent': BROWSER_UA,
-          },
-          signal: ac.signal,
-        });
-        status = r.status;
-        if (!r.body) return;
-        const reader = r.body.getReader();
-        for (;;) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          bytes += value.length;
-        }
-      } catch {
-        /* aborted at the time limit or failed — bytes so far still count */
-      }
-    }),
-  );
-  clearTimeout(timer);
-  const secs = Math.max(0.001, (Date.now() - started) / 1000);
-  return { mbPerSec: Math.round((bytes / 1048576 / secs) * 10) / 10, status };
-}
-
-const NEUTRAL_TEST_FILES = [
-  'https://proof.ovh.net/files/100Mb.dat',
-  'http://speedtest.tele2.net/100MB.zip',
-  'https://hil-speed.hetzner.com/100MB.bin',
-  'https://ash-speed.hetzner.com/100MB.bin',
-];
-
-/**
- * GET /api/stream/:ticketId/speedtest — temporary diagnostic: is the download
- * speed capped by the proxy or by the video CDN? Needs a valid stream ticket.
- */
-streamRouter.get('/stream/:ticketId/speedtest', async (req, res) => {
-  const ticket = getStreamTicket(req.params.ticketId);
-  if (!ticket) return res.status(404).json({ error: 'expired' });
-  const video = ticket.selection.videoUrl;
-  const M = 1048576;
-  const out: Record<string, unknown> = { proxyHost: ticket.proxy ? new URL(ticket.proxy).host : null };
-  const ovh = NEUTRAL_TEST_FILES[0];
-  out.neutralDirect = await measureMbps(ovh, null, 1, 4000, 90 * M);
-  out.neutralViaProxy = await measureMbps(ovh, ticket.proxy, 1, 4000, 90 * M);
-  for (const [conns, mb] of [[8, 8], [16, 4], [16, 2], [32, 2], [24, 1], [1, 60]] as const) {
-    out[`youtube_${conns}conn_x_${mb}MB`] = await measureMbps(video, ticket.proxy, conns, 7000, mb * M);
-  }
-  res.json(out);
-});
-
 streamRouter.get('/stream/:ticketId/check', async (req, res) => {
   const ticket = getStreamTicket(req.params.ticketId);
   if (!ticket) return res.status(404).json({ ok: false, error: 'That download link has expired. Please try again.' });
