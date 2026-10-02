@@ -32,12 +32,14 @@ import {
   fetchVideoPreview,
   isMobileDevice,
   pingApiWarmup,
+  startAudioDownload,
   startDownloadJob,
   subscribeProgress,
 } from './api/client';
 import {
   cancelMobileGalleryGestureFallback,
   downloadFileToDevice,
+  downloadAudioUrl,
   downloadDirectUrl,
   deliverMobileVideo,
   formatDownloadError,
@@ -195,6 +197,8 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
   const [progress, setProgress] = useState<ProgressUpdate>(INITIAL_PROGRESS);
   const [activeQuality, setActiveQuality] = useState<QualityId | null>(null);
   const [outputHeight, setOutputHeight] = useState<number | null>(null);
+  /** True while / after an MP3 (audio-only) download — switches labels and the success copy. */
+  const [audioMode, setAudioMode] = useState(false);
 
   const [selected, setSelected] = useState<QualityId>('1080');
   const [codecMode, setCodecMode] = useState<CodecMode>('best');
@@ -690,6 +694,7 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
 
       downloadBusy.current = true;
       setError(null);
+      setAudioMode(false);
       setActiveQuality(quality);
 
       const platform = detectPlatform(fetchedUrl.current || url);
@@ -888,7 +893,57 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
       ? `Clip ${formatClipRangeLabel(clipStart, clipEnd)}`
       : undefined;
 
-  const qualityLabel = info?.formats.find((f) => f.id === activeQuality)?.label ?? '';
+  /** Audio-only download: the video's sound as an MP3 (full video or the chosen clip). */
+  const handleDownloadAudio = useCallback(async () => {
+    if (!info || downloadBusy.current) return;
+    const clip = activeClip();
+    if (clipMode === 'clip' && !clip) {
+      setError('Please enter a valid start and end time for your clip.');
+      return;
+    }
+    downloadBusy.current = true;
+    setError(null);
+    setAudioMode(true);
+    setActiveQuality(null);
+    setOutputHeight(null);
+    setMobileSavePayload(null);
+    setDelivering(false);
+    setGalleryProgress(false);
+    setConvertingForPhone(false);
+    setPhase('downloading');
+    setProgress({ ...INITIAL_PROGRESS, stage: 'preparing', percent: 0 });
+    try {
+      const target = fetchedUrl.current || url;
+      const platform = detectPlatform(target);
+      const audio = await startAudioDownload(
+        platform?.id === 'instagram' ? cleanInstagramUrl(target) : target,
+        clip,
+      );
+      setProgress((p) => ({ ...p, percent: 2, stage: 'downloading', speed: null, eta: null }));
+      await downloadAudioUrl(audio.url, audio.filename, {
+        estimatedBytes: audio.estimatedBytes,
+        onProgress: (percent) =>
+          setProgress((p) => ({
+            ...p,
+            percent,
+            stage: percent >= 100 ? 'done' : 'downloading',
+            speed: null,
+            eta: null,
+          })),
+      });
+      setProgress((p) => ({ ...p, percent: 100, stage: 'done', speed: null, eta: null }));
+      setPhase('success');
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : formatDownloadError(e));
+      setPhase('error');
+    } finally {
+      downloadBusy.current = false;
+    }
+  }, [info, url, clipMode, activeClip]);
+
+  const qualityLabel = audioMode
+    ? 'MP3'
+    : (info?.formats.find((f) => f.id === activeQuality)?.label ?? '');
   const selectedFmt = info?.formats.find((f) => f.id === selected);
   const showProUpgrade = !HIDE_PRO && !limitReached && Boolean(selectedFmt && selectedFmt.premium && !isPro());
   const showInlineLimit = !HIDE_PRO && showLimitSection && Boolean(selectedFmt && selectedFmt.height >= HIGH_RES_MIN_PX);
@@ -1061,6 +1116,7 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
                       outputHeight={outputHeight}
                       requestedLabel={qualityLabel || undefined}
                       mobileBrowser={isMobileDevice() && !isNativeMobileApp()}
+                      audio={audioMode}
                       onDownloadAnother={isNativeMobileApp() ? handleMobileDownloadAnother : undefined}
                     />
                   </div>
@@ -1111,6 +1167,21 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
                         downloadDisabled={clipMode === 'clip' && !clipReady}
                         freeHighResRemaining={!shouldGateHighRes()}
                       />
+                      <button
+                        type="button"
+                        onClick={() => void handleDownloadAudio()}
+                        disabled={clipMode === 'clip' && !clipReady}
+                        className="mt-3 flex w-full items-center justify-center gap-2 rounded-2xl border-2 border-slate-200 bg-white px-5 py-3.5 text-sm font-semibold text-slate-700 transition hover:border-indigo-300 hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M9 18V5l11-2v13" />
+                          <circle cx="6" cy="18" r="3" />
+                          <circle cx="17" cy="16" r="3" />
+                        </svg>
+                        {clipMode === 'clip' && clipReady
+                          ? `Download MP3 · clip ${formatClipRangeLabel(clipStart, clipEnd)}`
+                          : 'Download audio only (MP3)'}
+                      </button>
                     </div>
                     <AnimatePresence mode="popLayout">
                       {showInlineLimit && (

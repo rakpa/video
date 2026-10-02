@@ -268,6 +268,23 @@ export async function startDownloadJob(
   return { kind: 'job', jobId: data.jobId };
 }
 
+/** Ask the API for an MP3 stream link for this video's audio (optionally a clip). */
+export async function startAudioDownload(
+  url: string,
+  clip?: ClipRange | null,
+): Promise<{ url: string; filename: string; estimatedBytes: number | null }> {
+  const data = await postJson<{ url?: string; filename?: string; estimatedBytes?: number | null }>('/api/audio', {
+    url,
+    ...(clip ? { startTime: clip.startTime, endTime: clip.endTime } : {}),
+  });
+  if (!data.url) throw new ApiError('Could not prepare the audio.');
+  const streamUrl =
+    data.url.startsWith('http://') || data.url.startsWith('https://')
+      ? data.url
+      : apiUrl(data.url.startsWith('/') ? data.url : `/${data.url}`);
+  return { url: streamUrl, filename: data.filename ?? 'audio.mp3', estimatedBytes: data.estimatedBytes ?? null };
+}
+
 /* ------------------------------- billing ------------------------------- */
 
 export interface BillingConfig {

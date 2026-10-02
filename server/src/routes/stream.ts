@@ -9,6 +9,7 @@ import {
 } from '../services/streamTickets.js';
 import { detectPlatform } from '../services/platform.js';
 import { logger } from '../utils/logger.js';
+import { MP3_BITRATE_KBPS } from '../services/ytdlp.js';
 
 export const streamRouter = Router();
 
@@ -289,9 +290,9 @@ streamRouter.get('/stream/:ticketId/src/:track', (req, res) => {
  * bytes flow exactly once, and the attachment header makes the browser save
  * immediately instead of rendering a black video page.
  */
-function contentDispositionAttachment(filename: string): string {
-  const safe = (filename.replace(/[^\w.\- ]+/g, '_').trim() || 'video.mp4').slice(0, 120);
-  const withExt = /\.mp4$/i.test(safe) ? safe : `${safe}.mp4`;
+function contentDispositionAttachment(filename: string, ext: 'mp4' | 'mp3' = 'mp4'): string {
+  const safe = (filename.replace(/[^\w.\- ]+/g, '_').trim() || `video.${ext}`).slice(0, 120);
+  const withExt = new RegExp(`\\.${ext}$`, 'i').test(safe) ? safe : `${safe}.${ext}`;
   const ascii = withExt.replace(/[^\x20-\x7E]/g, '_').replace(/["\\]/g, '_');
   return `attachment; filename="${ascii}"; filename*=UTF-8''${encodeURIComponent(withExt)}`;
 }
@@ -376,7 +377,7 @@ function handleStreamDownload(req: Request, res: Response): void {
   // Progressive CDN relay (exact Content-Length) — including YouTube when
   // yt-dlp picked a muxed H.264 file. Skipping ffmpeg here is a large desktop
   // speed win; Safari Zero KB came from wrong remux Content-Length, not this path.
-  if (selection.kind === 'progressive' && !hasClip && !ticket.enhanceTo) {
+  if (selection.kind === 'progressive' && !hasClip && !ticket.enhanceTo && !ticket.audioOnly) {
     handleProgressiveDownload(req, res, ticket);
     return;
   }
@@ -388,7 +389,7 @@ function handleStreamDownload(req: Request, res: Response): void {
     ? ['-t', String(Math.max(0.1, clip!.endTime - clip!.startTime))]
     : [];
 
-  const args = [
+  let args: string[] = [
     '-hide_banner',
     '-loglevel',
     'error',
@@ -443,6 +444,32 @@ function handleStreamDownload(req: Request, res: Response): void {
     'pipe:1',
   );
 
+  // Audio extraction: one input (the audio track, or a muxed file), no video,
+  // transcoded to MP3 and streamed as it is produced.
+  if (ticket.audioOnly) {
+    args = [
+      '-hide_banner',
+      '-loglevel',
+      'error',
+      '-nostdin',
+      ...seekArgs,
+      ...inputArgs(ffmpegInputUrl(ticket.id, 'video')),
+      ...durationArgs,
+      '-vn',
+      '-map',
+      '0:a:0',
+      '-c:a',
+      'libmp3lame',
+      '-b:a',
+      `${MP3_BITRATE_KBPS}k`,
+      '-id3v2_version',
+      '3',
+      '-f',
+      'mp3',
+      'pipe:1',
+    ];
+  }
+
   const child = spawn(config.ffmpegPath, args, {
     windowsHide: true,
     // Larger stdout buffer so 500MB remuxes don't stall on tiny pipe chunks.
@@ -466,8 +493,8 @@ function handleStreamDownload(req: Request, res: Response): void {
   child.stdout.once('data', (first: Buffer) => {
     if (res.writableEnded || res.destroyed) return;
     res.status(200);
-    res.setHeader('Content-Type', 'video/mp4');
-    res.setHeader('Content-Disposition', contentDispositionAttachment(filename));
+    res.setHeader('Content-Type', ticket.audioOnly ? 'audio/mpeg' : 'video/mp4');
+    res.setHeader('Content-Disposition', contentDispositionAttachment(filename, ticket.audioOnly ? 'mp3' : 'mp4'));
     res.setHeader('Cache-Control', 'no-store');
     // Chrome tries to "Resume" mid-stall when it thinks Range is supported —
     // remux pipes cannot resume, which leaves downloads stuck on Resuming…

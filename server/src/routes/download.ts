@@ -4,7 +4,7 @@ import { readJsonBody } from '../utils/body.js';
 import { getQuality, isCodecMode } from '../services/formats.js';
 import { createJob, findCachedJob } from '../jobManager.js';
 import { YtDlpError, readCachedVideoInfo } from '../services/ytdlp.js';
-import { canDirectPassthrough, resolveDirectDownload } from '../services/directPassthrough.js';
+import { canDirectPassthrough, resolveAudioDownload, resolveDirectDownload } from '../services/directPassthrough.js';
 import { canonicalizeMediaUrl, detectPlatform } from '../services/platform.js';
 import { maxAllowedHeight, isPro } from '../services/license.js';
 import { parseClipRange } from '../utils/clip.js';
@@ -171,5 +171,45 @@ downloadRouter.post('/download', async (req, res) => {
     }
     logger.error('createJob failed:', err);
     return res.status(500).json({ error: 'Could not start the download.' });
+  }
+});
+
+/**
+ * POST /api/audio { url, startTime?, endTime? } → { url, filename, estimatedBytes }
+ * Audio extraction: an /api/stream link that delivers the video's audio as MP3.
+ */
+downloadRouter.post('/audio', async (req, res) => {
+  const body = readJsonBody(req);
+  const v = validateUrl(body.url);
+  if (!v.ok) return res.status(400).json({ error: v.message });
+
+  const trimmedUrl = canonicalizeMediaUrl(String(body.url ?? ''));
+  const platform = detectPlatform(trimmedUrl);
+  const cached = readCachedVideoInfo(trimmedUrl);
+  const clipResult = parseClipRange(body, cached?.durationSeconds ?? null);
+  if (!clipResult.ok) return res.status(400).json({ error: clipResult.error });
+
+  try {
+    const audio = await resolveAudioDownload(trimmedUrl, clipResult.clip);
+    if (!audio) {
+      return res.status(503).json({ error: 'Could not prepare the audio right now. Please try again in a moment.' });
+    }
+    logDownload({
+      platform: platform?.id ?? 'youtube',
+      quality: 'MP3',
+      outputHeight: 0,
+      requestedHeight: 0,
+      ip: getClientIp(req),
+    });
+    const apiBase = `${req.protocol}://${req.get('host')}`;
+    return res.status(200).json({
+      url: `${apiBase}${audio.url}`,
+      filename: audio.filename,
+      estimatedBytes: audio.estimatedBytes ?? null,
+    });
+  } catch (err) {
+    if (err instanceof YtDlpError) return res.status(422).json({ error: err.message });
+    logger.error('audio download failed:', err);
+    return res.status(500).json({ error: 'Could not prepare the audio.' });
   }
 });

@@ -61,7 +61,8 @@ export function SeoContent() {
                 high resolution and you want maximum detail.
               </>
             )}{' '}
-            Every download includes audio.
+            Every download includes audio, and you can also save just the sound as an{' '}
+            <strong className="font-semibold text-slate-900">MP3</strong>.
           </p>
         </div>
 

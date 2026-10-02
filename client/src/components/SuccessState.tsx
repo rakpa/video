@@ -16,12 +16,14 @@ interface Props {
   requestedLabel?: string;
   /** Mobile browser — Files/Downloads wording instead of desktop folder. */
   mobileBrowser?: boolean;
+  /** Audio-only (MP3) download — different wording, no Photos. */
+  audio?: boolean;
   /** Native app: reset the page for the next link. */
   onDownloadAnother?: () => void;
 }
 
 /** Shown after the file is delivered — replaces quality/download controls. */
-export function SuccessState({ outputHeight, requestedLabel, mobileBrowser, onDownloadAnother }: Props) {
+export function SuccessState({ outputHeight, requestedLabel, mobileBrowser, audio, onDownloadAnother }: Props) {
   const verified =
     typeof outputHeight === 'number' && outputHeight > 0 ? verifiedLabel(outputHeight) : null;
   const native = isNativeApp();
@@ -67,14 +69,26 @@ export function SuccessState({ outputHeight, requestedLabel, mobileBrowser, onDo
       </motion.div>
 
       <h3 className="mt-5 text-2xl font-bold text-slate-900">
-        {native ? (savedToPhotos ? 'Saved to Photos' : 'Download ready') : 'Download started'}
+        {audio
+          ? native
+            ? 'MP3 ready'
+            : 'MP3 download started'
+          : native
+            ? savedToPhotos
+              ? 'Saved to Photos'
+              : 'Download ready'
+            : 'Download started'}
       </h3>
       <p className="mx-auto mt-2 max-w-md text-sm leading-relaxed text-slate-500">
-        {native
-          ? savedToPhotos
-            ? 'Your video is in the Photos app, in Recents.'
-            : 'Your video is downloaded.'
-          : 'Your video is saving to your device now.'}
+        {audio
+          ? native
+            ? 'Your MP3 is downloaded.'
+            : 'Your MP3 is saving to your device now.'
+          : native
+            ? savedToPhotos
+              ? 'Your video is in the Photos app, in Recents.'
+              : 'Your video is downloaded.'
+            : 'Your video is saving to your device now.'}
         {verified && (
           <>
             <br />
@@ -86,7 +100,9 @@ export function SuccessState({ outputHeight, requestedLabel, mobileBrowser, onDo
         )}
         <br />
         {native
-          ? 'Want it somewhere else? Tap the button below and pick Save to Files to choose a folder.'
+          ? audio
+            ? 'Tap the button below to save it to Files again or share it.'
+            : 'Want it somewhere else? Tap the button below and pick Save to Files to choose a folder.'
           : mobileBrowser
             ? 'Check your Downloads or Files app if you do not see it yet.'
             : 'Large files save through your browser’s download bar — watch progress there for full speed.'}

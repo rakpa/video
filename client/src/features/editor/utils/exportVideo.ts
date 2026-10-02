@@ -281,7 +281,14 @@ async function exportWithWebCodecs(options: ExportOptions, totalDuration: number
   if (encodedFrames < 1) throw new Error('Export produced no frames. Please try again.');
   if (encodeError) throw encodeError;
 
-  await encoder.flush();
+  // A stalled hardware encoder must not hang the export forever — time out and
+  // let the caller fall back to the MediaRecorder path.
+  await Promise.race([
+    encoder.flush(),
+    new Promise<never>((_, reject) =>
+      setTimeout(() => reject(new Error('Video encoder did not finish.')), 60_000),
+    ),
+  ]);
   encoder.close();
   muxer.finalize();
 

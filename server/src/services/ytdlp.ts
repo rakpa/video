@@ -252,6 +252,56 @@ export function pickStreamMergeFormats(
   return pickStreamMergeFromRaw(raw, maxHeight);
 }
 
+/** MP3 bitrate for audio extraction (kbps). */
+export const MP3_BITRATE_KBPS = 192;
+
+/**
+ * Best source for audio extraction (/api/audio → MP3): the original-language
+ * audio-only track when there is one, else the smallest muxed file that carries
+ * audio (Facebook / some Reels are progressive only).
+ */
+export function pickAudioSource(infoJsonPath: string): StreamMergeSelection | null {
+  let raw: RawDump;
+  try {
+    raw = JSON.parse(fs.readFileSync(infoJsonPath, 'utf8'));
+  } catch {
+    return null;
+  }
+  const formats = (raw.formats ?? []).filter(
+    (f) =>
+      Boolean(f.format_id && f.url?.startsWith('http')) &&
+      !(f.protocol ?? '').includes('m3u8') &&
+      // Unknown codecs (Facebook reports none at all) are muxed files with sound.
+      f.acodec !== 'none',
+  );
+  const sizeOf = (f: RawFormat) => f.filesize ?? f.filesize_approx ?? (f.tbr ?? 0) * 1000;
+  const audioOnly = formats
+    .filter((f) => f.vcodec === 'none')
+    .sort((a, b) => audioLangRank(b) - audioLangRank(a) || sizeOf(b) - sizeOf(a));
+  const muxed = formats
+    .filter((f) => f.vcodec !== 'none')
+    .sort((a, b) => audioLangRank(b) - audioLangRank(a) || tierHeight(a) - tierHeight(b) || sizeOf(a) - sizeOf(b));
+  const pick = audioOnly[0] ?? muxed[0];
+  if (!pick?.url) return null;
+
+  const durationSeconds = typeof raw.duration === 'number' && raw.duration > 0 ? raw.duration : null;
+  const title =
+    (raw.title ?? 'audio')
+      .replace(/[^\w.\- ]+/g, '_')
+      .trim()
+      .slice(0, 100) || 'audio';
+  return {
+    kind: 'progressive',
+    videoUrl: pick.url,
+    audioUrl: null,
+    height: 0,
+    title,
+    formatIds: String(pick.format_id),
+    estimatedBytes: durationSeconds ? Math.round((durationSeconds * MP3_BITRATE_KBPS * 1000) / 8) : null,
+    durationSeconds,
+  };
+}
+
 function pickStreamMergeFromRaw(raw: RawDump, maxHeight: number): StreamMergeSelection | null {
   const formats = raw.formats ?? [];
   const durationSeconds = typeof raw.duration === 'number' && raw.duration > 0 ? raw.duration : null;

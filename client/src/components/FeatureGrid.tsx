@@ -11,7 +11,7 @@ interface Feature {
 const FEATURES: Feature[] = [
   {
     title: 'Always with sound',
-    body: 'Video and audio are merged into one MP4 — never a silent file.',
+    body: 'Video and audio are merged into one MP4 — never a silent file. Or save just the audio as MP3.',
     icon: (
       <>
         <path strokeLinecap="round" strokeLinejoin="round" d="M11 5 6 9H3v6h3l5 4V5Z" />

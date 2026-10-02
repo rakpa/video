@@ -229,7 +229,8 @@ export function EditorWorkspace({ initialFiles, onClose }: Props) {
           </div>
           <p className="mt-2 text-xs font-medium text-indigo-700/80">
             Speeding through your video on-device (not recording in real time). Full quality,
-            video-only export — keep this tab open until it finishes.
+            video-only export (no sound) — keep {isNativeApp() ? 'the app' : 'this tab'} open until it finishes.
+            {isNativeApp() ? ' It is saved to your Photos when done.' : ''}
           </p>
         </div>
       )}

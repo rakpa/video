@@ -490,7 +490,8 @@ function HowToGuide() {
       <H2>Understanding file formats</H2>
       <P>
         <Strong>MP4</Strong> is the universal video format — it plays on virtually every phone, computer, and TV, which
-        is why {COMPANY.brand} delivers every download as MP4, with the audio already merged in.
+        is why {COMPANY.brand} delivers every video as MP4, with the audio already merged in. If you only want the sound
+        (for music you own or a podcast), choose <Strong>Download audio only (MP3)</Strong>.
       </P>
 
       <H2>Why sound sometimes goes missing elsewhere</H2>
@@ -535,7 +536,8 @@ function HowToGuide() {
           </QA>
         )}
         <QA q="Which format do I get?">
-          MP4 with sound — it plays on virtually every phone, computer, and TV.
+          MP4 with sound — it plays on virtually every phone, computer, and TV. Tap “Download audio only (MP3)” if you
+          just want the sound.
         </QA>
         <QA q="Is it really free?">
           {HIDE_PRO
@@ -570,6 +572,7 @@ function AboutPage() {
         <li>Detects the platform automatically from the link you paste.</li>
         <li>Extracts the best available video and audio and merges them into a single MP4.</li>
         <li>Supports resolutions from 720p up to {HIDE_PRO ? '1080p Full HD' : '4K'}, depending on the source.</li>
+        <li>Can save just the audio as an MP3.</li>
         <li>Adds no watermark and bundles no extra software.</li>
       </UL>
 

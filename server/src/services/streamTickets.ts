@@ -24,6 +24,8 @@ export interface StreamTicket {
    * height (1080) instead of a plain copy-remux.
    */
   enhanceTo: number | null;
+  /** Audio extraction: transcode the source's audio to MP3 (no video). */
+  audioOnly: boolean;
   /**
    * Expected download size for Content-Length (browser download progress).
    * Prefer CDN-probed totals; falls back to yt-dlp format sizes.
@@ -74,6 +76,7 @@ export function createStreamTicket(
   proxy: string,
   clip: ClipRange | null = null,
   enhanceTo: number | null = null,
+  audioOnly = false,
 ): StreamTicket | null {
   sweep();
   if (!acquireStreamSlot()) return null;
@@ -85,6 +88,7 @@ export function createStreamTicket(
     proxy,
     clip,
     enhanceTo,
+    audioOnly,
     // A re-encode has no predictable size — don't promise a wrong Content-Length.
     contentLength: enhanceTo ? null : initialContentLength(selection, clip),
     createdAt: Date.now(),

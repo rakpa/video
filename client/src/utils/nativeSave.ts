@@ -34,9 +34,12 @@ export function hasNativeFile(): boolean {
   return lastFile !== null;
 }
 
-function safeName(name: string): string {
-  const base = (name || 'video.mp4').replace(/[^\w.\- ]+/g, '_').trim().slice(0, 100) || 'video';
-  return /\.mp4$/i.test(base) ? base : `${base}.mp4`;
+type MediaKind = 'video' | 'audio';
+
+function safeName(name: string, kind: MediaKind = 'video'): string {
+  const ext = kind === 'audio' ? 'mp3' : 'mp4';
+  const base = (name || `${kind}.${ext}`).replace(/[^\w.\- ]+/g, '_').trim().slice(0, 100) || kind;
+  return new RegExp(`\\.${ext}$`, 'i').test(base) ? base : `${base.replace(/\.(mp4|mp3)$/i, '')}.${ext}`;
 }
 
 async function toBase64(bytes: Uint8Array): Promise<string> {
@@ -78,8 +81,13 @@ async function openShareSheet(file: NativeFile): Promise<NativeSaveResult> {
  * choose Files or another app. WKWebView ignores <a download> and would play
  * the video inline, so the native app routes every download through here.
  */
-async function deliver(file: NativeFile): Promise<NativeSaveResult> {
+async function deliver(file: NativeFile, kind: MediaKind = 'video'): Promise<NativeSaveResult> {
   lastFile = file;
+  if (kind === 'audio') {
+    // Photos cannot hold audio — let the user pick Save to Files / an app.
+    lastOutcome = await openShareSheet(file);
+    return lastOutcome;
+  }
   try {
     const { Media } = await import('@capacitor-community/media');
     await Media.saveVideo({ path: file.uri });
@@ -105,6 +113,7 @@ export async function saveUrlNative(
   filename: string,
   onProgress?: (percent: number) => void,
   estimatedBytes?: number | null,
+  kind: MediaKind = 'video',
 ): Promise<NativeSaveResult> {
   const { Filesystem, Directory } = await import('@capacitor/filesystem');
   await dropPreviousFile();
@@ -121,7 +130,7 @@ export async function saveUrlNative(
   } catch {
     headerName = cdMatch?.[2] ?? '';
   }
-  const name = safeName(headerName || filename);
+  const name = safeName(headerName || filename, kind);
   const dir = `vidcliply-${Date.now()}`;
   const path = `${dir}/${name}`;
   const total =
@@ -174,7 +183,7 @@ export async function saveUrlNative(
   }
 
   const { uri } = await Filesystem.getUri({ path, directory: Directory.Cache });
-  return deliver({ dir, path, uri, name });
+  return deliver({ dir, path, uri, name }, kind);
 }
 
 /** Same as saveUrlNative for a file already in memory (job / gallery-prep path). */

@@ -3,7 +3,7 @@ import { getAnyFreshInfoJsonEntry } from './infoJsonCache.js';
 import { detectPlatform } from './platform.js';
 import type { QualityDef } from './formats.js';
 import type { ClipRange } from '../utils/clip.js';
-import { ensureInfoJsonCache, pickStreamMergeFormats } from './ytdlp.js';
+import { ensureInfoJsonCache, pickAudioSource, pickStreamMergeFormats } from './ytdlp.js';
 import {
   createStreamTicket,
   getStreamTicket,
@@ -162,7 +162,7 @@ async function verifyDirect(
   if (ok) {
     // Exact CDN sizes → accurate Content-Length / progress.
     const total = results.reduce((s, r) => s + (r.total ?? 0), 0);
-    if (!hasClip(ticket) && !ticket.enhanceTo && total > 0 && results.every((r) => r.total)) {
+    if (!hasClip(ticket) && !ticket.enhanceTo && !ticket.audioOnly && total > 0 && results.every((r) => r.total)) {
       setStreamTicketContentLength(ticket.id, total);
       result.estimatedBytes = total;
     }
@@ -210,4 +210,50 @@ async function resolveDirectDownloadOnce(
   }
 
   return verifyDirect(resolveFromCache(trimmed, maxHeight, clip), trimmed);
+}
+
+/**
+ * Audio extraction: resolve an /api/stream ticket that transcodes the source's
+ * audio to MP3 on the fly (optionally trimmed to a clip). Extracts the video
+ * info first when it is not cached yet.
+ */
+export async function resolveAudioDownload(
+  url: string,
+  clip: ClipRange | null = null,
+): Promise<DirectDownloadResult | null> {
+  const trimmed = url.trim();
+  for (let attempt = 0; attempt < 2; attempt++) {
+    await ensureInfoJsonCache(trimmed);
+    const entry = getAnyFreshInfoJsonEntry(trimmed);
+    if (!entry) return null;
+
+    let proxy = entry.proxy;
+    if (!proxy && config.proxies.length > 0) proxy = currentProxy() ?? '';
+
+    const picked = pickAudioSource(entry.path);
+    if (!picked) return null;
+    if (!hasStreamCapacity()) return null;
+
+    const base = `${picked.title}${clipFilenameSuffix(clip)}`.replace(/[^\w.\- ]+/g, '_').slice(0, 120) || 'audio';
+    const filename = `${base}.mp3`;
+    const ticket = createStreamTicket(picked, filename, trimmed, proxy, clip, null, true);
+    if (!ticket) return null;
+
+    const result = await verifyDirect(
+      {
+        url: `/api/stream/${ticket.id}/${encodeURIComponent(filename)}`,
+        filename,
+        height: 0,
+        formatId: picked.formatIds,
+        estimatedBytes: ticket.contentLength,
+      },
+      trimmed,
+    );
+    if (result) {
+      logger.info(`Audio stream ready: ${picked.formatIds} → ${filename}`);
+      return result;
+    }
+    // verifyDirect dropped the stale dump (and rotated a refused proxy) — retry once.
+  }
+  return null;
 }

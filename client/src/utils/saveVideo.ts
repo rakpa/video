@@ -528,7 +528,7 @@ function triggerCrossOriginDownload(url: string, filename?: string): void {
   a.rel = 'noopener';
   // Hint .mp4 even when the attribute is ignored cross-origin — Content-Disposition
   // still carries the real name from the API.
-  a.download = filename && /\.mp4$/i.test(filename) ? filename : 'VidCliply-video.mp4';
+  a.download = filename && /\.(mp4|mp3)$/i.test(filename) ? filename : 'VidCliply-video.mp4';
   document.body.appendChild(a);
   a.click();
   a.remove();
@@ -950,4 +950,58 @@ export async function downloadFileToDevice(jobId: string): Promise<void> {
 /** @deprecated Use downloadFileToDevice — kept for any legacy imports. */
 export function classicFileDownload(jobId: string): void {
   void downloadFileToDevice(jobId);
+}
+
+/**
+ * Deliver an MP3 audio stream (/api/audio). Desktop: browser download manager.
+ * Native app: stream to a file, then the share sheet (Save to Files). Mobile
+ * browsers: fetch into memory (MP3s are small) and save.
+ */
+export async function downloadAudioUrl(
+  streamUrl: string,
+  filename: string,
+  options?: { estimatedBytes?: number | null; onProgress?: (percent: number) => void },
+): Promise<void> {
+  const url = resolveBrowserDownloadUrl(streamUrl);
+  const name = /\.mp3$/i.test(filename) ? filename : `${filename}.mp3`;
+
+  if (isNativeApp()) {
+    await saveUrlNative(url, name, options?.onProgress, options?.estimatedBytes ?? null, 'audio');
+    options?.onProgress?.(100);
+    return;
+  }
+
+  if (!isMobileDevice()) {
+    options?.onProgress?.(8);
+    triggerCrossOriginDownload(url, name);
+    await new Promise((r) => window.setTimeout(r, 300));
+    options?.onProgress?.(100);
+    return;
+  }
+
+  const res = await fetch(url);
+  if (!res.ok || !res.body) throw new Error(`stream HTTP ${res.status}`);
+  const total = Number(res.headers.get('x-expected-size')) || options?.estimatedBytes || 0;
+  const reader = res.body.getReader();
+  const chunks: BlobPart[] = [];
+  let received = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    chunks.push(value as BlobPart);
+    received += value.length;
+    if (total > 0) options?.onProgress?.(Math.min(99, Math.max(2, Math.round((received / total) * 100))));
+  }
+  if (received < 1024) throw new Error('The audio file was empty. Please try again.');
+  const blob = new Blob(chunks, { type: 'audio/mpeg' });
+  const objectUrl = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = objectUrl;
+  a.download = name;
+  a.rel = 'noopener';
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  window.setTimeout(() => URL.revokeObjectURL(objectUrl), 60_000);
+  options?.onProgress?.(100);
 }

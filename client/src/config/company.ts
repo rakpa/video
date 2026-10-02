@@ -13,7 +13,8 @@ export const COMPANY = {
   pageTitle: 'VidCliply — Free Video Downloader for YouTube, Facebook & Instagram',
   /** General contact + DMCA agent email. */
   contactEmail: 'support@vidcliply.com',
-  dmcaEmail: 'dmca@vidcliply.com',
+  // Same inbox as support — there is no separate DMCA mailbox.
+  dmcaEmail: 'support@vidcliply.com',
   /** Shown as the "last updated" date on every legal page. */
   lastUpdated: 'October 2, 2026',
 } as const;
