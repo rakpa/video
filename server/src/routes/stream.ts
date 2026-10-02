@@ -596,16 +596,12 @@ streamRouter.get('/stream/:ticketId/speedtest', async (req, res) => {
   const video = ticket.selection.videoUrl;
   const M = 1048576;
   const out: Record<string, unknown> = { proxyHost: ticket.proxy ? new URL(ticket.proxy).host : null };
-  for (const f of NEUTRAL_TEST_FILES) {
-    const host = new URL(f).host;
-    const direct = await measureMbps(f, null, 1, 4000, 90 * M);
-    const via1 = await measureMbps(f, ticket.proxy, 1, 5000, 90 * M);
-    const via4 = await measureMbps(f, ticket.proxy, 4, 5000, 24 * M);
-    out[host] = { directNoProxy_1conn: direct, viaProxy_1conn: via1, viaProxy_4conn: via4 };
+  const ovh = NEUTRAL_TEST_FILES[0];
+  out.neutralDirect = await measureMbps(ovh, null, 1, 4000, 90 * M);
+  out.neutralViaProxy = await measureMbps(ovh, ticket.proxy, 1, 4000, 90 * M);
+  for (const [conns, mb] of [[8, 8], [16, 4], [16, 2], [32, 2], [24, 1], [1, 60]] as const) {
+    out[`youtube_${conns}conn_x_${mb}MB`] = await measureMbps(video, ticket.proxy, conns, 7000, mb * M);
   }
-  out.youtubeViaProxy_1conn = await measureMbps(video, ticket.proxy, 1, 6000, 8 * M);
-  out.youtubeViaProxy_4conn = await measureMbps(video, ticket.proxy, 4, 6000, 8 * M);
-  out.youtubeViaProxy_8conn = await measureMbps(video, ticket.proxy, 8, 6000, 8 * M);
   res.json(out);
 });
 
