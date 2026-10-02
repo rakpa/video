@@ -181,7 +181,11 @@ export const config = {
   stripeSecret: process.env.STRIPE_SECRET_KEY ?? '',
   stripePublishableKey: process.env.STRIPE_PUBLISHABLE_KEY ?? '',
   stripeWebhookSecret: process.env.STRIPE_WEBHOOK_SECRET ?? '',
-  priceProYearlyCents: Number(process.env.PRICE_PRO_YEARLY_CENTS ?? process.env.PRICE_YEARLY_CENTS ?? 999),
+  // Pro price ($9.99/year). Set PRO_PRICE_CENTS to change it. The older
+  // PRICE_PRO_YEARLY_CENTS / PRICE_YEARLY_CENTS variables are intentionally
+  // ignored: a stale 1999 left in the host config kept charging $19.99 while
+  // the site advertised the new price.
+  priceProYearlyCents: Number(process.env.PRO_PRICE_CENTS ?? 999),
   /** @deprecated Legacy tier pricing — new checkouts use priceProYearlyCents */
   priceHdYearlyCents: Number(process.env.PRICE_HD_YEARLY_CENTS ?? 1000),
   price2kYearlyCents: Number(process.env.PRICE_2K_YEARLY_CENTS ?? 1999),
