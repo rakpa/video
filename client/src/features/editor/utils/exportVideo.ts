@@ -7,6 +7,8 @@ export interface ExportOptions {
   canvas: CanvasSettings;
   onProgress?: (percent: number) => void;
   signal?: AbortSignal;
+  /** Set false to export video only (used internally when audio encoding fails). */
+  audio?: boolean;
 }
 
 function even(n: number): number {
@@ -74,6 +76,139 @@ function isSimpleTransform(clip: EditorClip, canvas: CanvasSettings): boolean {
     c.h === 1 &&
     canvas.aspect === 'source'
   );
+}
+
+/* ------------------------------- audio -------------------------------- */
+
+const AUDIO_SAMPLE_RATE = 44_100;
+const AUDIO_CHANNELS = 2;
+const AUDIO_BITRATE = 128_000;
+/** Decoding holds the whole source in memory — skip sound for very large sources. */
+const AUDIO_MAX_SOURCE_SECONDS = 15 * 60;
+const AUDIO_MAX_SOURCE_BYTES = 400 * 1024 * 1024;
+
+interface AudioSegment {
+  /** Planar stereo samples for this clip's trimmed (and speed-adjusted) range. */
+  left: Float32Array;
+  right: Float32Array;
+}
+
+type OfflineCtor = typeof OfflineAudioContext;
+
+function offlineAudioCtor(): OfflineCtor | null {
+  const w = window as unknown as { OfflineAudioContext?: OfflineCtor; webkitOfflineAudioContext?: OfflineCtor };
+  return w.OfflineAudioContext ?? w.webkitOfflineAudioContext ?? null;
+}
+
+async function supportsAacEncoding(): Promise<boolean> {
+  if (typeof AudioEncoder === 'undefined' || typeof AudioData === 'undefined') return false;
+  try {
+    const res = await AudioEncoder.isConfigSupported({
+      codec: 'mp4a.40.2',
+      sampleRate: AUDIO_SAMPLE_RATE,
+      numberOfChannels: AUDIO_CHANNELS,
+      bitrate: AUDIO_BITRATE,
+    });
+    return Boolean(res.supported);
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Render one clip's sound for its trimmed range at the clip's speed. Returns
+ * null when the clip has no usable audio (or is too large to decode safely).
+ */
+async function renderClipAudio(clip: EditorClip): Promise<AudioSegment | null> {
+  const Offline = offlineAudioCtor();
+  if (!Offline) return null;
+  if (clip.duration > AUDIO_MAX_SOURCE_SECONDS || clip.file.size > AUDIO_MAX_SOURCE_BYTES) return null;
+
+  const speed = Math.max(0.25, clip.transform.speed);
+  const srcSpan = Math.max(0, clip.trimEnd - clip.trimStart);
+  const outFrames = Math.ceil((srcSpan / speed) * AUDIO_SAMPLE_RATE);
+  if (outFrames < 1) return null;
+
+  try {
+    const bytes = await clip.file.arrayBuffer();
+    const decodeCtx = new Offline(AUDIO_CHANNELS, 1, AUDIO_SAMPLE_RATE);
+    const decoded = await new Promise<AudioBuffer>((resolve, reject) => {
+      // Callback form: older WebKit does not return a promise here.
+      const p = decodeCtx.decodeAudioData(bytes, resolve, reject);
+      if (p && typeof (p as Promise<AudioBuffer>).then === 'function') {
+        (p as Promise<AudioBuffer>).then(resolve, reject);
+      }
+    });
+    if (!decoded || decoded.length < 1) return null;
+
+    const ctx = new Offline(AUDIO_CHANNELS, outFrames, AUDIO_SAMPLE_RATE);
+    const src = ctx.createBufferSource();
+    src.buffer = decoded;
+    src.playbackRate.value = speed;
+    src.connect(ctx.destination);
+    src.start(0, Math.min(clip.trimStart, decoded.duration), srcSpan);
+    const rendered = await ctx.startRendering();
+    const left = new Float32Array(rendered.getChannelData(0));
+    const right =
+      rendered.numberOfChannels > 1 ? new Float32Array(rendered.getChannelData(1)) : new Float32Array(left);
+    return { left, right };
+  } catch {
+    // No audio track / unsupported codec — this clip is exported silent.
+    return null;
+  }
+}
+
+/** Encode prepared segments to AAC and hand the packets to the muxer. */
+async function encodeAudioSegments(
+  segments: Array<{ startMicros: number; segment: AudioSegment | null; frames: number }>,
+  addChunk: (chunk: EncodedAudioChunk, meta?: EncodedAudioChunkMetadata) => void,
+): Promise<void> {
+  let error: Error | null = null;
+  const encoder = new AudioEncoder({
+    output: (chunk, meta) => addChunk(chunk, meta),
+    error: (e) => {
+      error = e instanceof Error ? e : new Error(String(e));
+    },
+  });
+  encoder.configure({
+    codec: 'mp4a.40.2',
+    sampleRate: AUDIO_SAMPLE_RATE,
+    numberOfChannels: AUDIO_CHANNELS,
+    bitrate: AUDIO_BITRATE,
+  });
+
+  const BLOCK = AUDIO_SAMPLE_RATE; // 1 second per AudioData
+  for (const { startMicros, segment, frames } of segments) {
+    for (let off = 0; off < frames; off += BLOCK) {
+      if (error) throw error;
+      const n = Math.min(BLOCK, frames - off);
+      const data = new Float32Array(n * AUDIO_CHANNELS);
+      if (segment) {
+        data.set(segment.left.subarray(off, off + n), 0);
+        data.set(segment.right.subarray(off, off + n), n);
+      }
+      const audioData = new AudioData({
+        format: 'f32-planar',
+        sampleRate: AUDIO_SAMPLE_RATE,
+        numberOfFrames: n,
+        numberOfChannels: AUDIO_CHANNELS,
+        timestamp: startMicros + Math.round((off / AUDIO_SAMPLE_RATE) * 1_000_000),
+        data,
+      });
+      encoder.encode(audioData);
+      audioData.close();
+      // Keep the encoder queue short on phones.
+      if (encoder.encodeQueueSize > 8) await new Promise((r) => setTimeout(r, 0));
+    }
+  }
+  await Promise.race([
+    encoder.flush(),
+    new Promise<never>((_, reject) =>
+      setTimeout(() => reject(new Error('Audio encoder did not finish.')), 60_000),
+    ),
+  ]);
+  encoder.close();
+  if (error) throw error;
 }
 
 function supportsWebCodecs(): boolean {
@@ -205,13 +340,30 @@ async function exportWithWebCodecs(options: ExportOptions, totalDuration: number
   const { fps } = profile;
   const bitrate = bitrateFor(outW, outH, fps);
 
+  // Sound: render every clip's trimmed audio first so we know whether the file
+  // gets an audio track at all (clips without sound are padded with silence).
+  let audioSegments: Array<AudioSegment | null> = [];
+  let withAudio = false;
+  if (options.audio !== false && (await supportsAacEncoding())) {
+    for (const clip of clips) {
+      if (signal?.aborted) throw new Error('Export cancelled.');
+      audioSegments.push(await renderClipAudio(clip));
+    }
+    withAudio = audioSegments.some((s) => s !== null);
+    if (!withAudio) audioSegments = [];
+  }
+
   const target = new ArrayBufferTarget();
   const muxer = new Muxer({
     target,
     video: { codec: 'avc', width: outW, height: outH },
+    ...(withAudio
+      ? { audio: { codec: 'aac' as const, numberOfChannels: AUDIO_CHANNELS, sampleRate: AUDIO_SAMPLE_RATE } }
+      : {}),
     fastStart: 'in-memory',
     firstTimestampBehavior: 'offset',
   });
+  const audioPlan: Array<{ startMicros: number; segment: AudioSegment | null; frames: number }> = [];
 
   let encodeError: Error | null = null;
   const encoder = new VideoEncoder({
@@ -269,8 +421,20 @@ async function exportWithWebCodecs(options: ExportOptions, totalDuration: number
         },
       });
 
+      if (withAudio) {
+        // Audio for this clip starts where its video starts and runs for the
+        // clip's real length, so clips stay in sync.
+        const seg = audioSegments[clips.indexOf(clip)] ?? null;
+        const clipSamples = Math.round(effectiveDuration(clip) * AUDIO_SAMPLE_RATE);
+        audioPlan.push({
+          startMicros: timelineMicros,
+          segment: seg,
+          frames: seg ? Math.min(seg.left.length, clipSamples) : clipSamples,
+        });
+      }
       encodedFrames += clipFrames;
-      timelineMicros += clipFrames * frameDurationMicros;
+      // Advance by the clip's real length (frames are timestamped by media time).
+      timelineMicros += Math.round(effectiveDuration(clip) * 1_000_000);
       durationDone += effectiveDuration(clip);
       report((durationDone / totalDuration) * 97);
     }
@@ -290,6 +454,17 @@ async function exportWithWebCodecs(options: ExportOptions, totalDuration: number
     ),
   ]);
   encoder.close();
+
+  if (withAudio) {
+    try {
+      await encodeAudioSegments(audioPlan, (chunk, meta) => muxer.addAudioChunk(chunk, meta));
+    } catch (err) {
+      // A file with a declared-but-broken audio track is worse than a silent
+      // one — redo the export without sound.
+      console.warn('Audio encode failed, exporting without sound:', err);
+      return exportWithWebCodecs({ ...options, audio: false }, totalDuration);
+    }
+  }
   muxer.finalize();
 
   const { buffer } = target;
@@ -369,6 +544,7 @@ async function encodeClipPlaythrough(args: {
   let nextSrcSample = start;
   let frameIndex = 0;
   let finished = false;
+  let lastTimestamp = timelineMicros - 1;
 
   /** Sync grab+encode — awaiting createImageBitmap inside rVFC was the speed killer. */
   const encodeCurrent = (mediaTime: number): void => {
@@ -393,8 +569,15 @@ async function encodeClipPlaythrough(args: {
       drawFrame(ctx, video, clip, canvas, outW, outH);
     }
 
+    // Timestamp by real media time, not frame count: when the device drops
+    // frames the clip keeps its true length (lower fps) instead of playing
+    // sped-up — which also keeps it in sync with the audio track.
+    const mediaMicros = Math.round((Math.max(0, mediaTime - start) / speed) * 1_000_000);
+    let timestamp = timelineMicros + mediaMicros;
+    if (timestamp <= lastTimestamp) timestamp = lastTimestamp + 1_000;
+    lastTimestamp = timestamp;
     const frame = new VideoFrame(drawCanvas, {
-      timestamp: timelineMicros + frameIndex * frameDurationMicros,
+      timestamp,
       duration: frameDurationMicros,
     });
     encoder.encode(frame, { keyFrame: frameIndex % keyEvery === 0 });
