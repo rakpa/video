@@ -21,7 +21,8 @@ export async function initNative(): Promise<void> {
   try {
     // Dark icons/text on the light brand background; overlay so our safe-area
     // CSS controls the spacing beneath the status bar.
-    await StatusBar.setStyle({ style: Style.Light });
+    const dark = localStorage.getItem('clipvault-theme') === 'dark';
+    await StatusBar.setStyle({ style: dark ? Style.Dark : Style.Light });
     await StatusBar.setOverlaysWebView({ overlay: true });
   } catch {
     /* StatusBar unavailable (e.g. iPad multitasking) — ignore. */

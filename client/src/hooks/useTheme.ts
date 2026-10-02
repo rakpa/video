@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { Capacitor } from '@capacitor/core';
 
 export type Theme = 'dark' | 'light';
 
@@ -23,6 +24,14 @@ export function useTheme(): { theme: Theme; toggle: () => void } {
     root.classList.toggle('dark', theme === 'dark');
     root.style.colorScheme = theme;
     localStorage.setItem(STORAGE_KEY, theme);
+    // Native app: keep the status-bar icons readable on the current theme.
+    if (Capacitor.isNativePlatform()) {
+      void import('@capacitor/status-bar')
+        .then(({ StatusBar, Style }) =>
+          StatusBar.setStyle({ style: theme === 'dark' ? Style.Dark : Style.Light }),
+        )
+        .catch(() => undefined);
+    }
   }, [theme]);
 
   return {

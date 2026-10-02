@@ -71,12 +71,14 @@ import { SuccessState } from './components/SuccessState';
 import { ErrorBanner } from './components/ErrorBanner';
 import { Footer } from './components/Footer';
 import { COMPANY } from './config/company';
-import { HIDE_PRO } from './config/build';
+import { HIDE_EDITOR, HIDE_PRO } from './config/build';
 
 const HOME_FAQ = [
   {
     q: `Is ${COMPANY.brand} free to use?`,
-    a: 'Yes. You can download videos up to 1080p with sound, for free, with no account. Pro unlocks 2K, 4K, MP3 audio, and unlimited downloads.',
+    a: HIDE_PRO
+      ? 'Yes. You can download videos up to 1080p Full HD with sound, for free, with no account.'
+      : 'Yes. You can download videos up to 1080p with sound, for free, with no account. Pro unlocks 2K, 4K, and unlimited downloads.',
   },
   {
     q: 'Which sites are supported?',
@@ -135,6 +137,9 @@ export default function App() {
   }
   if (route === '/pricing' && !HIDE_PRO) {
     return <PricingPage theme={theme} onToggleTheme={toggle} />;
+  }
+  if ((route === '/video-editor' || route === '/editor') && HIDE_EDITOR) {
+    return <DownloaderApp theme={theme} onToggleTheme={toggle} />;
   }
   if (route === '/video-editor' || route === '/editor') {
     return <VideoEditorPage theme={theme} onToggleTheme={toggle} />;

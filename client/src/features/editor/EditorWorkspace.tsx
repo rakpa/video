@@ -3,6 +3,7 @@ import type { CanvasSettings, EditorClip, EditorTool } from './types';
 import { DEFAULT_CANVAS, DEFAULT_TRANSFORM, createClipId, effectiveDuration } from './types';
 import { loadVideoMeta, formatEditorTime } from './utils/time';
 import { exportEditorProject } from './utils/exportVideo';
+import { isNativeApp, saveBlobNative } from '../../utils/nativeSave';
 import { PreviewStage } from './components/PreviewStage';
 import { SoloTrimBar } from './components/SoloTrimBar';
 import { ToolPanel } from './components/ToolPanel';
@@ -157,6 +158,11 @@ export function EditorWorkspace({ initialFiles, onClose }: Props) {
         onProgress: setExportPct,
       });
       const ext = blob.type.includes('webm') ? 'webm' : 'mp4';
+      if (isNativeApp()) {
+        // WKWebView ignores <a download> — save to Photos / share sheet instead.
+        await saveBlobNative(blob, `VidCliply-edit.${ext}`);
+        return;
+      }
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
@@ -204,7 +210,7 @@ export function EditorWorkspace({ initialFiles, onClose }: Props) {
             disabled={!clips.length || exportPct != null}
             className="btn-gradient rounded-2xl px-5 py-2.5 text-sm font-semibold text-white shadow-glow-soft disabled:opacity-60"
           >
-            {exportPct != null ? `Exporting ${exportPct}%…` : 'Download edit'}
+            {exportPct != null ? `Exporting ${exportPct}%…` : isNativeApp() ? 'Save edit' : 'Download edit'}
           </button>
         </div>
       </div>

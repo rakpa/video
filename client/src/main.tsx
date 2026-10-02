@@ -2,7 +2,16 @@ import React from 'react';
 import ReactDOM from 'react-dom/client';
 import App from './App';
 import './index.css';
+import { Capacitor } from '@capacitor/core';
+import { MotionGlobalConfig } from 'framer-motion';
 import { initNative } from './native/bootstrap';
+
+// Native app: render every animated element in its final state. Entrance
+// animations could stall while iOS system UI (paste / Photos permission, share
+// sheet) covered the web view, leaving the headline and cards invisible.
+if (Capacitor.isNativePlatform()) {
+  MotionGlobalConfig.skipAnimations = true;
+}
 
 if ('scrollRestoration' in history) {
   history.scrollRestoration = 'manual';

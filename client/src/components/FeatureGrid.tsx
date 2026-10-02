@@ -1,4 +1,5 @@
 import { motion } from 'framer-motion';
+import { HIDE_PRO } from '../config/build';
 import type { ReactNode } from 'react';
 
 interface Feature {
@@ -19,8 +20,10 @@ const FEATURES: Feature[] = [
     ),
   },
   {
-    title: 'Up to 4K Ultra HD',
-    body: 'Grab the highest resolution the source offers — 720p all the way to 4K.',
+    title: HIDE_PRO ? 'Up to 1080p Full HD' : 'Up to 4K Ultra HD',
+    body: HIDE_PRO
+      ? 'Crisp 720p HD or 1080p Full HD — pick the quality that suits your screen.'
+      : 'Grab the highest resolution the source offers — 720p all the way to 4K.',
     icon: <path strokeLinecap="round" strokeLinejoin="round" d="m12 3 2.4 7.4H22l-6 4.4 2.3 7.2-6.3-4.6L5.7 21 8 13.8 2 9.4h7.6L12 3Z" />,
   },
   {

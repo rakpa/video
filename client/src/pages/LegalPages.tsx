@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import { motion } from 'framer-motion';
 import { COMPANY } from '../config/company';
+import { HIDE_PRO } from '../config/build';
 import { navigate } from '../hooks/useRoute';
 import { SiteHeader } from '../components/SiteHeader';
 import { Button } from '../components/Button';
@@ -19,14 +20,15 @@ export const LEGAL_ROUTES: Record<string, { title: string; render: () => ReactNo
   '/terms': { title: 'Terms of Service', render: TermsOfService },
   '/privacy': { title: 'Privacy Policy', render: PrivacyPolicy },
   '/dmca': { title: 'DMCA / Copyright Policy', render: DmcaPolicy },
-  '/refunds': { title: 'Refund & Subscription Policy', render: RefundPolicy },
+  // The iOS app build has no paid tier, so there is no refund/subscription policy.
+  ...(HIDE_PRO ? {} : { '/refunds': { title: 'Refund & Subscription Policy', render: RefundPolicy } }),
 };
 
 export const LEGAL_LINKS = [
   { path: '/terms', label: 'Terms of Service' },
   { path: '/privacy', label: 'Privacy Policy' },
   { path: '/dmca', label: 'DMCA' },
-  { path: '/refunds', label: 'Refunds' },
+  ...(HIDE_PRO ? [] : [{ path: '/refunds', label: 'Refunds' }]),
 ];
 
 interface Props {
@@ -130,7 +132,7 @@ function TermsOfService() {
   return (
     <>
       <P>
-        These Terms of Service (“Terms”) govern your access to and use of the {COMPANY.brand} website and tools at{' '}
+        These Terms of Service (“Terms”) govern your access to and use of the {COMPANY.brand} website, app, and tools at{' '}
         {COMPANY.domain} (the “Service”), operated by the team behind {COMPANY.brand} (“we”, “us”, “our”). By using the Service you
         agree to these Terms. If you do not agree, do not use the Service.
       </P>
@@ -179,10 +181,16 @@ function TermsOfService() {
 
       <H2>5. Paid features</H2>
       <P>
-        Certain features (such as high-definition or audio-only downloads) may require a paid subscription, which is
-        provided and billed through our payment processor, Stripe, under the separate{' '}
-        <LegalLink to="/refunds">Refund & Subscription Policy</LegalLink>. That policy forms part of these Terms for
-        paying users.
+        {HIDE_PRO ? (
+          'This app is free to use and offers no paid features or in-app purchases.'
+        ) : (
+          <>
+            Certain features (such as 2K and 4K downloads) may require a paid subscription, which is provided and billed
+            through our payment processor, Stripe, under the separate{' '}
+            <LegalLink to="/refunds">Refund & Subscription Policy</LegalLink>. That policy forms part of these Terms for
+            paying users.
+          </>
+        )}
       </P>
 
       <H2>6. Disclaimer of warranties</H2>
@@ -271,7 +279,7 @@ function PrivacyPolicy() {
       <H2>3. How we use information</H2>
       <UL>
         <li>to operate, maintain, and secure the Service;</li>
-        <li>to process subscriptions and provide support;</li>
+        <li>{HIDE_PRO ? 'to provide support;' : 'to process subscriptions and provide support;'}</li>
         <li>to prevent fraud, abuse, and excessive automated use;</li>
         <li>to comply with legal obligations.</li>
       </UL>

@@ -3,7 +3,7 @@ import { LEGAL_LINKS } from '../pages/LegalPages';
 import { CONTENT_ROUTES } from '../pages/ContentPages';
 import { COMPANY } from '../config/company';
 import { BrandLogo } from './BrandLogo';
-import { HIDE_PRO } from '../config/build';
+import { HIDE_EDITOR, HIDE_PRO } from '../config/build';
 
 const GUIDE_LINKS = [
   { path: '/how-to-download-videos', label: 'How to download' },
@@ -44,7 +44,7 @@ export function Footer() {
             <BrandLogo />
             <p className="mt-4 max-w-xs text-sm leading-relaxed text-slate-500">
               The fastest, cleanest way to download videos from YouTube, Facebook, and Instagram —
-              in HD, 2K, and 4K, always with sound.
+              in {HIDE_PRO ? 'HD and Full HD' : 'HD, 2K, and 4K'}, always with sound.
             </p>
           </div>
 
@@ -54,7 +54,7 @@ export function Footer() {
             <div className="mt-4 flex flex-col items-start gap-2.5">
               <FootLink onClick={() => goToSection('how-it-works')}>How it works</FootLink>
               <FootLink onClick={() => goToSection('features')}>Features</FootLink>
-              <FootLink onClick={() => navigate('/video-editor')}>Video Editor</FootLink>
+              {!HIDE_EDITOR && <FootLink onClick={() => navigate('/video-editor')}>Video Editor</FootLink>}
               {!HIDE_PRO && <FootLink onClick={() => navigate('/pricing')}>Pricing</FootLink>}
             </div>
           </div>
@@ -116,7 +116,7 @@ export function Footer() {
         </div>
 
         <p className="mt-6 text-center text-xs text-slate-400 sm:text-left">
-          © {new Date().getFullYear()} {COMPANY.brand} · Built with yt-dlp &amp; ffmpeg
+          © {new Date().getFullYear()} {COMPANY.brand}{HIDE_PRO ? '' : ' · Built with yt-dlp & ffmpeg'}
         </p>
       </div>
     </footer>

@@ -15,7 +15,7 @@ const TIER_FEATURES = [
   'No sign-up required',
 ];
 
-const PRO_FEATURES = ['MP3 extract · unlimited · priority'];
+const PRO_FEATURES = ['Unlimited 2K & 4K downloads'];
 
 function formatPrice(cents: number) {
   return `$${(cents / 100).toFixed(2)}`;

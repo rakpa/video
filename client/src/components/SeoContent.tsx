@@ -1,4 +1,5 @@
 import { navigate } from '../hooks/useRoute';
+import { HIDE_PRO } from '../config/build';
 import { COMPANY } from '../config/company';
 
 /**
@@ -16,7 +17,7 @@ export function SeoContent() {
         Download any video, the easy way
       </h2>
       <p className="mx-auto mt-3 max-w-xl text-center text-slate-600">
-        {brand} is a free online video downloader for YouTube, Facebook, and Instagram. Paste a link and get a
+        {brand} is a free {HIDE_PRO ? '' : 'online '}video downloader for YouTube, Facebook, and Instagram. Paste a link and get a
         clean, ready-to-play MP4 — always with sound, never with a watermark.
       </p>
 
@@ -33,7 +34,7 @@ export function SeoContent() {
           <ul className="ml-5 mt-3 list-disc space-y-2 marker:text-indigo-500">
             <li>
               <strong className="font-semibold text-slate-900">YouTube</strong> — videos, music, and tutorials in HD up
-              to 4K.
+              to {HIDE_PRO ? '1080p' : '4K'}.
             </li>
             <li>
               <strong className="font-semibold text-slate-900">Facebook</strong> — public videos and Reels in high
@@ -47,14 +48,20 @@ export function SeoContent() {
         </div>
 
         <div>
-          <h3 className="text-lg font-bold text-slate-900">Quality options, from 720p to 4K</h3>
+          <h3 className="text-lg font-bold text-slate-900">Quality options, from 720p to {HIDE_PRO ? '1080p' : '4K'}</h3>
           <p className="mt-2">
             Choose the resolution that fits your screen and storage. Pick <strong className="font-semibold text-slate-900">720p</strong> for
             light files that look sharp on phones, <strong className="font-semibold text-slate-900">1080p</strong> Full
-            HD for the best all-round balance, or <strong className="font-semibold text-slate-900">2K and 4K</strong> when
-            the source was filmed in high resolution and you want maximum detail. Every download includes audio, and you
-            can also extract <strong className="font-semibold text-slate-900">MP3</strong> when you only want the
-            soundtrack.
+            HD for the best all-round balance
+            {HIDE_PRO ? (
+              '.'
+            ) : (
+              <>
+                , or <strong className="font-semibold text-slate-900">2K and 4K</strong> when the source was filmed in
+                high resolution and you want maximum detail.
+              </>
+            )}{' '}
+            Every download includes audio.
           </p>
         </div>
 
@@ -62,7 +69,7 @@ export function SeoContent() {
           <h3 className="text-lg font-bold text-slate-900">How to download a video in 3 steps</h3>
           <ol className="ml-5 mt-3 list-decimal space-y-2 marker:font-semibold marker:text-indigo-500">
             <li>Copy the video's link from YouTube, Facebook, or Instagram using the share menu.</li>
-            <li>Paste it into the box at the top of this page — {brand} recognises the platform for you.</li>
+            <li>Paste it into the box at the top of this {HIDE_PRO ? 'screen' : 'page'} — {brand} recognises the platform for you.</li>
             <li>Choose a quality and press Download. Your MP4, with sound, saves straight to your device.</li>
           </ol>
         </div>
@@ -73,7 +80,7 @@ export function SeoContent() {
             <li>Free to use, with no sign-up required for standard downloads.</li>
             <li>Audio always merged — no silent files.</li>
             <li>No watermarks and no bundled software.</li>
-            <li>Works in your browser on desktop and mobile.</li>
+            <li>{HIDE_PRO ? 'Saves straight to your Photos or Files.' : 'Works in your browser on desktop and mobile.'}</li>
             <li>Privacy-first: we process your file, deliver it, and delete it automatically.</li>
           </ul>
         </div>

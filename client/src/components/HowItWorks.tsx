@@ -1,4 +1,5 @@
 import { motion } from 'framer-motion';
+import { HIDE_PRO } from '../config/build';
 
 const STEPS = [
   {
@@ -13,7 +14,9 @@ const STEPS = [
   },
   {
     title: 'Pick your quality',
-    body: 'Choose HD, 2K, or 4K. Audio is always merged in — no silent clips, ever.',
+    body: HIDE_PRO
+      ? 'Choose 720p HD or 1080p Full HD. Audio is always merged in — no silent clips, ever.'
+      : 'Choose HD, 2K, or 4K. Audio is always merged in — no silent clips, ever.',
     icon: (
       <svg viewBox="0 0 24 24" className="h-6 w-6" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
         <path strokeLinecap="round" strokeLinejoin="round" d="m12 3 2.4 4.9 5.4.8-3.9 3.8.9 5.4L12 16.3 7.2 18.7l.9-5.4L4.2 9.5l5.4-.8L12 3Z" />
@@ -22,7 +25,9 @@ const STEPS = [
   },
   {
     title: 'Download',
-    body: 'Get a ready-to-play MP4 saved straight to your device. No app, no sign-up.',
+    body: HIDE_PRO
+      ? 'Get a ready-to-play MP4 saved straight to your Photos. No sign-up.'
+      : 'Get a ready-to-play MP4 saved straight to your device. No app, no sign-up.',
     icon: (
       <svg viewBox="0 0 24 24" className="h-6 w-6" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
         <path strokeLinecap="round" strokeLinejoin="round" d="M12 3v12m0 0 4-4m-4 4-4-4M5 21h14" />

@@ -24,7 +24,7 @@ interface Props {
 const PERKS = [
   { icon: '4K', label: '4K downloads' },
   { icon: '2K', label: '2K & 1080p' },
-  { icon: '♪', label: 'MP3 extract' },
+  { icon: '✓', label: 'No watermark' },
   { icon: '∞', label: 'Unlimited' },
 ] as const;
 

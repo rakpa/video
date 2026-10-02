@@ -1,4 +1,5 @@
 import { Faq } from '../../../components/Faq';
+import { HIDE_PRO } from '../../../config/build';
 import { COMPANY } from '../../../config/company';
 import { UploadZone } from './UploadZone';
 
@@ -85,12 +86,12 @@ export function EditorLanding({ onFiles, busy }: Props) {
   return (
     <div className="space-y-16 sm:space-y-20">
       <section className="pt-4 text-center sm:pt-8">
-        <p className="text-xs font-semibold uppercase tracking-[0.2em] text-indigo-500">Online Video Editor</p>
+        <p className="text-xs font-semibold uppercase tracking-[0.2em] text-indigo-500">{HIDE_PRO ? 'Video Editor' : 'Online Video Editor'}</p>
         <h1 className="mt-3 text-[clamp(1.9rem,5.5vw,3.2rem)] font-bold leading-[1.15] tracking-tight text-slate-900">
-          Easily edit videos in the browser
+          {HIDE_PRO ? 'Easily edit your videos' : 'Easily edit videos in the browser'}
         </h1>
         <p className="mx-auto mt-4 max-w-2xl text-base font-medium text-slate-600 sm:text-lg">
-          Cut, crop, rotate, flip, change speed, and merge clips — without installing software. Built into{' '}
+          Cut, crop, rotate, flip, change speed, and merge clips{HIDE_PRO ? '.' : ' — without installing software.'} Built into{' '}
           {COMPANY.brand}, separate from the downloader.
         </p>
         <div className="mx-auto mt-8 max-w-3xl">
@@ -98,6 +99,8 @@ export function EditorLanding({ onFiles, busy }: Props) {
         </div>
       </section>
 
+      {!HIDE_PRO && (
+        <>
       <section>
         <h2 className="text-center text-2xl font-bold tracking-tight text-slate-900 sm:text-3xl">
           Easily edit videos right in the browser
@@ -164,6 +167,8 @@ export function EditorLanding({ onFiles, busy }: Props) {
       </section>
 
       <Faq items={EDITOR_FAQ} title="Video editor FAQ" />
+        </>
+      )}
     </div>
   );
 }

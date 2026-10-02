@@ -2,6 +2,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useMemo } from 'react';
 import { detectPlatform } from '../utils/platform';
 import { PlatformIcon } from './PlatformIcon';
+import { HIDE_PRO } from '../config/build';
 
 interface Props {
   value: string;
@@ -27,6 +28,9 @@ export function UrlInput({ value, onChange }: Props) {
   };
 
   const empty = value.trim().length === 0;
+  // Typed/pasted text that is clearly not a supported link — say so instead of
+  // sitting silently (no request is made until a platform is recognised).
+  const unsupported = !empty && !platform && value.trim().length >= 8;
 
   return (
     <div className="w-full">
@@ -68,7 +72,10 @@ export function UrlInput({ value, onChange }: Props) {
           value={value}
           onChange={(e) => onChange(e.target.value)}
           aria-label="Video URL"
-          placeholder="Paste a YouTube, Facebook or Instagram link…"
+          placeholder={HIDE_PRO ? 'Paste a video link…' : 'Paste a YouTube, Facebook or Instagram link…'}
+          autoCapitalize="off"
+          autoCorrect="off"
+          spellCheck={false}
           className="w-full flex-1 bg-transparent py-3 pr-2 text-base text-slate-900 placeholder:text-slate-400 focus:outline-none sm:min-w-[18rem]"
         />
 
@@ -86,7 +93,24 @@ export function UrlInput({ value, onChange }: Props) {
             Paste
           </button>
         )}
+        {!empty && (
+          <button
+            type="button"
+            onClick={() => onChange('')}
+            aria-label="Clear link"
+            className="mr-1 grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-slate-100 text-slate-500 transition hover:bg-slate-200 hover:text-slate-900"
+          >
+            <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2.2" aria-hidden="true">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M6 6l12 12M18 6 6 18" />
+            </svg>
+          </button>
+        )}
       </div>
+      {unsupported && (
+        <p role="alert" className="mt-3 text-center text-sm font-medium text-rose-600">
+          That doesn’t look like a YouTube, Facebook or Instagram link.
+        </p>
+      )}
     </div>
   );
 }

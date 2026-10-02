@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import { motion } from 'framer-motion';
 import { COMPANY } from '../config/company';
+import { HIDE_PRO } from '../config/build';
 import { navigate } from '../hooks/useRoute';
 import { SiteHeader } from '../components/SiteHeader';
 import { Button } from '../components/Button';
@@ -26,7 +27,9 @@ export const CONTENT_ROUTES: Record<string, ContentRoute> = {
   '/download-youtube-videos': {
     title: 'YouTube Video Downloader',
     description:
-      'Download YouTube videos in HD 720p, Full HD 1080p, 2K and 4K with sound. A step-by-step guide, supported formats, quality tips and a short FAQ.',
+      HIDE_PRO
+      ? 'Download YouTube videos in HD 720p and Full HD 1080p with sound. A step-by-step guide, quality tips and a short FAQ.'
+      : 'Download YouTube videos in HD 720p, Full HD 1080p, 2K and 4K with sound. A step-by-step guide, supported formats, quality tips and a short FAQ.',
     render: YouTubeGuide,
   },
   '/download-facebook-videos': {
@@ -54,7 +57,7 @@ export const CONTENT_ROUTES: Record<string, ContentRoute> = {
   },
   '/contact': {
     title: 'Contact Us',
-    description: `Get in touch with the ${COMPANY.brand} team. Email us for support, feedback, billing questions, or copyright matters.`,
+    description: `Get in touch with the ${COMPANY.brand} team. Email us for support, feedback, ${HIDE_PRO ? '' : 'billing questions, '}or copyright matters.`,
     render: ContactPage,
   },
 };
@@ -202,17 +205,18 @@ function YouTubeGuide() {
         offline copy of a clip: saving your own uploads, archiving a tutorial you rely on, watching a lecture on a long
         flight, or pulling reference footage you have the rights to use. {COMPANY.brand} makes this simple. Paste a
         YouTube link and we extract the best available video and audio streams, merge them into a single, ready-to-play
-        MP4, and hand you the file — no software to install and no watermark added.
+        MP4, and hand you the file — {HIDE_PRO ? 'no sign-up' : 'no software to install'} and no watermark added.
       </P>
 
       <H2>How to download a YouTube video</H2>
       <OL>
         <li>
-          Open YouTube, find the video you want, and copy its link. On desktop, copy the URL from the address bar; on
-          mobile, tap <Strong>Share → Copy link</Strong>.
+          Open YouTube, find the video you want, and copy its link.{' '}
+          {HIDE_PRO ? 'Tap' : 'On desktop, copy the URL from the address bar; on mobile, tap'}{' '}
+          <Strong>Share → Copy link</Strong>.
         </li>
         <li>
-          Come back to {COMPANY.brand} and paste the link into the box on the home page. We detect that it is a YouTube
+          Come back to {COMPANY.brand} and paste the link into the box on the home {HIDE_PRO ? 'screen' : 'page'}. We detect that it is a YouTube
           URL automatically.
         </li>
         <li>
@@ -220,10 +224,10 @@ function YouTubeGuide() {
           available qualities.
         </li>
         <li>
-          Choose the resolution you want — for example <Strong>1080p</Strong> for crisp Full HD, or 2K / 4K if the
-          source offers it — then press <Strong>Download</Strong>.
+          Choose the resolution you want — for example <Strong>1080p</Strong> for crisp Full HD
+          {HIDE_PRO ? '' : ', or 2K / 4K if the source offers it'} — then press <Strong>Download</Strong>.
         </li>
-        <li>The finished MP4 saves straight to your device, with the audio already merged in.</li>
+        <li>The finished MP4 saves straight to your {HIDE_PRO ? 'Photos' : 'device'}, with the audio already merged in.</li>
       </OL>
 
       <H2>Supported qualities and formats</H2>
@@ -240,19 +244,18 @@ function YouTubeGuide() {
         <li>
           <Strong>1080p (Full HD)</Strong> — the sweet spot for most laptops and TVs; free on {COMPANY.brand}.
         </li>
-        <li>
-          <Strong>1440p (2K) and 2160p (4K)</Strong> — maximum detail when the original was filmed in high resolution.
-        </li>
-        <li>
-          <Strong>MP3 audio</Strong> — extract just the soundtrack of a video, ideal for music you own or podcasts.
-        </li>
+        {!HIDE_PRO && (
+          <li>
+            <Strong>1440p (2K) and 2160p (4K)</Strong> — maximum detail when the original was filmed in high resolution.
+          </li>
+        )}
       </UL>
 
       <H2>Tips for the best results</H2>
       <UL>
         <li>
-          If 4K is not listed, the original simply was not uploaded in 4K — you can only download what exists at the
-          source.
+          If {HIDE_PRO ? '1080p' : '4K'} is not listed, the original simply was not uploaded in that quality — you can
+          only download what exists at the source.
         </li>
         <li>
           For the smallest file that still looks sharp on a phone, pick 720p. For archiving, pick the highest available
@@ -276,13 +279,16 @@ function YouTubeGuide() {
           Yes — always. We merge the video and audio streams server-side, so you never end up with a silent file.
         </QA>
         <QA q="Do I need an account or app?">
-          No. {COMPANY.brand} runs entirely in your browser. There is nothing to install and no sign-up to download in
-          standard quality.
+          {HIDE_PRO
+            ? 'No account is needed — just paste a link and download.'
+            : `No. ${COMPANY.brand} runs entirely in your browser. There is nothing to install and no sign-up to download in standard quality.`}
         </QA>
-        <QA q="Can I download 4K from YouTube?">
-          Yes, when the original video was uploaded in 4K. If only lower resolutions are listed, that is the highest the
-          source offers.
-        </QA>
+        {!HIDE_PRO && (
+          <QA q="Can I download 4K from YouTube?">
+            Yes, when the original video was uploaded in 4K. If only lower resolutions are listed, that is the highest
+            the source offers.
+          </QA>
+        )}
         <QA q="Are my downloads private?">
           We process your file only long enough to deliver it, then delete it automatically. We do not keep a history of
           what you download.
@@ -465,23 +471,26 @@ function HowToGuide() {
         <li>
           <Strong>1080p (Full HD)</Strong> — the most popular choice; looks great on laptops and TVs.
         </li>
-        <li>
-          <Strong>1440p (2K)</Strong> — extra crispness on larger screens.
-        </li>
-        <li>
-          <Strong>2160p (4K)</Strong> — maximum detail, best for big TVs and archiving; biggest files.
-        </li>
+        {!HIDE_PRO && (
+          <>
+            <li>
+              <Strong>1440p (2K)</Strong> — extra crispness on larger screens.
+            </li>
+            <li>
+              <Strong>2160p (4K)</Strong> — maximum detail, best for big TVs and archiving; biggest files.
+            </li>
+          </>
+        )}
       </UL>
       <P>
-        You can only download a quality that the original uploader actually provided. If 4K is not offered, the source
-        was not published in 4K.
+        You can only download a quality that the original uploader actually provided. If a higher quality is not
+        offered, the source was not published in it.
       </P>
 
       <H2>Understanding file formats</H2>
       <P>
         <Strong>MP4</Strong> is the universal video format — it plays on virtually every phone, computer, and TV, which
-        is why {COMPANY.brand} delivers MP4 by default. If you only want the sound (for music you own or a podcast), an{' '}
-        <Strong>MP3</Strong> audio file strips out the video and keeps just the audio track.
+        is why {COMPANY.brand} delivers every download as MP4, with the audio already merged in.
       </P>
 
       <H2>Why sound sometimes goes missing elsewhere</H2>
@@ -520,14 +529,18 @@ function HowToGuide() {
         <QA q="Which sites are supported?">
           YouTube, Facebook, and Instagram. Paste any standard video link and we detect the platform automatically.
         </QA>
-        <QA q="Do I need to install anything?">
-          No. Everything runs in your browser — no app, no extension, no account for standard downloads.
-        </QA>
-        <QA q="Which format should I choose?">
-          MP4 for video (it plays everywhere). Choose MP3 if you only want the audio.
+        {!HIDE_PRO && (
+          <QA q="Do I need to install anything?">
+            No. Everything runs in your browser — no app, no extension, no account for standard downloads.
+          </QA>
+        )}
+        <QA q="Which format do I get?">
+          MP4 with sound — it plays on virtually every phone, computer, and TV.
         </QA>
         <QA q="Is it really free?">
-          Yes. Downloads up to 1080p with sound are free. Pro unlocks 2K, 4K, MP3 extraction, and unlimited downloads.
+          {HIDE_PRO
+            ? 'Yes. Downloads up to 1080p Full HD with sound are free.'
+            : 'Yes. Downloads up to 1080p with sound are free. Pro unlocks 2K, 4K, and unlimited downloads.'}
         </QA>
       </Faq>
     </>
@@ -556,17 +569,17 @@ function AboutPage() {
       <UL>
         <li>Detects the platform automatically from the link you paste.</li>
         <li>Extracts the best available video and audio and merges them into a single MP4.</li>
-        <li>Supports resolutions from 720p up to 4K, depending on the source.</li>
-        <li>Can extract MP3 audio when you only want the soundtrack.</li>
+        <li>Supports resolutions from 720p up to {HIDE_PRO ? '1080p Full HD' : '4K'}, depending on the source.</li>
         <li>Adds no watermark and bundles no extra software.</li>
       </UL>
 
       <H2>Why it's free</H2>
       <P>
         Standard downloads — up to 1080p with sound, with no account — are free, and we intend to keep them that way.
-        The service is supported by an optional Pro upgrade (which unlocks 2K, 4K, MP3 extraction, unlimited downloads,
-        and priority processing) and by advertising. Keeping the core free means anyone can save the content they are
-        entitled to keep without a paywall.
+        {HIDE_PRO
+          ? ''
+          : ' The service is supported by an optional Pro upgrade (which unlocks 2K, 4K, and unlimited downloads).'}{' '}
+        Keeping the core free means anyone can save the content they are entitled to keep without a paywall.
       </P>
 
       <H2>Privacy and our no-storage stance</H2>
@@ -598,14 +611,16 @@ function ContactPage() {
   return (
     <>
       <P>
-        We're happy to help. Whether you have a question about a download, feedback on the product, a billing query, or
+        We're happy to help. Whether you have a question about a download, feedback on the product{HIDE_PRO ? '' : ', a billing query'}, or
         a copyright matter, the fastest way to reach the {COMPANY.brand} team is by email. We read every message and aim
         to reply within a couple of business days.
       </P>
 
       <H2>Email us</H2>
       <P>
-        For general support, feedback, and account or billing questions, write to us at:
+        {HIDE_PRO
+          ? 'For general support and feedback, write to us at:'
+          : 'For general support, feedback, and account or billing questions, write to us at:'}
       </P>
       <div className="rounded-2xl border border-indigo-100 bg-indigo-50/60 p-5">
         <p className="text-sm text-slate-600">General support</p>
@@ -657,7 +672,7 @@ function ContactPage() {
           </button>
           .
         </li>
-        <li>Billing or refunds? See our Refund &amp; Subscription Policy in the footer.</li>
+        {!HIDE_PRO && <li>Billing or refunds? See our Refund &amp; Subscription Policy in the footer.</li>}
       </UL>
       <P>
         When you do email, please include the link you were trying to download (if relevant) and a short description of

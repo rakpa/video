@@ -52,7 +52,7 @@ export function ClipSelector({
       transition={{ duration: 0.35 }}
       className={`rounded-2xl border-2 p-5 shadow-card transition-colors sm:p-6 ${
         mode === 'clip'
-          ? 'border-violet-300 bg-gradient-to-br from-violet-50/90 via-white to-indigo-50/80'
+          ? 'clip-active border-violet-300 bg-gradient-to-br from-violet-50/90 via-white to-indigo-50/80'
           : 'border-slate-200 bg-white'
       }`}
     >
@@ -156,7 +156,7 @@ export function ClipSelector({
             </label>
           </div>
 
-          <p className="mt-4 rounded-xl bg-white/80 px-3 py-2.5 text-sm font-medium text-slate-700 ring-1 ring-slate-200/80">
+          <p className="clip-hint mt-4 rounded-xl bg-white/80 px-3 py-2.5 text-sm font-medium text-slate-700 ring-1 ring-slate-200/80">
             Format: <span className="font-bold text-slate-900">M:SS</span> or{' '}
             <span className="font-bold text-slate-900">H:MM:SS</span>
             {durationSeconds != null && durationSeconds > 0 ? (

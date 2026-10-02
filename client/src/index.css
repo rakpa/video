@@ -41,6 +41,51 @@ footer {
   padding-left: env(safe-area-inset-left);
   padding-right: env(safe-area-inset-right);
 }
+/* Native app: a fixed strip behind the status bar / Dynamic Island so page
+   content never scrolls underneath the clock and battery icons. */
+.capacitor-ios body::before {
+  content: '';
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: env(safe-area-inset-top);
+  background: rgba(248, 250, 252, 0.92);
+  -webkit-backdrop-filter: blur(14px);
+  backdrop-filter: blur(14px);
+  z-index: 1000;
+  pointer-events: none;
+}
+.dark.capacitor-ios body::before {
+  background: rgba(11, 17, 32, 0.92);
+}
+/* Native app: keep the logo + menu always reachable (there is no browser back
+   button or address bar). The ::before band paints the bar edge-to-edge even
+   though the header itself is a centered max-width column, without clipping
+   the drop-down menu that hangs below it. */
+.capacitor-ios header {
+  position: sticky;
+  top: 0;
+  z-index: 900;
+}
+.capacitor-ios header::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  width: 100vw;
+  transform: translateX(-50%);
+  background: rgb(248, 250, 252);
+  z-index: -1;
+}
+.capacitor-ios header > div:first-child {
+  padding-top: 0.6rem;
+  padding-bottom: 0.6rem;
+}
+.dark.capacitor-ios header::before {
+  background: rgb(11, 17, 32);
+}
 /* The mobile save prompt / bottom action bars sit above the home indicator. */
 .ios-safe-bottom {
   padding-bottom: max(1rem, env(safe-area-inset-bottom));
@@ -257,3 +302,24 @@ footer {
 .dark .bg-emerald-50 { background-color: rgba(6, 95, 70, 0.22); }
 .dark .text-emerald-700 { color: #6ee7b7; }
 .dark .text-emerald-600 { color: #34d399; }
+
+/* Clip mode card + its format hint used light gradients with no dark variant,
+   which left white panels with near-invisible text in dark mode. */
+.dark .clip-active {
+  background-image: none;
+  background-color: #151b33;
+  border-color: #6d5bd0;
+}
+.dark .clip-hint {
+  background-color: #111827;
+  box-shadow: 0 0 0 1px #1f2937;
+}
+.dark .text-violet-700 { color: #c4b5fd; }
+.dark .bg-violet-100 { background-color: #2e2a5c; }
+
+/* Native app: auto-scroll targets stop below the sticky header. */
+.capacitor-ios #video-preview-card,
+.capacitor-ios #download-progress,
+.capacitor-ios #download-success {
+  scroll-margin-top: calc(env(safe-area-inset-top) + 5.5rem);
+}

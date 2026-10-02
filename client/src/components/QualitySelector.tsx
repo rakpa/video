@@ -105,7 +105,7 @@ export function QualitySelector({ formats, selected, onSelect, mode, onModeChang
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h3 className="text-sm font-medium uppercase tracking-wider text-slate-400">Choose quality</h3>
-          {sourceLabel != null && (
+          {sourceLabel != null && !HIDE_PRO && (
             <p className="mt-1 text-xs text-slate-500">
               Source video is up to <span className="font-semibold text-slate-700">{sourceLabel}p</span>
               {sourceLabel < 2160 ? ' — 2K/4K only appear when the source supports them' : ''}

@@ -15,5 +15,5 @@ export const COMPANY = {
   contactEmail: 'support@vidcliply.com',
   dmcaEmail: 'dmca@vidcliply.com',
   /** Shown as the "last updated" date on every legal page. */
-  lastUpdated: 'July 5, 2026',
+  lastUpdated: 'October 2, 2026',
 } as const;

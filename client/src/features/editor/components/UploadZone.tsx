@@ -1,4 +1,5 @@
 import { useCallback, useRef, useState } from 'react';
+import { HIDE_PRO } from '../../../config/build';
 
 interface Props {
   onFiles: (files: File[]) => void;
@@ -48,7 +49,8 @@ export function UploadZone({ onFiles, busy }: Props) {
       </div>
       <h2 className="text-xl font-bold text-slate-900 sm:text-2xl">Create Project</h2>
       <p className="mx-auto mt-2 max-w-md text-sm font-medium text-slate-600 sm:text-base">
-        Upload a video or drag and drop files here. Edit trim, crop, rotate, speed, and more — all in your browser.
+        {HIDE_PRO ? 'Choose a video from your Photos or Files.' : 'Upload a video or drag and drop files here.'} Edit trim,
+        crop, rotate, speed, and more — {HIDE_PRO ? 'right on your device' : 'all in your browser'}.
       </p>
       <div className="mt-7 flex flex-wrap items-center justify-center gap-3">
         <button

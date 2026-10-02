@@ -3,7 +3,7 @@ import { navigate } from '../hooks/useRoute';
 import { ThemeToggle } from './ThemeToggle';
 import { BrandLogo } from './BrandLogo';
 import { isPro } from '../lib/license';
-import { HIDE_PRO } from '../config/build';
+import { HIDE_EDITOR, HIDE_PRO } from '../config/build';
 
 interface Props {
   theme: 'dark' | 'light';
@@ -35,7 +35,9 @@ export function SiteHeader({ theme, onToggleTheme, maxWidth = 'max-w-5xl', showN
   const pro = isPro();
   const [open, setOpen] = useState(false);
   // iOS build (HIDE_PRO): no pricing/paid surfaces.
-  const navLinks = NAV_LINKS.filter((l) => !(HIDE_PRO && l.path === '/pricing'));
+  const navLinks = NAV_LINKS.filter(
+    (l) => !(HIDE_PRO && l.path === '/pricing') && !(HIDE_EDITOR && l.path === '/video-editor'),
+  );
   const go = (path: string) => {
     setOpen(false);
     navigate(path);
@@ -108,7 +110,7 @@ export function SiteHeader({ theme, onToggleTheme, maxWidth = 'max-w-5xl', showN
       {/* Mobile drawer */}
       {showNav && open && (
         <div className="absolute inset-x-3 top-full z-40 origin-top rounded-2xl border border-slate-200 bg-white p-2 shadow-card md:hidden">
-          {[...navLinks, ...MOBILE_EXTRA].map((l) => (
+          {[...(HIDE_PRO ? [{ label: 'Home', path: '/' }] : []), ...navLinks, ...MOBILE_EXTRA].map((l) => (
             <button
               key={l.path}
               onClick={() => go(l.path)}

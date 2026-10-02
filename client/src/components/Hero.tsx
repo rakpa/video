@@ -1,4 +1,5 @@
 import { motion } from 'framer-motion';
+import { HIDE_PRO } from '../config/build';
 import { PlatformIcon } from './PlatformIcon';
 
 /** Decorative social icons shown under the headline. Keep in sync with the
@@ -13,7 +14,7 @@ const SOCIALS = [
 const CORE_FEATURES = [
   {
     title: 'Download full video',
-    body: 'Full MP4, up to 4K, with sound.',
+    body: HIDE_PRO ? 'Full MP4, up to 1080p Full HD, with sound.' : 'Full MP4, up to 4K, with sound.',
     icon: (
       <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
         <path strokeLinecap="round" strokeLinejoin="round" d="M12 3v12m0 0 4-4m-4 4-4-4M5 21h14" />
@@ -41,7 +42,7 @@ export function HeroTitle() {
       transition={{ duration: 0.6, delay: 0.05 }}
       className="mx-auto max-w-5xl text-center text-[clamp(1.9rem,6.3vw,3.6rem)] font-bold leading-[1.15] tracking-tight text-slate-900"
     >
-      Best <span className="gradient-text">Free Online</span> Video Downloader
+      Best <span className="gradient-text">{HIDE_PRO ? 'Free' : 'Free Online'}</span> Video Downloader
     </motion.h1>
   );
 }
