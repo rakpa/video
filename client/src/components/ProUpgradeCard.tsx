@@ -69,7 +69,7 @@ export function ProUpgradeCard({ onDismiss }: Props) {
     };
   }, []);
 
-  const proCents = cfg?.plans.pro.cents ?? 1999;
+  const proCents = cfg?.plans.pro.cents ?? 999;
   const price = `${formatPrice(proCents)}/year`;
   const sub = `${formatPrice(Math.round(proCents / 12))}/mo billed yearly`;
 

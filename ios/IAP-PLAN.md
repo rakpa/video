@@ -34,12 +34,12 @@ a single build-time flag; web behaviour is unchanged. Add real IAP in v1.1.
 If you want to sell Pro on iOS, use IAP via the community plugin.
 
 ### Product design
-- **Type:** Auto-Renewing Subscription (matches the current `$19.99/year`), or a
+- **Type:** Auto-Renewing Subscription (matches the current `$9.99/year`), or a
   Non-Consumable one-time unlock if you prefer.
 - **App Store Connect → Features → In-App Purchases / Subscriptions:**
   - Reference name: `VidCliply Pro (Yearly)`
   - Product ID: `com.vidcliply.app.pro.yearly`
-  - Price tier: $19.99/yr (or your choice).
+  - Price tier: $9.99/yr (or your choice).
 
 ### Implementation sketch
 ```bash

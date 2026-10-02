@@ -17,7 +17,7 @@ import type { Theme } from '../hooks/useTheme';
 const PRICING_FAQ = [
   {
     q: 'What’s the difference between Free and Pro?',
-    a: 'Free gives you unlimited downloads up to 1080p Full HD with sound. Pro ($19.99/year) unlocks 2K & 4K, MP3 audio extraction, unlimited everything, and priority server processing.',
+    a: 'Free gives you unlimited downloads up to 1080p Full HD with sound. Pro ($9.99/year) unlocks 2K & 4K, MP3 audio extraction, unlimited everything, and priority server processing.',
   },
   {
     q: 'Can I cancel anytime?',
@@ -51,7 +51,7 @@ export function PricingPage({ theme, onToggleTheme }: Props) {
   useDocumentMeta({
     title: `Pricing — Free & Pro Plans · ${COMPANY.brand}`,
     description:
-      'VidCliply is free for downloads up to 1080p with sound. Go Pro ($19.99/year) for 2K & 4K, MP3 audio, and priority processing. Cancel anytime. 14-day money-back guarantee.',
+      'VidCliply is free for downloads up to 1080p with sound. Go Pro ($9.99/year) for 2K & 4K, MP3 audio, and priority processing. Cancel anytime. 14-day money-back guarantee.',
   });
   const [license, setLic] = useState<StoredLicense | null>(getLicense());
   const [justUpgraded, setJustUpgraded] = useState(false);

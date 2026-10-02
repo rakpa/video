@@ -106,7 +106,7 @@ const INITIAL_PROGRESS: ProgressUpdate = {
 };
 
 const HIGH_RES_LIMIT_MSG =
-  'You have exceeded the free limit of 2K/4K downloads. Please upgrade to the Premium plan for $20 per year to enjoy unlimited 2K/4K downloads. You can still download 720p and 1080p HD for free — switch to a lower quality to continue.';
+  'You have exceeded the free limit of 2K/4K downloads. Please upgrade to the Premium plan for $9.99 per year to enjoy unlimited 2K/4K downloads. You can still download 720p and 1080p HD for free — switch to a lower quality to continue.';
 
 const HIGH_RES_MIN_PX = 1440;
 // Above this height, the server-side H.264 "Save to gallery" transcode is too

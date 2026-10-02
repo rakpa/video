@@ -181,13 +181,13 @@ export const config = {
   stripeSecret: process.env.STRIPE_SECRET_KEY ?? '',
   stripePublishableKey: process.env.STRIPE_PUBLISHABLE_KEY ?? '',
   stripeWebhookSecret: process.env.STRIPE_WEBHOOK_SECRET ?? '',
-  priceProYearlyCents: Number(process.env.PRICE_PRO_YEARLY_CENTS ?? process.env.PRICE_YEARLY_CENTS ?? 1999),
+  priceProYearlyCents: Number(process.env.PRICE_PRO_YEARLY_CENTS ?? process.env.PRICE_YEARLY_CENTS ?? 999),
   /** @deprecated Legacy tier pricing — new checkouts use priceProYearlyCents */
   priceHdYearlyCents: Number(process.env.PRICE_HD_YEARLY_CENTS ?? 1000),
   price2kYearlyCents: Number(process.env.PRICE_2K_YEARLY_CENTS ?? 1999),
   price4kYearlyCents: Number(process.env.PRICE_4K_YEARLY_CENTS ?? 2999),
   /** @deprecated Use price2kYearlyCents */
-  priceYearlyCents: Number(process.env.PRICE_YEARLY_CENTS ?? process.env.PRICE_LIFETIME_CENTS ?? 1999),
+  priceYearlyCents: Number(process.env.PRICE_YEARLY_CENTS ?? process.env.PRICE_LIFETIME_CENTS ?? 999),
 
   // Secret used to HMAC-sign stateless Pro license tokens. CHANGE IN PRODUCTION.
   licenseSecret: process.env.LICENSE_SECRET ?? 'dev-insecure-license-secret-change-me',

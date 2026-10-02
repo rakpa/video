@@ -40,7 +40,7 @@ export function ProUpgradePanel({ selectedQuality, inline = false, onDismiss }: 
   }, []);
 
   const tier = checkoutPlanForLabel(selectedQuality);
-  const tierCents = cfg?.plans.pro.cents ?? 1999;
+  const tierCents = cfg?.plans.pro.cents ?? 999;
   const perMonth = (tierCents / 12 / 100).toFixed(2);
   const { whole: priceWhole, frac: priceFrac } = splitYearlyPrice(tierCents);
 

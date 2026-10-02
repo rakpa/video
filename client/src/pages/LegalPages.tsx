@@ -370,7 +370,7 @@ function RefundPolicy() {
 
       <H2>1. Subscription</H2>
       <P>
-        Pro is offered as a <Strong>yearly subscription</Strong> at the price shown at checkout (currently $19.99/year).
+        Pro is offered as a <Strong>yearly subscription</Strong> at the price shown at checkout (currently $9.99/year).
         Prices may exclude applicable taxes or VAT, which are added where required by law.
       </P>
 
