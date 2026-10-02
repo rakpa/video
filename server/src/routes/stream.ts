@@ -31,9 +31,9 @@ const CHUNK_TIMEOUT_MS = 120_000;
  * Range chunks downloaded concurrently ahead of the write cursor. Each chunk is
  * read fully into memory, so these connections really transfer in parallel —
  * a single residential-proxy connection tops out around 1 MB/s. Bounded memory:
- * PARALLEL_CHUNKS × CHUNK_SIZE per track (32 MB).
+ * PARALLEL_CHUNKS × CHUNK_SIZE per track (64 MB).
  */
-const PARALLEL_CHUNKS = 4;
+const PARALLEL_CHUNKS = 8;
 const CHUNK_ATTEMPTS = 3;
 
 function isLoopback(addr: string | undefined): boolean {

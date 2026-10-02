@@ -690,11 +690,14 @@ export async function downloadDirectUrl(
     return { blob: new Blob(), filename: safeName, browserManaged: true };
   }
 
-  // Desktop large only — never iframe on mobile (Safari Zero KB on remux).
-  if (!mobile && estimated != null && estimated > BROWSER_MANAGED_THRESHOLD_BYTES) {
-    await assertStreamReachable(url);
+  // Desktop: always hand the stream to the browser's own download manager —
+  // bytes go straight to disk at the user's connection speed and progress shows
+  // in the browser's Downloads bar, not inside the page. The API already
+  // verified the stream when it issued this link, so start immediately.
+  // Never on mobile (Safari Zero KB on remux).
+  if (!mobile) {
     const payload = startBrowserManagedDownload(url, safeName, options?.onProgress);
-    await new Promise((r) => window.setTimeout(r, 1200));
+    await new Promise((r) => window.setTimeout(r, 300));
     options?.onProgress?.(100);
     return payload;
   }
