@@ -537,6 +537,69 @@ function handleStreamDownload(req: Request, res: Response): void {
  * stream shows a real error instead of "Your video is saving…".
  * Must be registered before /stream/:ticketId/:fileName.
  */
+/** Pull bytes for up to `ms` over `conns` parallel connections; returns MB/s. */
+async function measureMbps(
+  url: string,
+  proxy: string | null,
+  conns: number,
+  ms: number,
+  rangeEach: number,
+): Promise<{ mbPerSec: number; status: number }> {
+  let bytes = 0;
+  let status = 0;
+  const started = Date.now();
+  const ac = new AbortController();
+  const timer = setTimeout(() => ac.abort(), ms);
+  await Promise.all(
+    Array.from({ length: conns }, async (_, i) => {
+      try {
+        const r = await undiciFetch(url, {
+          ...(proxy !== null ? { dispatcher: dispatcherFor(proxy) } : {}),
+          headers: {
+            Range: `bytes=${i * rangeEach}-${(i + 1) * rangeEach - 1}`,
+            'User-Agent': BROWSER_UA,
+          },
+          signal: ac.signal,
+        });
+        status = r.status;
+        if (!r.body) return;
+        const reader = r.body.getReader();
+        for (;;) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          bytes += value.length;
+        }
+      } catch {
+        /* aborted at the time limit or failed — bytes so far still count */
+      }
+    }),
+  );
+  clearTimeout(timer);
+  const secs = Math.max(0.001, (Date.now() - started) / 1000);
+  return { mbPerSec: Math.round((bytes / 1048576 / secs) * 10) / 10, status };
+}
+
+const NEUTRAL_TEST_FILE = 'https://ash-speed.hetzner.com/100MB.bin';
+
+/**
+ * GET /api/stream/:ticketId/speedtest — temporary diagnostic: is the download
+ * speed capped by the proxy or by the video CDN? Needs a valid stream ticket.
+ */
+streamRouter.get('/stream/:ticketId/speedtest', async (req, res) => {
+  const ticket = getStreamTicket(req.params.ticketId);
+  if (!ticket) return res.status(404).json({ error: 'expired' });
+  const video = ticket.selection.videoUrl;
+  const M = 1048576;
+  const out: Record<string, unknown> = { proxyHost: ticket.proxy ? new URL(ticket.proxy).host : null };
+  out.neutralDirectNoProxy_1conn = await measureMbps(NEUTRAL_TEST_FILE, null, 1, 5000, 90 * M);
+  out.neutralViaProxy_1conn = await measureMbps(NEUTRAL_TEST_FILE, ticket.proxy, 1, 6000, 90 * M);
+  out.neutralViaProxy_4conn = await measureMbps(NEUTRAL_TEST_FILE, ticket.proxy, 4, 6000, 24 * M);
+  out.youtubeViaProxy_1conn = await measureMbps(video, ticket.proxy, 1, 6000, 8 * M);
+  out.youtubeViaProxy_4conn = await measureMbps(video, ticket.proxy, 4, 6000, 8 * M);
+  out.youtubeViaProxy_8conn = await measureMbps(video, ticket.proxy, 8, 6000, 8 * M);
+  res.json(out);
+});
+
 streamRouter.get('/stream/:ticketId/check', async (req, res) => {
   const ticket = getStreamTicket(req.params.ticketId);
   if (!ticket) return res.status(404).json({ ok: false, error: 'That download link has expired. Please try again.' });
