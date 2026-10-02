@@ -99,7 +99,9 @@ export function DownloadProgress({ progress, qualityLabel, clipLabel, delivering
                     ? `Clipping ${clipLabel}`
                     : 'Preparing your clip…'
                   : showPercent
-                    ? 'Downloading your video'
+                    ? qualityLabel === 'MP3'
+                      ? 'Downloading your audio'
+                      : 'Downloading your video'
                     : "We're processing your download…"}
           </span>
           {qualityLabel && (

@@ -93,9 +93,18 @@ footer {
 
 /* Disable the WKWebView elastic rubber-band scroll so the app feels native. */
 @supports (-webkit-touch-callout: none) {
+  html,
   body {
     overscroll-behavior-y: none;
   }
+}
+/* Whatever shows behind the page during a bounce matches the theme (was a
+   white band above the dark page). */
+html {
+  background: #f8fafc;
+}
+html.dark {
+  background: #0b1120;
 }
 
 /* App background — clean light slate with subtle indigo/violet radial tints. */
