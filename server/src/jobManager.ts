@@ -359,6 +359,36 @@ async function persistToR2Cache(job: Job, localPath: string, cacheKey: string): 
 }
 
 /** Creates a temp dir, spawns the download (with auto-retry), and tracks it as a job. */
+/**
+ * Instant job for a file already in the R2 download-once cache, or null.
+ * Lets desktop downloads skip the proxy-limited stream relay: the browser is
+ * redirected to R2 and downloads at the user's full connection speed.
+ */
+export async function findCachedJob(
+  url: string,
+  quality: QualityDef,
+  mode: CodecMode,
+  ip?: string,
+): Promise<Job | null> {
+  if (!isR2Enabled()) return null;
+  const q = effectiveQuality(url, quality, false, undefined);
+  const cacheKey = artifactCacheKey(url, q, mode, false, null, false, undefined);
+  try {
+    const cached = await resolveCachedArtifact(cacheKey);
+    if (!cached) return null;
+    logger.info(`R2 cache hit (pre-stream) for ${cacheKey.slice(0, 80)}…`);
+    return createCachedJob(cacheKey, cached, {
+      platformId: detectPlatform(url)?.id,
+      requestedHeight: quality.height,
+      galleryPrep: false,
+      ip,
+    });
+  } catch (err) {
+    logger.warn('R2 pre-stream cache lookup skipped:', (err as Error).message);
+    return null;
+  }
+}
+
 export async function createJob(
   url: string,
   quality: QualityDef,

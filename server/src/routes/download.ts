@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { validateUrl } from '../utils/validate.js';
 import { readJsonBody } from '../utils/body.js';
 import { getQuality, isCodecMode } from '../services/formats.js';
-import { createJob } from '../jobManager.js';
+import { createJob, findCachedJob } from '../jobManager.js';
 import { YtDlpError, readCachedVideoInfo } from '../services/ytdlp.js';
 import { canDirectPassthrough, resolveDirectDownload } from '../services/directPassthrough.js';
 import { canonicalizeMediaUrl, detectPlatform } from '../services/platform.js';
@@ -106,6 +106,14 @@ downloadRouter.post('/download', async (req, res) => {
   // forceJob: mobile clients skip passthrough when the remux is too large for
   // phone RAM — the job writes a real file with Content-Length so Safari can
   // show download progress (remux pipes have no length → “Zero KB”).
+  // Already cached in R2 (desktop full-video requests): hand back an instant
+  // job so the browser downloads from R2 at the user's own connection speed
+  // instead of through the proxy-limited stream relay.
+  if (!forceJob && Boolean(reuse) && !clipResult.clip && !galleryPrep && !fast) {
+    const cachedJob = await findCachedJob(trimmedUrl, q, codecMode, clientIp);
+    if (cachedJob) return res.status(202).json({ jobId: cachedJob.id });
+  }
+
   if (
     !forceJob &&
     canDirectPassthrough({
