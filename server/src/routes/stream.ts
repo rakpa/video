@@ -579,7 +579,12 @@ async function measureMbps(
   return { mbPerSec: Math.round((bytes / 1048576 / secs) * 10) / 10, status };
 }
 
-const NEUTRAL_TEST_FILE = 'https://ash-speed.hetzner.com/100MB.bin';
+const NEUTRAL_TEST_FILES = [
+  'https://proof.ovh.net/files/100Mb.dat',
+  'http://speedtest.tele2.net/100MB.zip',
+  'https://hil-speed.hetzner.com/100MB.bin',
+  'https://ash-speed.hetzner.com/100MB.bin',
+];
 
 /**
  * GET /api/stream/:ticketId/speedtest — temporary diagnostic: is the download
@@ -591,9 +596,13 @@ streamRouter.get('/stream/:ticketId/speedtest', async (req, res) => {
   const video = ticket.selection.videoUrl;
   const M = 1048576;
   const out: Record<string, unknown> = { proxyHost: ticket.proxy ? new URL(ticket.proxy).host : null };
-  out.neutralDirectNoProxy_1conn = await measureMbps(NEUTRAL_TEST_FILE, null, 1, 5000, 90 * M);
-  out.neutralViaProxy_1conn = await measureMbps(NEUTRAL_TEST_FILE, ticket.proxy, 1, 6000, 90 * M);
-  out.neutralViaProxy_4conn = await measureMbps(NEUTRAL_TEST_FILE, ticket.proxy, 4, 6000, 24 * M);
+  for (const f of NEUTRAL_TEST_FILES) {
+    const host = new URL(f).host;
+    const direct = await measureMbps(f, null, 1, 4000, 90 * M);
+    const via1 = await measureMbps(f, ticket.proxy, 1, 5000, 90 * M);
+    const via4 = await measureMbps(f, ticket.proxy, 4, 5000, 24 * M);
+    out[host] = { directNoProxy_1conn: direct, viaProxy_1conn: via1, viaProxy_4conn: via4 };
+  }
   out.youtubeViaProxy_1conn = await measureMbps(video, ticket.proxy, 1, 6000, 8 * M);
   out.youtubeViaProxy_4conn = await measureMbps(video, ticket.proxy, 4, 6000, 8 * M);
   out.youtubeViaProxy_8conn = await measureMbps(video, ticket.proxy, 8, 6000, 8 * M);
