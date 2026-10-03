@@ -7,6 +7,8 @@ import { HIDE_PRO } from '../config/build';
 interface Props {
   value: string;
   onChange: (v: string) => void;
+  /** True while the pasted link is being read — shows progress right under the box. */
+  loading?: boolean;
 }
 
 /**
@@ -14,7 +16,7 @@ interface Props {
  * video auto-loads as you paste a valid link; downloads happen from the
  * QualitySelector below once the video preview is ready.
  */
-export function UrlInput({ value, onChange }: Props) {
+export function UrlInput({ value, onChange, loading = false }: Props) {
   const platform = useMemo(() => detectPlatform(value), [value]);
 
   /** Read a link straight from the clipboard — a one-tap shortcut, esp. on mobile. */
@@ -106,6 +108,17 @@ export function UrlInput({ value, onChange }: Props) {
           </button>
         )}
       </div>
+      {loading && platform && (
+        <div role="status" aria-live="polite" className="mt-3">
+          <div className="flex items-center justify-center gap-2.5 text-sm font-semibold text-indigo-600">
+            <span className="h-4 w-4 shrink-0 animate-spin rounded-full border-2 border-indigo-500 border-t-transparent" />
+            Getting your {platform.label} video…
+          </div>
+          <div className="url-loading-track mt-2.5 h-1.5 overflow-hidden rounded-full bg-indigo-100">
+            <div className="url-loading-bar h-full w-1/3 rounded-full bg-accent-gradient" />
+          </div>
+        </div>
+      )}
       {unsupported && (
         <p role="alert" className="mt-3 text-center text-sm font-medium text-rose-600">
           That doesn’t look like a YouTube, Facebook or Instagram link.

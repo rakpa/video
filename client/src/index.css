@@ -334,3 +334,13 @@ html.dark {
 }
 
 .dark .border-emerald-200 { border-color: #14532d; }
+
+/* Paste → loading: indeterminate bar under the link box. */
+@keyframes url-loading-slide {
+  0% { transform: translateX(-110%); }
+  100% { transform: translateX(310%); }
+}
+.url-loading-bar {
+  animation: url-loading-slide 1.1s ease-in-out infinite;
+}
+.dark .url-loading-track { background-color: #1f2937; }

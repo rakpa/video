@@ -1011,7 +1011,11 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
           <HeroTitle />
           <div className="order-2 mx-auto mt-6 w-full max-w-3xl sm:order-3 sm:mt-14">
             <HeroPlatforms />
-            <UrlInput value={url} onChange={setUrl} />
+            <UrlInput
+              value={url}
+              onChange={setUrl}
+              loading={(phase === 'fetching' || phase === 'preview') && !previewCardReady}
+            />
             <div className="mt-7 flex flex-col items-center gap-4">
               <p className="flex flex-wrap items-center justify-center gap-x-2 gap-y-1 text-center text-xs font-medium text-slate-500">
                 <span className="inline-flex items-center gap-1.5">
@@ -1076,19 +1080,6 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
                 transition={{ duration: 0.25 }}
                 className="space-y-5"
               >
-                {phase === 'preview' && (info?.platform === 'instagram' || info?.platform === 'facebook' || detectPlatform(url.trim())?.id === 'instagram' || detectPlatform(url.trim())?.id === 'facebook' || !info) && (
-                  <div className="glass flex items-center gap-3 rounded-2xl border border-indigo-200 bg-indigo-50/60 px-4 py-3.5 text-sm font-medium text-indigo-700 shadow-card">
-                    <div className="h-5 w-5 animate-spin rounded-full border-[2.5px] border-indigo-500 border-t-transparent flex-shrink-0" />
-                    <span className="leading-snug">
-                      {detectPlatform(url.trim())?.id === 'instagram' || info?.platform === 'instagram'
-                        ? 'Processing Instagram Reel… Fetching preview & thumbnail. Please wait.'
-                        : detectPlatform(url.trim())?.id === 'facebook' || info?.platform === 'facebook'
-                        ? 'Processing Facebook video… Please wait a moment.'
-                        : 'Processing link…'}
-                    </span>
-                  </div>
-                )}
-
                 {!previewCardReady || !info ? (
                   <VideoPreviewSkeleton />
                 ) : (
