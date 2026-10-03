@@ -182,6 +182,9 @@ export function isQualityAvailable(sourceMaxHeight: number, qualityHeight: numbe
   // A tier is real only when the source is taller than the tier below it —
   // otherwise a 1080p source was offered as "2K" and delivered 1080p.
   if (idx === 0) return sourceMaxHeight >= 1;
+  // 1080p stays available for 720p sources: Instagram/Facebook reels are
+  // published at 720p and the server delivers a true 1080p (upscaled) file.
+  if (qualityHeight === 1080) return sourceMaxHeight >= 720;
   return sourceMaxHeight > QUALITY_TIERS[idx - 1];
 }
 
