@@ -332,3 +332,5 @@ html.dark {
 .capacitor-ios #download-success {
   scroll-margin-top: calc(env(safe-area-inset-top) + 5.5rem);
 }
+
+.dark .border-emerald-200 { border-color: #14532d; }

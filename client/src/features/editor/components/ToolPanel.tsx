@@ -30,7 +30,6 @@ export function ToolPanel({
   return (
     <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-card sm:p-5">
       <h3 className="text-sm font-bold uppercase tracking-wider text-slate-500">Style & frame</h3>
-      <p className="mt-1 text-xs font-medium text-slate-500">Optional extras — trim is on the bar under the preview.</p>
       <div className="mt-3 flex flex-wrap gap-2">
         {TOOLS.map((t) => (
           <button
@@ -176,7 +175,6 @@ function CropControls({
 
   return (
     <div className="space-y-3">
-      <p className="text-sm font-medium text-slate-600">Frame the area you want to keep (relative 0–100%).</p>
       {(
         [
           ['x', 'Left', crop.x],

@@ -25,6 +25,7 @@ export function EditorWorkspace({ initialFiles, onClose }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [exportPct, setExportPct] = useState<number | null>(null);
   const [exportStage, setExportStage] = useState('');
+  const [saved, setSaved] = useState<string | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const bootstrapped = useRef(false);
@@ -150,6 +151,7 @@ export function EditorWorkspace({ initialFiles, onClose }: Props) {
   const handleExport = async () => {
     if (!clips.length) return;
     setError(null);
+    setSaved(null);
     setExportPct(1);
     setExportStage('Starting…');
     setPlaying(false);
@@ -163,7 +165,9 @@ export function EditorWorkspace({ initialFiles, onClose }: Props) {
       const ext = blob.type.includes('webm') ? 'webm' : 'mp4';
       if (isNativeApp()) {
         // WKWebView ignores <a download> — save to Photos / share sheet instead.
-        await saveBlobNative(blob, `VidCliply-edit.${ext}`);
+        const outcome = await saveBlobNative(blob, `VidCliply-edit.${ext}`);
+        if (outcome === 'photos') setSaved('Saved to your phone gallery (Photos).');
+        else if (outcome === 'shared') setSaved('Video saved.');
         return;
       }
       const url = URL.createObjectURL(blob);
@@ -174,6 +178,7 @@ export function EditorWorkspace({ initialFiles, onClose }: Props) {
       a.click();
       a.remove();
       window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+      setSaved('Video downloaded — check your Downloads folder.');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Export failed.');
     } finally {
@@ -230,11 +235,18 @@ export function EditorWorkspace({ initialFiles, onClose }: Props) {
               style={{ width: `${Math.max(2, exportPct)}%` }}
             />
           </div>
-          <p className="mt-2 text-xs font-medium text-indigo-700/80">
-            Speeding through your video on-device (not recording in real time). Full quality, with
-            sound — keep {isNativeApp() ? 'the app' : 'this tab'} open until it finishes.
-            {isNativeApp() ? ' It is saved to your Photos when done.' : ''}
-          </p>
+        </div>
+      )}
+
+      {saved && exportPct == null && !error && (
+        <div
+          role="status"
+          className="flex items-center gap-2.5 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-700"
+        >
+          <svg viewBox="0 0 24 24" className="h-5 w-5 shrink-0" fill="none" stroke="currentColor" strokeWidth="2.5" aria-hidden="true">
+            <path strokeLinecap="round" strokeLinejoin="round" d="m5 13 4 4L19 7" />
+          </svg>
+          {saved}
         </div>
       )}
 

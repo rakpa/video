@@ -104,7 +104,6 @@ export function SoloTrimBar({
           <span className="rounded-full bg-slate-900 px-3 py-1 text-xs font-bold uppercase tracking-[0.16em] text-white">
             Trim
           </span>
-          <p className="text-sm font-semibold text-slate-700">Drag handles · type times · split on playhead</p>
         </div>
         <div className="rounded-2xl bg-indigo-50 px-3 py-1.5 text-sm font-bold tabular-nums text-indigo-700">
           {keptLabel} kept
@@ -293,10 +292,6 @@ export function SoloTrimBar({
             </button>
           )}
         </div>
-        <p className="mt-3 text-xs font-medium text-slate-500">
-          Type Start/End times, drag the white handles to trim, move the rose playhead, then tap{' '}
-          <span className="font-semibold text-slate-700">Split</span> on the dragger to cut into two clips.
-        </p>
       </div>
     </div>
   );
