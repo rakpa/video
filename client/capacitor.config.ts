@@ -17,7 +17,9 @@ const config: CapacitorConfig = {
     // Serve bundled assets over https://localhost so browser APIs (clipboard,
     // Web Share, fetch to the API) behave like a secure context.
     scheme: 'VidCliply',
-    contentInset: 'always',
+    // 'never': the page handles safe areas itself (env(safe-area-inset-*)).
+    // 'always' let the page rest pulled-down under a blank band after a bounce.
+    contentInset: 'never',
     backgroundColor: '#f8fafc',
     // Let our own CSS env(safe-area-inset-*) handle insets; keep the webview
     // full-bleed under the status bar.

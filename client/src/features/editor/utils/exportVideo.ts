@@ -1,14 +1,17 @@
 import { Muxer, ArrayBufferTarget } from 'mp4-muxer';
 import type { CanvasSettings, EditorClip } from '../types';
 import { effectiveDuration } from '../types';
+import { extractAacSlice, type AacTrackSlice } from './audioPassthrough';
 
 export interface ExportOptions {
   clips: EditorClip[];
   canvas: CanvasSettings;
   onProgress?: (percent: number) => void;
+  /** Human-readable step, shown under the progress bar. */
+  onStage?: (stage: string) => void;
   signal?: AbortSignal;
   /** Set false to export video only (used internally when audio encoding fails). */
-  audio?: boolean;
+  audio?: boolean | 'copy-only';
 }
 
 function even(n: number): number {
@@ -78,14 +81,109 @@ function isSimpleTransform(clip: EditorClip, canvas: CanvasSettings): boolean {
   );
 }
 
+/**
+ * Hidden <video> elements used by an export. iOS only allows a few active
+ * decoders, so anything left over from a failed attempt must be released
+ * before the next attempt — otherwise its playback never starts.
+ */
+const liveExportVideos = new Set<HTMLVideoElement>();
+/** One hidden <video> per clip, shared by every export attempt (see prepareExportVideos). */
+const exportVideoPool = new Map<string, { video: HTMLVideoElement; ready: Promise<void> }>();
+
+/**
+ * Create and start loading one hidden <video> per clip. MUST run synchronously
+ * inside the tap that starts the export: iOS only loads media for elements
+ * created during a user gesture, so videos opened later (a retry after the
+ * hardware encoder fails, clip 2 of a merge) never fired `loadeddata` and the
+ * export hung or failed. All attempts reuse these elements.
+ */
+function prepareExportVideos(clips: EditorClip[]): void {
+  let host = document.getElementById('vc-export-videos');
+  if (!host) {
+    host = document.createElement('div');
+    host.id = 'vc-export-videos';
+    host.setAttribute('aria-hidden', 'true');
+    host.style.cssText =
+      'position:fixed;width:2px;height:2px;opacity:0;pointer-events:none;overflow:hidden;left:0;top:0;z-index:-1';
+    document.body.appendChild(host);
+  }
+  for (const clip of clips) {
+    if (exportVideoPool.has(clip.objectUrl)) continue;
+    const video = document.createElement('video');
+    video.muted = true;
+    video.defaultMuted = true;
+    video.playsInline = true;
+    video.preload = 'auto';
+    video.disablePictureInPicture = true;
+    video.style.cssText = 'width:2px;height:2px;';
+    const ready = new Promise<void>((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error(`${clip.name} did not load in time.`)), LOAD_TIMEOUT_MS);
+      video.onloadeddata = () => {
+        clearTimeout(timer);
+        resolve();
+      };
+      video.onerror = () => {
+        clearTimeout(timer);
+        reject(new Error(`Could not load ${clip.name}`));
+      };
+    });
+    ready.catch(() => undefined);
+    video.src = clip.objectUrl;
+    host.appendChild(video);
+    video.load();
+    // Unlock playback while we still have the user gesture.
+    void video
+      .play()
+      .then(() => video.pause())
+      .catch(() => undefined);
+    liveExportVideos.add(video);
+    exportVideoPool.set(clip.objectUrl, { video, ready });
+  }
+}
+
+async function loadedExportVideo(clip: EditorClip): Promise<HTMLVideoElement> {
+  if (!exportVideoPool.has(clip.objectUrl)) prepareExportVideos([clip]);
+  const entry = exportVideoPool.get(clip.objectUrl)!;
+  await entry.ready;
+  entry.video.pause();
+  entry.video.onended = null;
+  entry.video.ontimeupdate = null;
+  return entry.video;
+}
+
+function releaseExportVideos(): void {
+  for (const v of liveExportVideos) {
+    try {
+      v.pause();
+      v.removeAttribute('src');
+      v.load();
+      v.remove();
+    } catch {
+      /* ignore */
+    }
+  }
+  liveExportVideos.clear();
+  exportVideoPool.clear();
+  document.getElementById('vc-export-videos')?.remove();
+}
+
+const LOAD_TIMEOUT_MS = 15_000;
+const STALL_TIMEOUT_MS = 10_000;
+
 /* ------------------------------- audio -------------------------------- */
 
 const AUDIO_SAMPLE_RATE = 44_100;
 const AUDIO_CHANNELS = 2;
 const AUDIO_BITRATE = 128_000;
 /** Decoding holds the whole source in memory — skip sound for very large sources. */
-const AUDIO_MAX_SOURCE_SECONDS = 15 * 60;
-const AUDIO_MAX_SOURCE_BYTES = 400 * 1024 * 1024;
+const AUDIO_MAX_SOURCE_SECONDS = 10 * 60;
+const AUDIO_MAX_SOURCE_BYTES = 150 * 1024 * 1024;
+/** Decoding with Web Audio can stall on phones — never wait longer than this per clip. */
+const AUDIO_DECODE_TIMEOUT_MS = 20_000;
+
+function withTimeout<T>(p: Promise<T>, ms: number, fallback: T): Promise<T> {
+  return Promise.race([p, new Promise<T>((resolve) => setTimeout(() => resolve(fallback), ms))]);
+}
 
 interface AudioSegment {
   /** Planar stereo samples for this clip's trimmed (and speed-adjusted) range. */
@@ -103,12 +201,16 @@ function offlineAudioCtor(): OfflineCtor | null {
 async function supportsAacEncoding(): Promise<boolean> {
   if (typeof AudioEncoder === 'undefined' || typeof AudioData === 'undefined') return false;
   try {
-    const res = await AudioEncoder.isConfigSupported({
-      codec: 'mp4a.40.2',
-      sampleRate: AUDIO_SAMPLE_RATE,
-      numberOfChannels: AUDIO_CHANNELS,
-      bitrate: AUDIO_BITRATE,
-    });
+    const res = await withTimeout(
+      AudioEncoder.isConfigSupported({
+        codec: 'mp4a.40.2',
+        sampleRate: AUDIO_SAMPLE_RATE,
+        numberOfChannels: AUDIO_CHANNELS,
+        bitrate: AUDIO_BITRATE,
+      }),
+      3_000,
+      { supported: false } as AudioEncoderSupport,
+    );
     return Boolean(res.supported);
   } catch {
     return false;
@@ -273,12 +375,15 @@ function exportPlaybackRate(video: HTMLVideoElement): number {
   return 1;
 }
 
+type Accel = 'prefer-hardware' | 'prefer-software';
+
 async function configureEncoder(
   encoder: VideoEncoder,
   outW: number,
   outH: number,
   bitrate: number,
   fps: number,
+  accel: Accel = 'prefer-hardware',
 ): Promise<void> {
   // Prefer High / Main over Baseline for better compression at the same bitrate.
   const codecs = ['avc1.640028', 'avc1.4D4028', 'avc1.4D401F', 'avc1.42E01E', 'avc1.42001E'];
@@ -290,7 +395,7 @@ async function configureEncoder(
       height: outH,
       bitrate,
       framerate: fps,
-      hardwareAcceleration: 'prefer-hardware' as const,
+      hardwareAcceleration: accel,
       latencyMode: 'quality' as const,
       avc: { format: 'avc' as const },
     } satisfies VideoEncoderConfig;
@@ -317,21 +422,41 @@ async function configureEncoder(
  */
 export async function exportEditorProject(options: ExportOptions): Promise<Blob> {
   if (!options.clips.length) throw new Error('Add at least one clip before exporting.');
+  releaseExportVideos();
+  prepareExportVideos(options.clips); // synchronous — still inside the tap
+  try {
+    return await runExport(options);
+  } finally {
+    releaseExportVideos();
+  }
+}
+
+async function runExport(options: ExportOptions): Promise<Blob> {
 
   const totalDuration = options.clips.reduce((sum, c) => sum + effectiveDuration(c), 0);
   if (totalDuration <= 0.05) throw new Error('The trimmed clip is too short to export.');
 
   if (supportsWebCodecs()) {
-    try {
-      return await exportWithWebCodecs(options, totalDuration);
-    } catch (err) {
-      console.warn('WebCodecs export failed, falling back:', err);
+    // Some devices' hardware H.264 encoder accepts frames but never returns
+    // any (the export then sat at 97% forever) — retry in software before
+    // falling back to the slower recorder path.
+    for (const accel of ['prefer-hardware', 'prefer-software'] as const) {
+      try {
+        return await exportWithWebCodecs(options, totalDuration, accel);
+      } catch (err) {
+        if (options.signal?.aborted) throw err;
+        console.warn(`WebCodecs export (${accel}) failed, falling back:`, err);
+      }
     }
   }
   return exportWithMediaRecorder(options, totalDuration);
 }
 
-async function exportWithWebCodecs(options: ExportOptions, totalDuration: number): Promise<Blob> {
+async function exportWithWebCodecs(
+  options: ExportOptions,
+  totalDuration: number,
+  accel: Accel = 'prefer-hardware',
+): Promise<Blob> {
   const { clips, canvas, signal } = options;
   const report = makeProgressReporter(options.onProgress);
   const profile = exportProfile(totalDuration);
@@ -340,40 +465,80 @@ async function exportWithWebCodecs(options: ExportOptions, totalDuration: number
   const { fps } = profile;
   const bitrate = bitrateFor(outW, outH, fps);
 
-  // Sound: render every clip's trimmed audio first so we know whether the file
-  // gets an audio track at all (clips without sound are padded with silence).
+  // Sound, in order of preference:
+  //  1. copy — lift the original AAC packets for each trimmed range straight
+  //     into the export (no decode / re-encode; fast and light on phones).
+  //     Needs every clip at normal speed with a matching AAC track.
+  //  2. encode — decode with Web Audio and re-encode (speed changes, mixed
+  //     sources). Time-limited, because it can stall on phones.
+  //  3. none — export video only rather than hang.
   let audioSegments: Array<AudioSegment | null> = [];
-  let withAudio = false;
-  if (options.audio !== false && (await supportsAacEncoding())) {
-    for (const clip of clips) {
-      if (signal?.aborted) throw new Error('Export cancelled.');
-      audioSegments.push(await renderClipAudio(clip));
+  let copySlices: AacTrackSlice[] = [];
+  let audioMode: 'copy' | 'encode' | 'none' = 'none';
+  let audioRate = AUDIO_SAMPLE_RATE;
+  let audioChannels = AUDIO_CHANNELS;
+
+  if (options.audio !== false) {
+    report(1);
+    options.onStage?.('Reading sound…');
+    if (clips.every((c) => Math.abs(c.transform.speed - 1) < 0.001)) {
+      const slices: Array<AacTrackSlice | null> = [];
+      for (const clip of clips) {
+        if (signal?.aborted) throw new Error('Export cancelled.');
+        slices.push(await extractAacSlice(clip.file, clip.trimStart, clip.trimEnd, signal));
+        if (!slices[slices.length - 1]) break;
+      }
+      const first = slices[0];
+      if (
+        first &&
+        slices.length === clips.length &&
+        slices.every((s) => s && s.sampleRate === first.sampleRate && s.channels === first.channels)
+      ) {
+        copySlices = slices as AacTrackSlice[];
+        audioMode = 'copy';
+        audioRate = first.sampleRate;
+        audioChannels = first.channels;
+      }
     }
-    withAudio = audioSegments.some((s) => s !== null);
-    if (!withAudio) audioSegments = [];
+    if (audioMode === 'none') options.onStage?.('Preparing sound…');
+    if (audioMode === 'none' && options.audio !== 'copy-only' && (await supportsAacEncoding())) {
+      for (const clip of clips) {
+        if (signal?.aborted) throw new Error('Export cancelled.');
+        audioSegments.push(await withTimeout(renderClipAudio(clip), AUDIO_DECODE_TIMEOUT_MS, null));
+      }
+      if (audioSegments.some((seg) => seg !== null)) audioMode = 'encode';
+      else audioSegments = [];
+    }
   }
+  const withAudio = audioMode === 'encode';
+  options.onStage?.(`Rendering video${accel === 'prefer-software' ? ' (compatibility mode)' : ''}…`);
 
   const target = new ArrayBufferTarget();
   const muxer = new Muxer({
     target,
     video: { codec: 'avc', width: outW, height: outH },
-    ...(withAudio
-      ? { audio: { codec: 'aac' as const, numberOfChannels: AUDIO_CHANNELS, sampleRate: AUDIO_SAMPLE_RATE } }
+    ...(audioMode !== 'none'
+      ? { audio: { codec: 'aac' as const, numberOfChannels: audioChannels, sampleRate: audioRate } }
       : {}),
     fastStart: 'in-memory',
     firstTimestampBehavior: 'offset',
   });
+  const clipStartMicros: number[] = [];
   const audioPlan: Array<{ startMicros: number; segment: AudioSegment | null; frames: number }> = [];
 
   let encodeError: Error | null = null;
+  let outputChunks = 0;
   const encoder = new VideoEncoder({
-    output: (chunk, meta) => muxer.addVideoChunk(chunk, meta),
+    output: (chunk, meta) => {
+      outputChunks += 1;
+      muxer.addVideoChunk(chunk, meta);
+    },
     error: (e) => {
       encodeError = e instanceof Error ? e : new Error(String(e));
     },
   });
 
-  await configureEncoder(encoder, outW, outH, bitrate, fps);
+  await configureEncoder(encoder, outW, outH, bitrate, fps, accel);
 
   const drawCanvas = document.createElement('canvas');
   drawCanvas.width = outW;
@@ -383,6 +548,9 @@ async function exportWithWebCodecs(options: ExportOptions, totalDuration: number
   ctx.imageSmoothingEnabled = true;
   ctx.imageSmoothingQuality = 'high';
 
+  const startedAt = Date.now();
+  let fedTotal = 0;
+  const fedFrames = () => fedTotal;
   const frameDurationMicros = Math.round(1_000_000 / fps);
   const keyEvery = Math.max(1, Math.round(fps * 2));
   let timelineMicros = 0;
@@ -410,17 +578,24 @@ async function exportWithWebCodecs(options: ExportOptions, totalDuration: number
         drawCanvas,
         host,
         encoder,
-        encodeError: () => encodeError,
+        // A dead encoder is detected early instead of after the whole clip.
+        encodeError: () =>
+          encodeError ??
+          (Date.now() - startedAt > 8_000 && outputChunks === 0 && fedFrames() > 15
+            ? new Error('Video encoder produced no output.')
+            : null),
         timelineMicros,
         frameDurationMicros,
         keyEvery,
         signal,
         onMediaProgress: (localPct) => {
+          fedTotal += 1;
           const share = effectiveDuration(clip) / totalDuration;
           report((durationDone / totalDuration + localPct * share) * 97);
         },
       });
 
+      clipStartMicros.push(timelineMicros);
       if (withAudio) {
         // Audio for this clip starts where its video starts and runs for the
         // clip's real length, so clips stay in sync.
@@ -438,6 +613,14 @@ async function exportWithWebCodecs(options: ExportOptions, totalDuration: number
       durationDone += effectiveDuration(clip);
       report((durationDone / totalDuration) * 97);
     }
+  } catch (err) {
+    // Free the encoder before a retry / fallback takes over.
+    try {
+      if (encoder.state !== 'closed') encoder.close();
+    } catch {
+      /* already closed */
+    }
+    throw err;
   } finally {
     host.remove();
   }
@@ -445,15 +628,56 @@ async function exportWithWebCodecs(options: ExportOptions, totalDuration: number
   if (encodedFrames < 1) throw new Error('Export produced no frames. Please try again.');
   if (encodeError) throw encodeError;
 
+  options.onStage?.('Finishing…');
   // A stalled hardware encoder must not hang the export forever — time out and
   // let the caller fall back to the MediaRecorder path.
   await Promise.race([
     encoder.flush(),
     new Promise<never>((_, reject) =>
-      setTimeout(() => reject(new Error('Video encoder did not finish.')), 60_000),
+      setTimeout(() => reject(new Error('Video encoder did not finish.')), 20_000),
     ),
-  ]);
+  ]).catch((err) => {
+    try {
+      if (encoder.state !== 'closed') encoder.close();
+    } catch {
+      /* already closed */
+    }
+    throw err;
+  });
   encoder.close();
+
+  if (audioMode === 'copy') {
+    // Copy the original AAC packets, shifted to each clip's place on the timeline.
+    let lastTs = -1;
+    let sentConfig = false;
+    copySlices.forEach((slice, i) => {
+      const base = clipStartMicros[i] ?? 0;
+      const clipLenMicros = Math.round(effectiveDuration(clips[i]) * 1_000_000);
+      for (const pkt of slice.packets) {
+        if (pkt.tsMicros >= clipLenMicros) break;
+        let ts = base + pkt.tsMicros;
+        if (ts <= lastTs) ts = lastTs + 1;
+        lastTs = ts;
+        muxer.addAudioChunkRaw(
+          pkt.data,
+          'key',
+          ts,
+          pkt.durMicros,
+          sentConfig
+            ? undefined
+            : {
+                decoderConfig: {
+                  codec: 'mp4a.40.2',
+                  numberOfChannels: slice.channels,
+                  sampleRate: slice.sampleRate,
+                  description: slice.description,
+                },
+              },
+        );
+        sentConfig = true;
+      }
+    });
+  }
 
   if (withAudio) {
     try {
@@ -462,7 +686,7 @@ async function exportWithWebCodecs(options: ExportOptions, totalDuration: number
       // A file with a declared-but-broken audio track is worse than a silent
       // one — redo the export without sound.
       console.warn('Audio encode failed, exporting without sound:', err);
-      return exportWithWebCodecs({ ...options, audio: false }, totalDuration);
+      return exportWithWebCodecs({ ...options, audio: false }, totalDuration, accel);
     }
   }
   muxer.finalize();
@@ -523,20 +747,8 @@ async function encodeClipPlaythrough(args: {
   const srcStep = speed / fps;
   const maxFrames = Math.max(1, Math.ceil(outSpan * fps) + 2);
 
-  const video = document.createElement('video');
-  video.src = clip.objectUrl;
-  video.muted = true;
-  video.defaultMuted = true;
-  video.playsInline = true;
-  video.preload = 'auto';
-  video.disablePictureInPicture = true;
-  video.style.cssText = 'width:2px;height:2px;';
-  host.appendChild(video);
-
-  await new Promise<void>((resolve, reject) => {
-    video.onloadeddata = () => resolve();
-    video.onerror = () => reject(new Error(`Could not load ${clip.name}`));
-  });
+  void host; // videos now live in the shared export pool
+  const video = await loadedExportVideo(clip);
 
   await seekTo(video, start);
   video.playbackRate = exportPlaybackRate(video);
@@ -592,7 +804,22 @@ async function encodeClipPlaythrough(args: {
     let rafHandle = 0;
     const hasRvfc = typeof video.requestVideoFrameCallback === 'function';
 
+    // Watchdog: playback that stops advancing must fail, never hang the export.
+    let lastTime = -1;
+    let lastAdvance = Date.now();
+    const watchdog = setInterval(() => {
+      if (finished) return;
+      const t = video.currentTime;
+      if (t !== lastTime) {
+        lastTime = t;
+        lastAdvance = Date.now();
+      } else if (Date.now() - lastAdvance > STALL_TIMEOUT_MS) {
+        fail(new Error('Playback stalled while exporting.'));
+      }
+    }, 1_000);
+
     const cleanup = () => {
+      clearInterval(watchdog);
       video.pause();
       video.onended = null;
       video.onerror = null;
@@ -689,9 +916,7 @@ async function encodeClipPlaythrough(args: {
     }
   }
 
-  video.removeAttribute('src');
-  video.load();
-  video.remove();
+  video.pause();
 
   if (frameIndex < 1) throw new Error(`No frames captured from ${clip.name}.`);
   return frameIndex;
@@ -707,6 +932,7 @@ async function exportWithMediaRecorder(
     throw new Error('This browser cannot export video. Try Chrome, Edge, or Firefox.');
   }
 
+  options.onStage?.('Recording video (slow mode, no sound)…');
   const profile = exportProfile(totalDuration);
   const primary = clips[0];
   const { w: outW, h: outH } = canvasSizeFor(primary, canvas, profile.maxSide);
@@ -768,10 +994,12 @@ async function exportWithMediaRecorder(
 
 function pickMime(): string {
   const candidates = [
+    // MP4 first: Photos on iPhone cannot store WebM.
+    'video/mp4;codecs=avc1.42E01E',
+    'video/mp4',
     'video/webm;codecs=vp9',
     'video/webm;codecs=vp8',
     'video/webm',
-    'video/mp4',
   ];
   for (const type of candidates) {
     if (typeof MediaRecorder !== 'undefined' && MediaRecorder.isTypeSupported(type)) return type;
@@ -789,16 +1017,7 @@ async function renderClipFastPlayback(args: {
   onFrameProgress?: (pct: number) => void;
 }): Promise<void> {
   const { clip, canvas, ctx, outW, outH, signal, onFrameProgress } = args;
-  const video = document.createElement('video');
-  video.src = clip.objectUrl;
-  video.playsInline = true;
-  video.muted = true;
-  video.preload = 'auto';
-
-  await new Promise<void>((resolve, reject) => {
-    video.onloadeddata = () => resolve();
-    video.onerror = () => reject(new Error(`Could not load ${clip.name}`));
-  });
+  const video = await loadedExportVideo(clip);
 
   const start = clip.trimStart;
   const end = clip.trimEnd;
@@ -809,7 +1028,18 @@ async function renderClipFastPlayback(args: {
 
   await new Promise<void>((resolve, reject) => {
     let raf = 0;
+    let lastTime = -1;
+    let lastAdvance = Date.now();
     const tick = () => {
+      if (video.currentTime !== lastTime) {
+        lastTime = video.currentTime;
+        lastAdvance = Date.now();
+      } else if (Date.now() - lastAdvance > STALL_TIMEOUT_MS) {
+        video.pause();
+        cancelAnimationFrame(raf);
+        reject(new Error('Playback stalled while exporting.'));
+        return;
+      }
       if (signal?.aborted) {
         video.pause();
         cancelAnimationFrame(raf);
@@ -830,8 +1060,7 @@ async function renderClipFastPlayback(args: {
     raf = requestAnimationFrame(tick);
   });
 
-  video.removeAttribute('src');
-  video.load();
+  video.pause();
 }
 
 export function drawFrame(

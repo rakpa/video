@@ -24,6 +24,7 @@ export function EditorWorkspace({ initialFiles, onClose }: Props) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [exportPct, setExportPct] = useState<number | null>(null);
+  const [exportStage, setExportStage] = useState('');
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const bootstrapped = useRef(false);
@@ -150,12 +151,14 @@ export function EditorWorkspace({ initialFiles, onClose }: Props) {
     if (!clips.length) return;
     setError(null);
     setExportPct(1);
+    setExportStage('Starting…');
     setPlaying(false);
     try {
       const blob = await exportEditorProject({
         clips,
         canvas,
         onProgress: setExportPct,
+        onStage: setExportStage,
       });
       const ext = blob.type.includes('webm') ? 'webm' : 'mp4';
       if (isNativeApp()) {
@@ -218,7 +221,7 @@ export function EditorWorkspace({ initialFiles, onClose }: Props) {
       {exportPct != null && (
         <div className="overflow-hidden rounded-2xl border border-indigo-100 bg-indigo-50/80 px-4 py-3">
           <div className="flex items-center justify-between gap-3 text-sm font-semibold text-indigo-800">
-            <span>Fast export running…</span>
+            <span>{exportStage || 'Fast export running…'}</span>
             <span className="tabular-nums">{exportPct}%</span>
           </div>
           <div className="mt-2 h-2 overflow-hidden rounded-full bg-indigo-100">
