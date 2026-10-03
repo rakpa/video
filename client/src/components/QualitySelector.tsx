@@ -100,9 +100,9 @@ export function QualitySelector({ formats, selected, onSelect, mode, onModeChang
       initial={{ opacity: 0, y: 14 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.4, delay: 0.05 }}
-      className="space-y-5"
+      className="space-y-3"
     >
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h3 className="text-sm font-medium uppercase tracking-wider text-slate-400">Choose quality</h3>
           {sourceLabel != null && !HIDE_PRO && (

@@ -1119,7 +1119,7 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
                     onDownloadAnother={handleMobileDownloadAnother}
                   />
                 ) : showQualityPanel ? (
-                  <div className="space-y-5">
+                  <div className="space-y-3">
                     <ClipSelector
                       durationSeconds={info!.durationSeconds}
                       mode={clipMode}
@@ -1129,7 +1129,7 @@ function DownloaderApp({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
                       onStartTimeChange={setClipStart}
                       onEndTimeChange={setClipEnd}
                     />
-                    <div className="mt-4">
+                    <div className="mt-2">
                       <QualitySelector
                         formats={info!.formats}
                         selected={selected}
