@@ -75,7 +75,9 @@
     />
     <!-- Meta Pixel Code (website only — skipped inside the iOS app and on localhost) -->
     <script>
-      if (location.protocol.indexOf('http') === 0 && location.hostname !== 'localhost') {
+      // Loaded only after the visitor accepts cookies (see CookieConsent.tsx).
+      window.vcLoadPixel = function () {
+        if (window.fbq || location.protocol.indexOf('http') !== 0 || location.hostname === 'localhost') return;
         !function(f,b,e,v,n,t,s)
         {if(f.fbq)return;n=f.fbq=function(){n.callMethod?
         n.callMethod.apply(n,arguments):n.queue.push(arguments)};
@@ -86,13 +88,12 @@
         'https://connect.facebook.net/en_US/fbevents.js');
         fbq('init', '1641035637676853');
         fbq('track', 'PageView');
-      }
+      };
+      try { if (localStorage.getItem('vc-cookie-consent') === 'yes') window.vcLoadPixel(); } catch (e) {}
     </script>
     <!-- End Meta Pixel Code -->
   </head>
   <body>
-    <noscript><img height="1" width="1" style="display:none" alt=""
-      src="https://www.facebook.com/tr?id=1641035637676853&ev=PageView&noscript=1" /></noscript>
     <script>
       if ('scrollRestoration' in history) history.scrollRestoration = 'manual';
       window.scrollTo(0, 0);

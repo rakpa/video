@@ -1,6 +1,7 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import App from './App';
+import { CookieConsent } from './components/CookieConsent';
 import './index.css';
 import { Capacitor } from '@capacitor/core';
 import { MotionGlobalConfig } from 'framer-motion';
@@ -21,6 +22,7 @@ window.scrollTo(0, 0);
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
     <App />
+    <CookieConsent />
   </React.StrictMode>,
 );
 

@@ -25,7 +25,7 @@ const PRICING_FAQ = [
   },
   {
     q: 'Do you offer refunds?',
-    a: 'We offer a 14-day money-back guarantee on your first purchase if the service doesn’t work as described. See our Refund Policy for details.',
+    a: 'Payments are generally non-refundable, except where the law in your country requires a refund. See our Refund Policy for details.',
   },
   {
     q: 'Which payment methods do you accept?',
@@ -51,7 +51,7 @@ export function PricingPage({ theme, onToggleTheme }: Props) {
   useDocumentMeta({
     title: `Pricing — Free & Pro Plans · ${COMPANY.brand}`,
     description:
-      'VidCliply is free for downloads up to 1080p with sound. Go Pro ($9.99/year) for unlimited 2K & 4K downloads. Cancel anytime. 14-day money-back guarantee.',
+      'VidCliply is free for downloads up to 1080p with sound. Go Pro ($9.99/year) for unlimited 2K & 4K downloads. Cancel anytime.',
   });
   const [license, setLic] = useState<StoredLicense | null>(getLicense());
   const [justUpgraded, setJustUpgraded] = useState(false);

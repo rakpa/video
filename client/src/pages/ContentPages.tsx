@@ -615,8 +615,7 @@ function ContactPage() {
     <>
       <P>
         We're happy to help. Whether you have a question about a download, feedback on the product{HIDE_PRO ? '' : ', a billing query'}, or
-        a copyright matter, the fastest way to reach the {COMPANY.brand} team is by email. We read every message and aim
-        to reply within a couple of business days.
+        a copyright matter, the fastest way to reach the {COMPANY.brand} team is by email.
       </P>
 
       <H2>Email us</H2>

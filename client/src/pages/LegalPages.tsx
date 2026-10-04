@@ -397,25 +397,19 @@ function RefundPolicy() {
         the end of your current billing period. Cancellation does not automatically trigger a refund for the current period.
       </P>
 
-      <H2>4. 14-day money-back guarantee</H2>
+      <H2>4. Refunds</H2>
       <P>
-        If the Service does not work as described, you may request a full refund within <Strong>14 days</Strong> of your
-        initial purchase. This guarantee applies to your first subscription only.
-      </P>
-
-      <H2>5. Other refunds</H2>
-      <P>
-        Refunds for partially used periods or missed cancellation reminders are not provided, except where required by
+        Payments are non-refundable, including for partially used periods or missed cancellation reminders, except where required by
         consumer protection laws in your country (e.g. EU/UK cooling-off rights).
       </P>
 
-      <H2>6. How to request a refund</H2>
+      <H2>5. How to request a refund</H2>
       <P>
         Email {COMPANY.contactEmail} from the address used at checkout with your order details. Approved refunds are
         processed back to your original payment method within a few business days (timing depends on Stripe and your bank).
       </P>
 
-      <H2>7. Chargebacks</H2>
+      <H2>6. Chargebacks</H2>
       <P>
         Please contact us first before initiating a chargeback. We will do our best to resolve any issue quickly.
         Fraudulent chargebacks may result in loss of access.
