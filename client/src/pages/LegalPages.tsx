@@ -140,7 +140,7 @@ function TermsOfService() {
       <H2>1. The Service</H2>
       <P>
         {COMPANY.brand} is a technical tool that allows a user to retrieve a media file from a URL the user provides. The
-        Service does not host, store, or index any third-party media. It acts only at your direction, on content you
+        Service does not publish or index any third-party media; files it processes are held only temporarily. It acts only at your direction, on content you
         choose to access.
       </P>
 
@@ -258,8 +258,8 @@ function PrivacyPolicy() {
           profile of your downloads.
         </li>
         <li>
-          <Strong>Technical data</Strong> — IP address, browser type, device, and timestamps, used for security, abuse
-          prevention, and rate limiting.
+          <Strong>Technical data</Strong> — IP address, approximate country, browser type, device, timestamps, and
+          the platform and quality of each download, used for security, abuse prevention, usage limits, and statistics.
         </li>
         <li>
           <Strong>Account & billing data</Strong> (only if you subscribe) — email and payment details, handled by our
@@ -270,10 +270,11 @@ function PrivacyPolicy() {
         </li>
       </UL>
 
-      <H2>2. Downloaded files are not stored</H2>
+      <H2>2. Downloaded files are kept only temporarily</H2>
       <P>
-        Media files are processed on our servers only for the moment needed to deliver your download, streamed to your
-        device, and then <Strong>automatically deleted</Strong>. We do not retain copies of downloaded content.
+        Media files are processed on our servers to deliver your download. A copy may be <Strong>cached temporarily</Strong>{' '}
+        so that repeat downloads of the same video are faster, and is then removed. We do not keep a permanent library
+        of downloaded content.
       </P>
 
       <H2>3. How we use information</H2>
@@ -290,10 +291,12 @@ function PrivacyPolicy() {
         processing) under contract, or when required by law or valid legal process.
       </P>
 
-      <H2>5. Advertising</H2>
+      <H2>5. Marketing measurement (Meta Pixel)</H2>
       <P>
-        Free use of the Service may be supported by third-party advertising partners, who may use cookies to serve
-        relevant ads. Their use of data is governed by their own privacy policies.
+        Our website uses the <Strong>Meta Pixel</Strong>, a tool from Meta Platforms, to measure visits and the
+        effectiveness of our advertising on Facebook and Instagram. It may set cookies and share page-view information
+        (such as the pages you visit and your IP address) with Meta, whose use of that data is governed by Meta’s own
+        privacy policy. We do not show third-party advertisements on the Service.
       </P>
 
       <H2>6. Your rights</H2>
@@ -323,15 +326,15 @@ function DmcaPolicy() {
   return (
     <>
       <P>
-        {COMPANY.brand} respects the intellectual-property rights of others and complies with the Digital Millennium
-        Copyright Act (DMCA) and equivalent laws. {COMPANY.brand} does not host or store user content; it is a tool that
+        {COMPANY.brand} respects the intellectual-property rights of others and responds to copyright notices in line
+        with the Digital Millennium Copyright Act (DMCA) and equivalent laws. {COMPANY.brand} does not publish user content; it is a tool that
         acts at a user’s direction. Nonetheless, we provide this notice-and-takedown process.
       </P>
 
       <H2>1. Filing a copyright notice</H2>
       <P>
-        If you believe the Service has been used to infringe your copyright, send a written notice to our designated
-        agent at <Strong>{COMPANY.dmcaEmail}</Strong> including:
+        If you believe the Service has been used to infringe your copyright, send a written notice to
+        <Strong> {COMPANY.dmcaEmail}</Strong> including:
       </P>
       <UL>
         <li>your physical or electronic signature;</li>
@@ -360,9 +363,9 @@ function DmcaPolicy() {
         infringers.
       </P>
 
-      <H2>4. Designated agent</H2>
+      <H2>4. Copyright contact</H2>
       <P>
-        DMCA notices should be directed to our designated <Strong>Copyright Agent</Strong> at {COMPANY.dmcaEmail}.
+        Copyright notices should be sent to <Strong>{COMPANY.dmcaEmail}</Strong>.
       </P>
     </>
   );
@@ -390,7 +393,7 @@ function RefundPolicy() {
 
       <H2>3. Cancellation</H2>
       <P>
-        You can cancel anytime from the Pricing page or by emailing {COMPANY.contactEmail}. You keep full Pro access until
+        You can cancel anytime by emailing {COMPANY.contactEmail} from the address used at checkout. You keep full Pro access until
         the end of your current billing period. Cancellation does not automatically trigger a refund for the current period.
       </P>
 

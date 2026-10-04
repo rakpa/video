@@ -82,7 +82,7 @@ export function SeoContent() {
             <li>Audio always merged — no silent files.</li>
             <li>No watermarks and no bundled software.</li>
             <li>{HIDE_PRO ? 'Saves straight to your Photos or Files.' : 'Works in your browser on desktop and mobile.'}</li>
-            <li>Privacy-first: we process your file, deliver it, and delete it automatically.</li>
+            <li>Privacy-first: files are kept only temporarily and then removed.</li>
           </ul>
         </div>
 

@@ -73,7 +73,7 @@ export function ProUpgradePanel({ selectedQuality, inline = false, onDismiss }: 
           <p className="mx-auto mt-3 max-w-2xl text-slate-600">
             {selectedQuality
               ? `${selectedQuality} needs Pro — unlock 2K & 4K for less than a coffee per month.`
-              : 'Skip the monthly trap. Pay once a year and download in 2K & 4K with sound.'}
+              : 'One simple yearly plan. Download in 2K & 4K with sound.'}
           </p>
         </div>
       )}
@@ -202,7 +202,7 @@ export function ProUpgradePanel({ selectedQuality, inline = false, onDismiss }: 
             </motion.button>
           </div>
 
-          <p className="mt-2 text-center text-xs text-slate-400">One payment · 12 months · no hidden fees</p>
+          <p className="mt-2 text-center text-xs text-slate-400">Billed yearly · renews automatically · cancel anytime</p>
 
           {inline && onDismiss && (
             <button

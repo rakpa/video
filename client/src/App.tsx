@@ -92,7 +92,7 @@ const HOME_FAQ = [
   },
   {
     q: 'Where are my files stored?',
-    a: 'Nowhere permanent. We process your download, stream it to your device, and then automatically delete it from our servers. We keep no copies.',
+    a: 'Nowhere permanent. We process your download and send it to your device. A copy may be kept on our servers for a short time so repeat downloads are faster, and is then removed.',
   },
   {
     q: 'Is downloading videos legal?',

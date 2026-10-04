@@ -37,8 +37,8 @@ const FEATURES: Feature[] = [
     ),
   },
   {
-    title: 'Files auto-deleted',
-    body: 'We stream your download, then wipe it from our servers. We keep nothing.',
+    title: 'No permanent storage',
+    body: 'Files are kept only for a short time to speed up repeat downloads, then removed.',
     icon: (
       <>
         <path strokeLinecap="round" strokeLinejoin="round" d="M5 7h14M10 11v6m4-6v6" />

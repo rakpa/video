@@ -52,7 +52,7 @@ export const CONTENT_ROUTES: Record<string, ContentRoute> = {
   },
   '/about': {
     title: `About ${COMPANY.brand}`,
-    description: `Learn about ${COMPANY.brand} — our mission, what the tool does, why it is free to use, and how our no-storage approach protects your privacy.`,
+    description: `Learn about ${COMPANY.brand} — our mission, what the tool does, why it is free to use, and how we handle your data.`,
     render: AboutPage,
   },
   '/contact': {
@@ -269,8 +269,8 @@ function YouTubeGuide() {
       <P>
         Downloading is appropriate when you own the content, have the creator's permission, or the material is in the
         public domain or licensed for reuse. It is your responsibility to respect copyright and YouTube's Terms of
-        Service. {COMPANY.brand} is a neutral tool for personal, lawful use; we do not host or index any video, and we
-        do not store the files we process for you.
+        Service. {COMPANY.brand} is a neutral tool for personal, lawful use; we do not index or publish any video, and
+        files we process for you are kept only temporarily.
       </P>
 
       <H2>Frequently asked questions</H2>
@@ -281,7 +281,7 @@ function YouTubeGuide() {
         <QA q="Do I need an account or app?">
           {HIDE_PRO
             ? 'No account is needed — just paste a link and download.'
-            : `No. ${COMPANY.brand} runs entirely in your browser. There is nothing to install and no sign-up to download in standard quality.`}
+            : `No. ${COMPANY.brand} works in your browser. There is nothing to install and no sign-up to download in standard quality.`}
         </QA>
         {!HIDE_PRO && (
           <QA q="Can I download 4K from YouTube?">
@@ -290,7 +290,7 @@ function YouTubeGuide() {
           </QA>
         )}
         <QA q="Are my downloads private?">
-          We process your file only long enough to deliver it, then delete it automatically. We do not keep a history of
+          Your file is kept only temporarily to deliver it (and to make repeat downloads faster), then removed. We do not keep a history of
           what you download.
         </QA>
       </Faq>
@@ -521,8 +521,8 @@ function HowToGuide() {
       <H2>Download responsibly</H2>
       <P>
         Only download content you own, have permission to keep, or that is openly licensed. Respect each platform's
-        Terms of Service and the rights of creators. {COMPANY.brand} is a tool for personal, lawful use and does not
-        store the files it processes.
+        Terms of Service and the rights of creators. {COMPANY.brand} is a tool for personal, lawful use and keeps
+        processed files only temporarily.
       </P>
 
       <H2>Frequently asked questions</H2>
@@ -532,7 +532,7 @@ function HowToGuide() {
         </QA>
         {!HIDE_PRO && (
           <QA q="Do I need to install anything?">
-            No. Everything runs in your browser — no app, no extension, no account for standard downloads.
+            No. It works in your browser — no app, no extension, no account for standard downloads.
           </QA>
         )}
         <QA q="Which format do I get?">
@@ -585,11 +585,11 @@ function AboutPage() {
         Keeping the core free means anyone can save the content they are entitled to keep without a paywall.
       </P>
 
-      <H2>Privacy and our no-storage stance</H2>
+      <H2>Privacy and temporary storage</H2>
       <P>
-        We are deliberately minimal with data. When you request a download, we process the media only for the moment
-        needed to deliver it to your device, stream it to you, and then <Strong>delete it automatically</Strong>. We do
-        not host, index, or archive any third-party video, and we do not build a profile of what you download. The tool
+        We are deliberately minimal with data. When you request a download, we process the media, send it to your
+        device, and keep a copy only <Strong>temporarily</Strong> so repeat downloads are faster. We do not index or
+        publish any third-party video, and we do not record which videos you download. The tool
         acts only at your direction, on links you choose to provide.
       </P>
 
@@ -635,8 +635,7 @@ function ContactPage() {
         </a>
       </div>
       <P>
-        For copyright notices and DMCA takedown requests, please use our dedicated address so your message reaches the
-        right person:
+        For copyright notices and takedown requests, write to:
       </P>
       <div className="rounded-2xl border border-slate-200 bg-slate-50 p-5">
         <p className="text-sm text-slate-600">Copyright / DMCA</p>
