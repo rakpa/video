@@ -116,7 +116,7 @@ export function Footer() {
         </div>
 
         <p className="mt-6 text-center text-xs text-slate-400 sm:text-left">
-          © {new Date().getFullYear()} {COMPANY.brand}{HIDE_PRO ? '' : ' · Built with yt-dlp & ffmpeg'}
+          © {new Date().getFullYear()} {COMPANY.brand}
         </p>
       </div>
     </footer>
