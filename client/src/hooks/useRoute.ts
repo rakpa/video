@@ -21,6 +21,8 @@ export function useRoute(): string {
 export function navigate(to: string): void {
   if (to === window.location.pathname) return;
   window.history.pushState({}, '', to);
+  // Meta Pixel: count in-app page changes (the site is a single-page app).
+  (window as unknown as { fbq?: (...a: unknown[]) => void }).fbq?.('track', 'PageView');
   window.dispatchEvent(new PopStateEvent('popstate'));
   window.scrollTo({ top: 0 });
 }
