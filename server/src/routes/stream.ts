@@ -388,6 +388,9 @@ function handleStreamDownload(req: Request, res: Response): void {
   const durationArgs = hasClip
     ? ['-t', String(Math.max(0.1, clip!.endTime - clip!.startTime))]
     : [];
+  // VP9/AV1 clips (2K/4K) play as a black picture in Photos, QuickTime and
+  // most phone galleries — clips are short, so re-encode them to H.264.
+  const transcodeClip = hasClip && selection.h264 === false && !ticket.enhanceTo && !ticket.audioOnly;
 
   let args: string[] = [
     '-hide_banner',
@@ -434,7 +437,9 @@ function handleStreamDownload(req: Request, res: Response): void {
           '-c:a',
           'copy',
         ]
-      : ['-c', 'copy']),
+      : transcodeClip
+        ? ['-c:v', 'libx264', '-preset', 'veryfast', '-crf', '20', '-profile:v', 'high', '-pix_fmt', 'yuv420p', '-c:a', 'copy']
+        : ['-c', 'copy']),
     '-max_muxing_queue_size',
     '9999',
     '-movflags',

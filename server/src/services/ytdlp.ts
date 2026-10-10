@@ -231,6 +231,8 @@ export interface StreamMergeSelection {
   estimatedBytes: number | null;
   /** Source video length — scales estimatedBytes for clip streams. */
   durationSeconds: number | null;
+  /** False when the video track is VP9/AV1 (YouTube above 1080p). */
+  h264?: boolean;
 }
 
 /**
@@ -390,6 +392,7 @@ function pickStreamMergeFromRaw(raw: RawDump, maxHeight: number): StreamMergeSel
       formatIds: `${bestVideo.format_id}+${bestAudio.format_id}`,
       estimatedBytes,
       durationSeconds,
+      h264: isH264Vcodec(bestVideo.vcodec),
     };
   }
   if (bestProg?.url) {
@@ -403,6 +406,7 @@ function pickStreamMergeFromRaw(raw: RawDump, maxHeight: number): StreamMergeSel
       formatIds: String(bestProg.format_id),
       estimatedBytes,
       durationSeconds,
+      h264: isH264Vcodec(bestProg.vcodec),
     };
   }
   return null;
