@@ -201,8 +201,9 @@ async function relayChunked(
   res: Response,
   aborted: () => boolean,
   referer?: string,
+  start = 0,
 ): Promise<void> {
-  const first = await fetchRangeChunk(url, proxy, 0, referer);
+  const first = await fetchRangeChunk(url, proxy, start, referer);
 
   if (first.status === 200) {
     // Upstream ignored Range — relay the whole body as-is.
@@ -218,10 +219,19 @@ async function relayChunked(
   }
 
   const total = parseTotalSize(first.headers.get('content-range'));
-  if (total !== null && !res.headersSent) res.setHeader('Content-Length', total);
+  if (total !== null && !res.headersSent) {
+    res.setHeader('Accept-Ranges', 'bytes');
+    res.setHeader('Content-Length', Math.max(0, total - start));
+    // ffmpeg seeks (clips) with a Range request — answer it, otherwise the
+    // seek lands on the wrong bytes and the clip loses its picture.
+    if (start > 0) {
+      res.status(206);
+      res.setHeader('Content-Range', `bytes ${start}-${total - 1}/${total}`);
+    }
+  }
 
   const inflight = new Map<number, Promise<Buffer>>();
-  let nextOffset = CHUNK_SIZE;
+  let nextOffset = start + CHUNK_SIZE;
   const schedule = () => {
     while (total !== null && !aborted() && inflight.size < PARALLEL_CHUNKS && nextOffset < total) {
       const p = fetchChunkBuffer(url, proxy, nextOffset, referer, aborted);
@@ -234,7 +244,7 @@ async function relayChunked(
   schedule();
   await writeBody(first.body, res);
 
-  for (let offset = CHUNK_SIZE; total !== null && offset < total; offset += CHUNK_SIZE) {
+  for (let offset = start + CHUNK_SIZE; total !== null && offset < total; offset += CHUNK_SIZE) {
     if (aborted()) return;
     schedule();
     const job = inflight.get(offset);
@@ -275,7 +285,8 @@ streamRouter.get('/stream/:ticketId/src/:track', (req, res) => {
       : platform?.id === 'facebook'
         ? 'https://www.facebook.com/'
         : undefined;
-  relayChunked(url, ticket.proxy, res, () => clientGone, referer).catch((err: unknown) => {
+  const rangeStart = Number(/^bytes=(\d+)-/.exec(String(req.headers.range ?? ''))?.[1] ?? 0);
+  relayChunked(url, ticket.proxy, res, () => clientGone, referer, rangeStart).catch((err: unknown) => {
     logger.warn('stream relay failed:', (err as Error).message);
     if (!res.headersSent) res.status(502).json({ error: 'Upstream fetch failed.' });
     else res.destroy();
