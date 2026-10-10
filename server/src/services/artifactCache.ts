@@ -14,7 +14,7 @@ export function artifactCacheKey(
   galleryPrep?: boolean,
   galleryMaxHeight?: number,
 ): string {
-  const clipPart = clip ? `clip:${clip.startTime}-${clip.endTime}` : 'full';
+  const clipPart = clip ? `clip2:${clip.startTime}-${clip.endTime}` : 'full';
   const galleryPart = galleryPrep
     ? `gallery:${galleryMaxHeight ?? 'full'}`
     : 'nogallery';
