@@ -650,25 +650,8 @@ export async function trimVideo(
 
   // Stream copy only — no re-encode unless both copy strategies fail (quality preserved).
   const strategies: { label: string; args: string[] }[] = [
-    {
-      label: 'accurate copy',
-      args: [
-        '-i',
-        inputPath,
-        '-ss',
-        String(startSec),
-        '-to',
-        String(endSec),
-        '-map',
-        '0:v:0?',
-        '-map',
-        '0:a:0?',
-        '-c',
-        'copy',
-        '-avoid_negative_ts',
-        'make_zero',
-      ],
-    },
+    // Input seek starts on the keyframe before the range. Seeking after -i
+    // with -c copy drops video until the next keyframe (black picture + sound).
     {
       label: 'fast copy',
       args: [
