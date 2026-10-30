@@ -1,4 +1,5 @@
 import 'dotenv/config';
+import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
@@ -138,7 +139,7 @@ export const config = {
   // Path to a Netscape-format cookies.txt so yt-dlp can authenticate. This is
   // the most reliable fix for "Sign in to confirm you're not a bot" errors that
   // hit datacenter IPs (Railway/AWS/GCP). Empty = no cookies (works locally).
-  ytdlpCookies: (process.env.YTDLP_COOKIES ?? '').trim(),
+  ytdlpCookies: resolveCookiesPath(),
   // Proxy pool for yt-dlp — the most reliable fix for datacenter-IP blocks.
   // One or many proxies via YTDLP_PROXY (comma/space/newline-separated), each a
   // full URL or Webshare raw `host:port:user:pass`. Requests rotate across them.
@@ -239,4 +240,23 @@ export function currentProxy(): string | undefined {
 export function rotateProxy(): string | undefined {
   if (config.proxies.length > 1) proxyCursor = (proxyCursor + 1) % config.proxies.length;
   return currentProxy();
+}
+
+/**
+ * YTDLP_COOKIES_B64 = the whole cookies.txt, base64-encoded, stored as a normal
+ * env variable — survives redeploys and host moves (a file path does not).
+ * Falls back to YTDLP_COOKIES (a path to the file).
+ */
+function resolveCookiesPath(): string {
+  const b64 = (process.env.YTDLP_COOKIES_B64 ?? '').replace(/\s+/g, '');
+  if (b64) {
+    try {
+      const dest = path.join(os.tmpdir(), 'clipvault-cookies-env.txt');
+      fs.writeFileSync(dest, Buffer.from(b64, 'base64'), { mode: 0o600 });
+      return dest;
+    } catch {
+      /* fall back to the path below */
+    }
+  }
+  return (process.env.YTDLP_COOKIES ?? '').trim();
 }
