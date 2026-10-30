@@ -201,3 +201,40 @@ export function getDownloadStats() {
     })),
   };
 }
+
+const rangeRowsStmt = db.prepare(`
+  SELECT timestamp, platform, quality, output_height, requested_height, ip, country, bytes
+  FROM downloads
+  WHERE success = 1 AND timestamp >= ? AND timestamp < ?
+  ORDER BY timestamp DESC
+  LIMIT ?
+`);
+const rangeTotalsStmt = db.prepare(`
+  SELECT platform, COUNT(*) as count, COALESCE(SUM(bytes), 0) as bytes
+  FROM downloads
+  WHERE success = 1 AND timestamp >= ? AND timestamp < ?
+  GROUP BY platform
+`);
+
+export interface DownloadRow {
+  timestamp: number;
+  platform: string;
+  quality: string;
+  output_height: number | null;
+  requested_height: number | null;
+  ip: string | null;
+  country: string | null;
+  bytes: number | null;
+}
+
+/** Every download in [fromMs, toMs) plus per-platform totals, for the admin page. */
+export function getDownloadsInRange(fromMs: number, toMs: number, limit = 10000) {
+  const rows = rangeRowsStmt.all(fromMs, toMs, limit) as DownloadRow[];
+  const platforms = rangeTotalsStmt.all(fromMs, toMs) as Array<{ platform: string; count: number; bytes: number }>;
+  return {
+    rows,
+    platforms,
+    count: platforms.reduce((s, p) => s + p.count, 0),
+    bytes: platforms.reduce((s, p) => s + p.bytes, 0),
+  };
+}

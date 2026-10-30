@@ -1,29 +1,108 @@
 import { Router, Request, Response } from 'express';
 import express from 'express';
-import { getDownloadStats } from '../utils/downloadLogger.js';
+import crypto from 'node:crypto';
+import { getDownloadsInRange } from '../utils/downloadLogger.js';
 import { verifyAdmin } from '../utils/adminAuth.js';
 
 const router = Router();
 
-// Login page
+const TZ = 'Europe/Warsaw';
+const SESSION_COOKIE = 'vc_admin';
+const SESSION_TTL_MS = 12 * 60 * 60 * 1000;
+const SESSION_SECRET = process.env.ADMIN_SESSION_SECRET || crypto.randomBytes(32).toString('hex');
+
+function sign(value: string): string {
+  return crypto.createHmac('sha256', SESSION_SECRET).update(value).digest('hex');
+}
+
+function sessionUser(req: Request): string | null {
+  const raw = (req.headers.cookie ?? '')
+    .split(';')
+    .map((c) => c.trim())
+    .find((c) => c.startsWith(`${SESSION_COOKIE}=`))
+    ?.slice(SESSION_COOKIE.length + 1);
+  if (!raw) return null;
+  const [user, exp, mac] = decodeURIComponent(raw).split('.');
+  if (!user || !exp || !mac || Number(exp) < Date.now()) return null;
+  const expected = sign(`${user}.${exp}`);
+  if (mac.length !== expected.length || !crypto.timingSafeEqual(Buffer.from(mac), Buffer.from(expected))) return null;
+  return user;
+}
+
+/** Offset of Poland's clock from UTC at a given instant (handles summer time). */
+function warsawOffsetMs(t: number): number {
+  const parts = Object.fromEntries(
+    new Intl.DateTimeFormat('en-GB', {
+      timeZone: TZ,
+      hourCycle: 'h23',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+    })
+      .formatToParts(new Date(t))
+      .map((p) => [p.type, p.value]),
+  );
+  const asUtc = Date.UTC(+parts.year, +parts.month - 1, +parts.day, +parts.hour, +parts.minute, +parts.second);
+  return asUtc - Math.floor(t / 1000) * 1000;
+}
+
+/** 'YYYY-MM-DD' (Poland date) → UTC ms of that day's 00:00 in Poland. */
+function warsawMidnight(date: string): number {
+  const [y, m, d] = date.split('-').map(Number);
+  const guess = Date.UTC(y, m - 1, d);
+  return guess - warsawOffsetMs(guess - warsawOffsetMs(guess));
+}
+
+function warsawDate(t: number): string {
+  return new Intl.DateTimeFormat('en-CA', { timeZone: TZ, year: 'numeric', month: '2-digit', day: '2-digit' }).format(
+    new Date(t),
+  );
+}
+
+function addDays(date: string, days: number): string {
+  const [y, m, d] = date.split('-').map(Number);
+  return new Date(Date.UTC(y, m - 1, d + days)).toISOString().slice(0, 10);
+}
+
+const isDate = (v: unknown): v is string => typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v);
+
+// Dashboard (needs a session) — ?from=YYYY-MM-DD&to=YYYY-MM-DD, Poland dates, inclusive.
 router.get('/stats', (req: Request, res: Response) => {
-  res.send(renderLoginPage());
+  const user = sessionUser(req);
+  if (!user) return res.send(renderLoginPage());
+  const today = warsawDate(Date.now());
+  const from = isDate(req.query.from) ? req.query.from : today;
+  const to = isDate(req.query.to) && req.query.to >= from ? req.query.to : from;
+  try {
+    const data = getDownloadsInRange(warsawMidnight(from), warsawMidnight(addDays(to, 1)));
+    res.setHeader('Cache-Control', 'no-store');
+    return res.send(renderDashboard(data, user, from, to, today));
+  } catch {
+    return res.status(500).send('Error loading stats');
+  }
 });
 
-// Handle login
+// Handle login → session cookie → dashboard
 router.post('/stats/login', express.urlencoded({ extended: true }), (req: Request, res: Response) => {
   const { username, password } = req.body;
-
   if (verifyAdmin(username, password)) {
-    try {
-      const stats = getDownloadStats();
-      return res.send(renderDashboard(stats, username));
-    } catch (err) {
-      return res.status(500).send('Error loading stats');
-    }
+    const exp = String(Date.now() + SESSION_TTL_MS);
+    const value = `${username}.${exp}`;
+    res.setHeader(
+      'Set-Cookie',
+      `${SESSION_COOKIE}=${encodeURIComponent(`${value}.${sign(value)}`)}; Path=/admin; HttpOnly; Secure; SameSite=Lax; Max-Age=${SESSION_TTL_MS / 1000}`,
+    );
+    return res.redirect(303, '/admin/stats');
   }
-
   res.send(renderLoginPage('Invalid username or password'));
+});
+
+router.post('/stats/logout', (_req: Request, res: Response) => {
+  res.setHeader('Set-Cookie', `${SESSION_COOKIE}=; Path=/admin; HttpOnly; Secure; SameSite=Lax; Max-Age=0`);
+  res.redirect(303, '/admin/stats');
 });
 
 // Render login page (Light theme)
@@ -75,7 +154,6 @@ function renderLoginPage(errorMessage = ''): string {
 </html>`;
 }
 
-// Simple clean light theme dashboard
 function formatBytes(n: number | null | undefined): string {
   if (!n || n <= 0) return '-';
   if (n >= 1e12) return `${(n / 1e12).toFixed(2)} TB`;
@@ -84,28 +162,71 @@ function formatBytes(n: number | null | undefined): string {
   return `${(n / 1e3).toFixed(0)} KB`;
 }
 
-function renderDashboard(stats: any, username: string): string {
-  const byPlatform = Object.entries(stats.byPlatform)
-    .map(([platform, count]) => `
-      <div class="flex justify-between items-center py-2 border-b border-slate-100 last:border-none">
-        <span class="font-medium">${platform}</span>
-        <span class="font-mono text-xl">${count} <span class="text-sm text-slate-400">· ${formatBytes(stats.bytesByPlatform?.[platform])}</span></span>
-      </div>
-    `)
+function escapeHtml(v: unknown): string {
+  return String(v ?? '').replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
+}
+
+const timeFmt = new Intl.DateTimeFormat('en-GB', {
+  timeZone: TZ,
+  year: 'numeric',
+  month: '2-digit',
+  day: '2-digit',
+  hour: '2-digit',
+  minute: '2-digit',
+  second: '2-digit',
+  hourCycle: 'h23',
+});
+
+function renderDashboard(
+  data: ReturnType<typeof getDownloadsInRange>,
+  username: string,
+  from: string,
+  to: string,
+  today: string,
+): string {
+  const presets: Array<[string, string, string]> = [
+    ['Today', today, today],
+    ['Yesterday', addDays(today, -1), addDays(today, -1)],
+    ['Last 7 days', addDays(today, -6), today],
+    ['Last 30 days', addDays(today, -29), today],
+    ['This month', `${today.slice(0, 8)}01`, today],
+    ['All time', '2020-01-01', today],
+  ];
+  const presetLinks = presets
+    .map(([label, f, t]) => {
+      const active = f === from && t === to;
+      return `<a href="/admin/stats?from=${f}&to=${t}" class="px-3 py-1.5 rounded-full text-sm border ${
+        active ? 'bg-slate-900 text-white border-slate-900' : 'bg-white border-slate-300 hover:bg-slate-50'
+      }">${label}</a>`;
+    })
     .join('');
 
-  const recentRows = stats.recentDownloads
-    .map((d: any) => `
-      <tr class="border-b border-slate-100">
-        <td class="py-3 px-4 text-sm text-slate-500">${new Date(d.time).toLocaleString()}</td>
-        <td class="py-3 px-4"><span class="px-3 py-1 bg-slate-100 text-slate-700 rounded-full text-xs font-medium">${d.platform}</span></td>
-        <td class="py-3 px-4 font-mono text-sm">${d.quality}</td>
-        <td class="py-3 px-4 text-center">${d.height ? d.height + 'p' : '-'}</td>
-        <td class="py-3 px-4 text-center text-emerald-600">${d.country || '-'}</td>
-        <td class="py-3 px-4 text-right font-mono text-sm">${formatBytes(d.bytes)}</td>
-      </tr>
-    `)
+  const byPlatform = data.platforms
+    .map(
+      (p) => `
+      <div class="flex justify-between items-center py-2 border-b border-slate-100 last:border-none">
+        <span class="font-medium">${escapeHtml(p.platform)}</span>
+        <span class="font-mono text-lg">${p.count} <span class="text-sm text-slate-400">· ${formatBytes(p.bytes)}</span></span>
+      </div>`,
+    )
     .join('');
+
+  const rows = data.rows
+    .map(
+      (d) => `
+      <tr>
+        <td class="py-2.5 px-4 text-slate-600 whitespace-nowrap">${timeFmt.format(new Date(d.timestamp))}</td>
+        <td class="py-2.5 px-4"><span class="px-2.5 py-0.5 bg-slate-100 text-slate-700 rounded-full text-xs font-medium">${escapeHtml(d.platform)}</span></td>
+        <td class="py-2.5 px-4 font-mono">${escapeHtml(d.quality)}</td>
+        <td class="py-2.5 px-4 text-center">${d.output_height ? `${d.output_height}p` : '-'}</td>
+        <td class="py-2.5 px-4 text-right font-mono">${formatBytes(d.bytes)}</td>
+        <td class="py-2.5 px-4 text-center text-emerald-600">${escapeHtml(d.country || '-')}</td>
+        <td class="py-2.5 px-4 font-mono text-xs text-slate-500">${escapeHtml(d.ip || '-')}</td>
+      </tr>`,
+    )
+    .join('');
+
+  const rangeLabel = from === to ? from : `${from} → ${to}`;
 
   return `<!DOCTYPE html>
 <html lang="en">
@@ -114,78 +235,75 @@ function renderDashboard(stats: any, username: string): string {
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>VidCliply • Admin Stats</title>
   <script src="https://cdn.tailwindcss.com"></script>
-  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
 </head>
 <body class="bg-slate-100 text-slate-900">
-  <div class="max-w-6xl mx-auto p-6">
-    <!-- Header -->
-    <div class="flex items-center justify-between mb-8">
+  <div class="max-w-6xl mx-auto p-4 sm:p-6">
+    <div class="flex flex-wrap items-center justify-between gap-4 mb-6">
       <div class="flex items-center gap-4">
         <div class="w-11 h-11 bg-white shadow border rounded-2xl flex items-center justify-center">
           <span class="text-2xl font-bold text-slate-900">V</span>
         </div>
         <div>
           <h1 class="text-3xl font-bold text-slate-900">VidCliply Admin</h1>
-          <p class="text-slate-500 text-sm">Welcome back, <span class="font-medium text-slate-900">${username}</span></p>
+          <p class="text-slate-500 text-sm">Welcome back, <span class="font-medium text-slate-900">${escapeHtml(username)}</span> · times in Poland (Europe/Warsaw)</p>
         </div>
       </div>
+      <form method="POST" action="/admin/stats/logout">
+        <button class="px-4 py-2 text-sm bg-white border border-slate-300 hover:bg-slate-50 rounded-2xl">Log out</button>
+      </form>
+    </div>
 
-      <div>
-        <a href="/admin/stats" class="px-5 py-2.5 text-sm font-medium bg-white border border-slate-300 hover:bg-slate-50 rounded-2xl flex items-center gap-2">
-          <i class="fa-solid fa-redo"></i>
-          <span>Refresh</span>
-        </a>
+    <div class="bg-white border border-slate-200 shadow-sm rounded-3xl p-5 mb-6">
+      <form method="GET" action="/admin/stats" class="flex flex-wrap items-end gap-3">
+        <label class="text-sm text-slate-500">From<br>
+          <input type="date" name="from" value="${from}" class="mt-1 border border-slate-300 rounded-xl px-3 py-2 text-slate-900">
+        </label>
+        <label class="text-sm text-slate-500">To<br>
+          <input type="date" name="to" value="${to}" class="mt-1 border border-slate-300 rounded-xl px-3 py-2 text-slate-900">
+        </label>
+        <button class="px-5 py-2.5 bg-slate-900 hover:bg-black text-white rounded-xl font-medium">Show</button>
+      </form>
+      <div class="flex flex-wrap gap-2 mt-4">${presetLinks}</div>
+    </div>
+
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
+      <div class="bg-white border border-slate-200 shadow-sm rounded-3xl p-6">
+        <div class="text-sm text-slate-500 mb-1">Downloads · ${rangeLabel}</div>
+        <div class="text-5xl font-bold text-slate-900">${data.count.toLocaleString()}</div>
+      </div>
+      <div class="bg-white border border-slate-200 shadow-sm rounded-3xl p-6">
+        <div class="text-sm text-slate-500 mb-1">Data used · ${rangeLabel}</div>
+        <div class="text-5xl font-bold text-emerald-600">${formatBytes(data.bytes)}</div>
+        <div class="text-sm text-slate-500 mt-2">${data.count ? `avg ${formatBytes(data.bytes / data.count)} per download` : ''}</div>
+      </div>
+      <div class="bg-white border border-slate-200 shadow-sm rounded-3xl p-6">
+        <div class="text-sm text-slate-500 mb-3">By Platform</div>
+        <div class="space-y-1 text-sm">${byPlatform || '<div class="text-slate-400 py-4">No data</div>'}</div>
       </div>
     </div>
 
-    <!-- Stats Cards -->
-    <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-      <div class="bg-white border border-slate-200 shadow-sm rounded-3xl p-6">
-        <div class="text-sm text-slate-500 mb-1">Total Downloads</div>
-        <div class="text-6xl font-bold text-slate-900">${stats.totalDownloads.toLocaleString()}</div>
-        <div class="text-sm text-slate-500 mt-2">Data: <span class="font-semibold text-slate-900">${formatBytes(stats.totalBytes)}</span>${stats.totalDownloads ? ` · avg ${formatBytes(stats.totalBytes / stats.totalDownloads)}` : ''}</div>
-      </div>
-
-      <div class="bg-white border border-slate-200 shadow-sm rounded-3xl p-6">
-        <div class="text-sm text-slate-500 mb-1">Today</div>
-        <div class="text-6xl font-bold text-emerald-600">${stats.todayDownloads.toLocaleString()}</div>
-        <div class="text-sm text-slate-500 mt-2">Data: <span class="font-semibold text-slate-900">${formatBytes(stats.todayBytes)}</span></div>
-      </div>
-
-      <div class="bg-white border border-slate-200 shadow-sm rounded-3xl p-6">
-        <div class="text-sm text-slate-500 mb-4">By Platform</div>
-        <div class="space-y-1 text-sm">
-          ${byPlatform || '<div class="text-slate-400 py-4">No data yet</div>'}
-        </div>
-      </div>
-    </div>
-
-    <!-- Recent Downloads -->
     <div class="bg-white border border-slate-200 shadow-sm rounded-3xl overflow-hidden">
-      <div class="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
-        <h2 class="font-semibold text-lg text-slate-900">Recent Downloads <span class="text-sm text-slate-400 font-normal">(last 50)</span></h2>
+      <div class="px-6 py-4 border-b border-slate-100">
+        <h2 class="font-semibold text-lg text-slate-900">All downloads <span class="text-sm text-slate-400 font-normal">(${data.rows.length.toLocaleString()}${data.rows.length < data.count ? ` of ${data.count.toLocaleString()} shown` : ''})</span></h2>
       </div>
       <div class="overflow-x-auto">
         <table class="w-full text-sm">
           <thead>
             <tr class="bg-slate-50 text-left">
-              <th class="py-4 px-6 font-medium text-slate-500">Time</th>
-              <th class="py-4 px-5 font-medium text-slate-500">Platform</th>
-              <th class="py-4 px-5 font-medium text-slate-500">Quality</th>
-              <th class="py-4 px-5 text-center font-medium text-slate-500">Resolution</th>
-              <th class="py-4 px-5 text-center font-medium text-slate-500">Country</th>
-              <th class="py-4 px-5 text-right font-medium text-slate-500">Size</th>
+              <th class="py-3 px-4 font-medium text-slate-500">Time (Poland)</th>
+              <th class="py-3 px-4 font-medium text-slate-500">Platform</th>
+              <th class="py-3 px-4 font-medium text-slate-500">Quality</th>
+              <th class="py-3 px-4 text-center font-medium text-slate-500">Resolution</th>
+              <th class="py-3 px-4 text-right font-medium text-slate-500">Size</th>
+              <th class="py-3 px-4 text-center font-medium text-slate-500">Country</th>
+              <th class="py-3 px-4 font-medium text-slate-500">IP</th>
             </tr>
           </thead>
           <tbody class="divide-y divide-slate-100">
-            ${recentRows || '<tr><td colspan="6" class="py-10 text-center text-slate-400">No downloads yet</td></tr>'}
+            ${rows || '<tr><td colspan="7" class="py-10 text-center text-slate-400">No downloads in this period</td></tr>'}
           </tbody>
         </table>
       </div>
-    </div>
-
-    <div class="mt-6 text-center text-xs text-slate-400">
-      Logged in as <span class="font-medium text-slate-600">${username}</span>
     </div>
   </div>
 </body>
