@@ -76,12 +76,20 @@ function renderLoginPage(errorMessage = ''): string {
 }
 
 // Simple clean light theme dashboard
+function formatBytes(n: number | null | undefined): string {
+  if (!n || n <= 0) return '-';
+  if (n >= 1e12) return `${(n / 1e12).toFixed(2)} TB`;
+  if (n >= 1e9) return `${(n / 1e9).toFixed(2)} GB`;
+  if (n >= 1e6) return `${(n / 1e6).toFixed(1)} MB`;
+  return `${(n / 1e3).toFixed(0)} KB`;
+}
+
 function renderDashboard(stats: any, username: string): string {
   const byPlatform = Object.entries(stats.byPlatform)
     .map(([platform, count]) => `
       <div class="flex justify-between items-center py-2 border-b border-slate-100 last:border-none">
         <span class="font-medium">${platform}</span>
-        <span class="font-mono text-xl">${count}</span>
+        <span class="font-mono text-xl">${count} <span class="text-sm text-slate-400">· ${formatBytes(stats.bytesByPlatform?.[platform])}</span></span>
       </div>
     `)
     .join('');
@@ -94,6 +102,7 @@ function renderDashboard(stats: any, username: string): string {
         <td class="py-3 px-4 font-mono text-sm">${d.quality}</td>
         <td class="py-3 px-4 text-center">${d.height ? d.height + 'p' : '-'}</td>
         <td class="py-3 px-4 text-center text-emerald-600">${d.country || '-'}</td>
+        <td class="py-3 px-4 text-right font-mono text-sm">${formatBytes(d.bytes)}</td>
       </tr>
     `)
     .join('');
@@ -134,11 +143,13 @@ function renderDashboard(stats: any, username: string): string {
       <div class="bg-white border border-slate-200 shadow-sm rounded-3xl p-6">
         <div class="text-sm text-slate-500 mb-1">Total Downloads</div>
         <div class="text-6xl font-bold text-slate-900">${stats.totalDownloads.toLocaleString()}</div>
+        <div class="text-sm text-slate-500 mt-2">Data: <span class="font-semibold text-slate-900">${formatBytes(stats.totalBytes)}</span>${stats.totalDownloads ? ` · avg ${formatBytes(stats.totalBytes / stats.totalDownloads)}` : ''}</div>
       </div>
 
       <div class="bg-white border border-slate-200 shadow-sm rounded-3xl p-6">
         <div class="text-sm text-slate-500 mb-1">Today</div>
         <div class="text-6xl font-bold text-emerald-600">${stats.todayDownloads.toLocaleString()}</div>
+        <div class="text-sm text-slate-500 mt-2">Data: <span class="font-semibold text-slate-900">${formatBytes(stats.todayBytes)}</span></div>
       </div>
 
       <div class="bg-white border border-slate-200 shadow-sm rounded-3xl p-6">
@@ -163,10 +174,11 @@ function renderDashboard(stats: any, username: string): string {
               <th class="py-4 px-5 font-medium text-slate-500">Quality</th>
               <th class="py-4 px-5 text-center font-medium text-slate-500">Resolution</th>
               <th class="py-4 px-5 text-center font-medium text-slate-500">Country</th>
+              <th class="py-4 px-5 text-right font-medium text-slate-500">Size</th>
             </tr>
           </thead>
           <tbody class="divide-y divide-slate-100">
-            ${recentRows || '<tr><td colspan="5" class="py-10 text-center text-slate-400">No downloads yet</td></tr>'}
+            ${recentRows || '<tr><td colspan="6" class="py-10 text-center text-slate-400">No downloads yet</td></tr>'}
           </tbody>
         </table>
       </div>

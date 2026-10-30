@@ -695,6 +695,7 @@ async function runWithRetry(job: Job, url: string, quality: QualityDef, mode: Co
           outputHeight: job.outputHeight ?? null,
           requestedHeight: quality.height,
           ip: job.ip,
+          bytes: finalPath ? await fsp.stat(finalPath).then((st) => st.size).catch(() => null) : null,
         });
       }
 

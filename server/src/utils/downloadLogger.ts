@@ -38,6 +38,10 @@ const columns = db.prepare('PRAGMA table_info(downloads)').all() as Array<{ name
 if (!columns.some((c) => c.name === 'requested_height')) {
   db.exec('ALTER TABLE downloads ADD COLUMN requested_height INTEGER');
 }
+// Bytes actually sent to the user (filled in when the transfer ends).
+if (!columns.some((c) => c.name === 'bytes')) {
+  db.exec('ALTER TABLE downloads ADD COLUMN bytes INTEGER');
+}
 
 // The smallest height considered "high resolution" (2K). 2K = 1440, 4K = 2160.
 export const HIGH_RES_MIN_HEIGHT = 1440;
@@ -53,21 +57,24 @@ const countHighResByIpStmt = db.prepare(`
   WHERE success = 1 AND ip = ? AND (requested_height >= ? OR output_height >= ?)
 `);
 
-const countAllStmt = db.prepare('SELECT COUNT(*) as total FROM downloads WHERE success = 1');
+const countAllStmt = db.prepare(
+  'SELECT COUNT(*) as total, COALESCE(SUM(bytes), 0) as bytes FROM downloads WHERE success = 1',
+);
 const countTodayStmt = db.prepare(`
-  SELECT COUNT(*) as total FROM downloads 
+  SELECT COUNT(*) as total, COALESCE(SUM(bytes), 0) as bytes FROM downloads 
   WHERE success = 1 AND timestamp >= ?
 `);
+const addBytesStmt = db.prepare('UPDATE downloads SET bytes = COALESCE(bytes, 0) + ? WHERE id = ?');
 
 const byPlatformStmt = db.prepare(`
-  SELECT platform, COUNT(*) as count 
+  SELECT platform, COUNT(*) as count, COALESCE(SUM(bytes), 0) as bytes 
   FROM downloads 
   WHERE success = 1 
   GROUP BY platform
 `);
 
 const recentStmt = db.prepare(`
-  SELECT timestamp, platform, quality, output_height, ip, country 
+  SELECT timestamp, platform, quality, output_height, ip, country, bytes 
   FROM downloads 
   WHERE success = 1 
   ORDER BY timestamp DESC 
@@ -81,10 +88,12 @@ export interface DownloadLog {
   /** The quality tier height the user requested (e.g. 1440 or 2160). */
   requestedHeight?: number | null;
   ip?: string;
+  /** Known size (finished job files); streams add theirs via addDownloadBytes. */
+  bytes?: number | null;
 }
 
-/** Log a successful download with automatic country lookup */
-export function logDownload(log: DownloadLog) {
+/** Log a successful download with automatic country lookup. Returns the row id. */
+export function logDownload(log: DownloadLog): number {
   const now = Date.now();
   let country: string | null = null;
 
@@ -99,7 +108,7 @@ export function logDownload(log: DownloadLog) {
     }
   }
 
-  insertStmt.run(
+  const info = insertStmt.run(
     now,
     log.platform,
     log.quality,
@@ -109,6 +118,31 @@ export function logDownload(log: DownloadLog) {
     country,
     1
   );
+  const id = Number(info.lastInsertRowid);
+  if (log.bytes && log.bytes > 0) addDownloadBytes(id, log.bytes);
+  return id;
+}
+
+/** Record bytes delivered for a logged download (best effort). */
+export function addDownloadBytes(id: number | null | undefined, bytes: number): void {
+  if (!id || !(bytes > 0)) return;
+  try {
+    addBytesStmt.run(Math.round(bytes), id);
+  } catch {
+    /* stats only */
+  }
+}
+
+/** Stream tickets → their download log row, so the stream can record its size. */
+const ticketLogIds = new Map<string, number>();
+
+export function linkTicketToLog(ticketId: string, logId: number): void {
+  ticketLogIds.set(ticketId, logId);
+  if (ticketLogIds.size > 5000) ticketLogIds.delete(ticketLogIds.keys().next().value as string);
+}
+
+export function addTicketBytes(ticketId: string, bytes: number): void {
+  addDownloadBytes(ticketLogIds.get(ticketId), bytes);
 }
 
 /**
@@ -125,13 +159,13 @@ export function countHighResDownloadsByIp(ip: string | undefined | null): number
 
 /** Get basic stats for admin */
 export function getDownloadStats() {
-  const total = countAllStmt.get() as { total: number };
+  const total = countAllStmt.get() as { total: number; bytes: number };
   
   const todayStart = new Date();
   todayStart.setHours(0, 0, 0, 0);
-  const today = countTodayStmt.get(todayStart.getTime()) as { total: number };
+  const today = countTodayStmt.get(todayStart.getTime()) as { total: number; bytes: number };
 
-  const byPlatform = byPlatformStmt.all() as Array<{ platform: string; count: number }>;
+  const byPlatform = byPlatformStmt.all() as Array<{ platform: string; count: number; bytes: number }>;
 
   const recent = recentStmt.all(50) as Array<{
     timestamp: number;
@@ -140,11 +174,18 @@ export function getDownloadStats() {
     output_height: number | null;
     ip: string | null;
     country: string | null;
+    bytes: number | null;
   }>;
 
   return {
     totalDownloads: total.total,
     todayDownloads: today.total,
+    totalBytes: total.bytes,
+    todayBytes: today.bytes,
+    bytesByPlatform: byPlatform.reduce((acc, row) => {
+      acc[row.platform] = row.bytes;
+      return acc;
+    }, {} as Record<string, number>),
     byPlatform: byPlatform.reduce((acc, row) => {
       acc[row.platform] = row.count;
       return acc;
@@ -156,6 +197,7 @@ export function getDownloadStats() {
       height: r.output_height,
       ip: r.ip,
       country: r.country,
+      bytes: r.bytes,
     })),
   };
 }

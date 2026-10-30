@@ -12,7 +12,7 @@ import { config } from '../config.js';
 import { HIGH_RES_MIN_HEIGHT } from '../utils/downloadLogger.js';
 import { getClientIp } from '../utils/clientIp.js';
 import { getHighResCount, reserveHighResSlot, quotaStoreKind } from '../utils/highResQuota.js';
-import { logDownload } from '../utils/downloadLogger.js';
+import { logDownload, linkTicketToLog } from '../utils/downloadLogger.js';
 import { logger } from '../utils/logger.js';
 
 export const downloadRouter = Router();
@@ -126,13 +126,14 @@ downloadRouter.post('/download', async (req, res) => {
     try {
       const direct = await resolveDirectDownload(trimmedUrl, q.height, clipResult.clip);
       if (direct) {
-        logDownload({
+        const logId = logDownload({
           platform: platform?.id ?? 'youtube',
           quality: q.label,
           outputHeight: direct.height,
           requestedHeight: q.height,
           ip: clientIp,
         });
+        linkTicketToLog(ticketIdFromUrl(direct.url), logId);
         // Absolute URL: the frontend lives on a different origin (Vercel) with
         // a catch-all rewrite to index.html — a relative /api/stream path would
         // resolve there and download the SPA shell instead of the video.
@@ -194,13 +195,14 @@ downloadRouter.post('/audio', async (req, res) => {
     if (!audio) {
       return res.status(503).json({ error: 'Could not prepare the audio right now. Please try again in a moment.' });
     }
-    logDownload({
+    const logId = logDownload({
       platform: platform?.id ?? 'youtube',
       quality: 'MP3',
       outputHeight: 0,
       requestedHeight: 0,
       ip: getClientIp(req),
     });
+    linkTicketToLog(ticketIdFromUrl(audio.url), logId);
     const apiBase = `${req.protocol}://${req.get('host')}`;
     return res.status(200).json({
       url: `${apiBase}${audio.url}`,
@@ -213,3 +215,8 @@ downloadRouter.post('/audio', async (req, res) => {
     return res.status(500).json({ error: 'Could not prepare the audio.' });
   }
 });
+
+/** `/api/stream/<ticket>/<file>` → `<ticket>` */
+function ticketIdFromUrl(url: string): string {
+  return url.split('/api/stream/')[1]?.split('/')[0] ?? '';
+}

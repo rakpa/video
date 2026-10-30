@@ -1,4 +1,5 @@
 import { Router, type Request, type Response } from 'express';
+import { addTicketBytes } from '../utils/downloadLogger.js';
 import { spawn } from 'node:child_process';
 import { fetch as undiciFetch, Agent, ProxyAgent, type Dispatcher } from 'undici';
 import { config } from '../config.js';
@@ -371,6 +372,11 @@ function handleStreamDownload(req: Request, res: Response): void {
     res.status(404).json({ error: 'That download link has expired. Please try again.' });
     return;
   }
+  // Data used by this download (for the admin stats).
+  const sentAtStart = req.socket.bytesWritten;
+  res.once('close', () => {
+    if (res.statusCode < 300) addTicketBytes(ticket.id, req.socket.bytesWritten - sentAtStart);
+  });
   // Slot was reserved when the ticket was created — refuse parallel GETs that
   // used to stack ffmpeg processes and stall every other mobile download.
   if (ticket.transferActive) {
