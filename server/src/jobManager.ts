@@ -76,6 +76,8 @@ export interface Job {
   clip?: ClipRange | null;
   /** Client IP for download tracking */
   ip?: string;
+  /** A failed row was already written to the stats. */
+  failureLogged?: boolean;
   /** SSE listeners subscribed to this job's progress. */
   listeners: Set<(p: ProgressUpdate | { done: true; outputHeight?: number | null } | { error: string }) => void>;
 }
@@ -250,6 +252,21 @@ function effectiveQuality(
 }
 
 function emit(job: Job, payload: ProgressUpdate | { done: true; outputHeight?: number | null } | { error: string }) {
+  if ('error' in payload && !job.failureLogged && job.platformId) {
+    job.failureLogged = true;
+    try {
+      logDownload({
+        platform: job.platformId,
+        quality: job.quality?.label ?? '-',
+        requestedHeight: job.quality?.height ?? null,
+        ip: job.ip,
+        status: 'failed',
+        error: payload.error,
+      });
+    } catch {
+      /* stats only */
+    }
+  }
   for (const fn of job.listeners) fn(payload);
 }
 

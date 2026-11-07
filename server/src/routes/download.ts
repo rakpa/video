@@ -132,6 +132,7 @@ downloadRouter.post('/download', async (req, res) => {
           outputHeight: direct.height,
           requestedHeight: q.height,
           ip: clientIp,
+          status: 'started',
         });
         linkTicketToLog(ticketIdFromUrl(direct.url), logId);
         // Absolute URL: the frontend lives on a different origin (Vercel) with
@@ -201,6 +202,7 @@ downloadRouter.post('/audio', async (req, res) => {
       outputHeight: 0,
       requestedHeight: 0,
       ip: getClientIp(req),
+      status: 'started',
     });
     linkTicketToLog(ticketIdFromUrl(audio.url), logId);
     const apiBase = `${req.protocol}://${req.get('host')}`;

@@ -162,6 +162,18 @@ function formatBytes(n: number | null | undefined): string {
   return `${(n / 1e3).toFixed(0)} KB`;
 }
 
+function statusBadge(status: string, error: string | null): string {
+  if (status === 'failed') {
+    return `<span class="px-2.5 py-0.5 bg-red-50 text-red-700 rounded-full text-xs font-medium">Failed</span>${
+      error ? `<div class="text-xs text-red-500 mt-1 max-w-xs">${escapeHtml(error)}</div>` : ''
+    }`;
+  }
+  if (status === 'started') {
+    return '<span class="px-2.5 py-0.5 bg-amber-50 text-amber-700 rounded-full text-xs font-medium">In progress</span>';
+  }
+  return '<span class="px-2.5 py-0.5 bg-emerald-50 text-emerald-700 rounded-full text-xs font-medium">Success</span>';
+}
+
 function escapeHtml(v: unknown): string {
   return String(v ?? '').replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
 }
@@ -220,6 +232,7 @@ function renderDashboard(
         <td class="py-2.5 px-4 font-mono">${escapeHtml(d.quality)}</td>
         <td class="py-2.5 px-4 text-center">${d.output_height ? `${d.output_height}p` : '-'}</td>
         <td class="py-2.5 px-4 text-right font-mono">${formatBytes(d.bytes)}</td>
+        <td class="py-2.5 px-4">${statusBadge(d.status, d.error)}</td>
         <td class="py-2.5 px-4 text-center text-emerald-600">${escapeHtml(d.country || '-')}</td>
         <td class="py-2.5 px-4 font-mono text-xs text-slate-500">${escapeHtml(d.ip || '-')}</td>
       </tr>`,
@@ -270,6 +283,7 @@ function renderDashboard(
       <div class="bg-white border border-slate-200 shadow-sm rounded-3xl p-6">
         <div class="text-sm text-slate-500 mb-1">Downloads · ${rangeLabel}</div>
         <div class="text-5xl font-bold text-slate-900">${data.count.toLocaleString()}</div>
+        <div class="text-sm mt-2 ${data.failed ? 'text-red-600' : 'text-slate-500'}">Failed: <span class="font-semibold">${data.failed.toLocaleString()}</span></div>
       </div>
       <div class="bg-white border border-slate-200 shadow-sm rounded-3xl p-6">
         <div class="text-sm text-slate-500 mb-1">Data used · ${rangeLabel}</div>
@@ -295,12 +309,13 @@ function renderDashboard(
               <th class="py-3 px-4 font-medium text-slate-500">Quality</th>
               <th class="py-3 px-4 text-center font-medium text-slate-500">Resolution</th>
               <th class="py-3 px-4 text-right font-medium text-slate-500">Size</th>
+              <th class="py-3 px-4 font-medium text-slate-500">Status</th>
               <th class="py-3 px-4 text-center font-medium text-slate-500">Country</th>
               <th class="py-3 px-4 font-medium text-slate-500">IP</th>
             </tr>
           </thead>
           <tbody class="divide-y divide-slate-100">
-            ${rows || '<tr><td colspan="7" class="py-10 text-center text-slate-400">No downloads in this period</td></tr>'}
+            ${rows || '<tr><td colspan="8" class="py-10 text-center text-slate-400">No downloads in this period</td></tr>'}
           </tbody>
         </table>
       </div>

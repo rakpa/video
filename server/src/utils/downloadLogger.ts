@@ -43,14 +43,23 @@ if (!columns.some((c) => c.name === 'bytes')) {
   db.exec('ALTER TABLE downloads ADD COLUMN bytes INTEGER');
 }
 
+// Outcome: 'success' | 'failed' | 'started' (stream still running). NULL = old success rows.
+if (!columns.some((c) => c.name === 'status')) {
+  db.exec('ALTER TABLE downloads ADD COLUMN status TEXT');
+}
+if (!columns.some((c) => c.name === 'error')) {
+  db.exec('ALTER TABLE downloads ADD COLUMN error TEXT');
+}
+
 // The smallest height considered "high resolution" (2K). 2K = 1440, 4K = 2160.
 export const HIGH_RES_MIN_HEIGHT = 1440;
 
 // Prepare statements for performance
 const insertStmt = db.prepare(`
-  INSERT INTO downloads (timestamp, platform, quality, output_height, requested_height, ip, country, success)
-  VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+  INSERT INTO downloads (timestamp, platform, quality, output_height, requested_height, ip, country, success, status, error)
+  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 `);
+const setStatusStmt = db.prepare('UPDATE downloads SET status = ?, error = ?, success = ? WHERE id = ?');
 
 const countHighResByIpStmt = db.prepare(`
   SELECT COUNT(*) as total FROM downloads
@@ -90,7 +99,11 @@ export interface DownloadLog {
   ip?: string;
   /** Known size (finished job files); streams add theirs via addDownloadBytes. */
   bytes?: number | null;
+  status?: DownloadStatus;
+  error?: string | null;
 }
+
+export type DownloadStatus = 'success' | 'failed' | 'started';
 
 /** Log a successful download with automatic country lookup. Returns the row id. */
 export function logDownload(log: DownloadLog): number {
@@ -116,7 +129,9 @@ export function logDownload(log: DownloadLog): number {
     log.requestedHeight ?? null,
     log.ip ?? null,
     country,
-    1
+    log.status === 'failed' ? 0 : 1,
+    log.status ?? 'success',
+    log.error ? log.error.slice(0, 300) : null,
   );
   const id = Number(info.lastInsertRowid);
   if (log.bytes && log.bytes > 0) addDownloadBytes(id, log.bytes);
@@ -143,6 +158,17 @@ export function linkTicketToLog(ticketId: string, logId: number): void {
 
 export function addTicketBytes(ticketId: string, bytes: number): void {
   addDownloadBytes(ticketLogIds.get(ticketId), bytes);
+}
+
+/** Final outcome of a stream download (failed rows stop counting toward the 2K/4K quota). */
+export function setTicketStatus(ticketId: string, status: DownloadStatus, error?: string | null): void {
+  const id = ticketLogIds.get(ticketId);
+  if (!id) return;
+  try {
+    setStatusStmt.run(status, error ? error.slice(0, 300) : null, status === 'failed' ? 0 : 1, id);
+  } catch {
+    /* stats only */
+  }
 }
 
 /**
@@ -203,17 +229,22 @@ export function getDownloadStats() {
 }
 
 const rangeRowsStmt = db.prepare(`
-  SELECT timestamp, platform, quality, output_height, requested_height, ip, country, bytes
+  SELECT timestamp, platform, quality, output_height, requested_height, ip, country, bytes,
+         COALESCE(status, 'success') as status, error
   FROM downloads
-  WHERE success = 1 AND timestamp >= ? AND timestamp < ?
+  WHERE timestamp >= ? AND timestamp < ?
   ORDER BY timestamp DESC
   LIMIT ?
 `);
 const rangeTotalsStmt = db.prepare(`
   SELECT platform, COUNT(*) as count, COALESCE(SUM(bytes), 0) as bytes
   FROM downloads
-  WHERE success = 1 AND timestamp >= ? AND timestamp < ?
+  WHERE COALESCE(status, 'success') != 'failed' AND timestamp >= ? AND timestamp < ?
   GROUP BY platform
+`);
+const rangeFailedStmt = db.prepare(`
+  SELECT COUNT(*) as count FROM downloads
+  WHERE status = 'failed' AND timestamp >= ? AND timestamp < ?
 `);
 
 export interface DownloadRow {
@@ -225,15 +256,19 @@ export interface DownloadRow {
   ip: string | null;
   country: string | null;
   bytes: number | null;
+  status: DownloadStatus;
+  error: string | null;
 }
 
 /** Every download in [fromMs, toMs) plus per-platform totals, for the admin page. */
 export function getDownloadsInRange(fromMs: number, toMs: number, limit = 10000) {
   const rows = rangeRowsStmt.all(fromMs, toMs, limit) as DownloadRow[];
   const platforms = rangeTotalsStmt.all(fromMs, toMs) as Array<{ platform: string; count: number; bytes: number }>;
+  const failed = (rangeFailedStmt.get(fromMs, toMs) as { count: number }).count;
   return {
     rows,
     platforms,
+    failed,
     count: platforms.reduce((s, p) => s + p.count, 0),
     bytes: platforms.reduce((s, p) => s + p.bytes, 0),
   };

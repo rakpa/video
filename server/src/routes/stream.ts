@@ -1,5 +1,5 @@
 import { Router, type Request, type Response } from 'express';
-import { addTicketBytes } from '../utils/downloadLogger.js';
+import { addTicketBytes, setTicketStatus } from '../utils/downloadLogger.js';
 import { spawn } from 'node:child_process';
 import { fetch as undiciFetch, Agent, ProxyAgent, type Dispatcher } from 'undici';
 import { config } from '../config.js';
@@ -376,6 +376,10 @@ function handleStreamDownload(req: Request, res: Response): void {
   const sentAtStart = req.socket.bytesWritten;
   res.once('close', () => {
     if (res.statusCode < 300) addTicketBytes(ticket.id, req.socket.bytesWritten - sentAtStart);
+    if (res.statusCode === 409) return; // duplicate request — the first one decides
+    if (res.writableFinished && res.statusCode < 300) setTicketStatus(ticket.id, 'success');
+    else if (res.statusCode >= 400) setTicketStatus(ticket.id, 'failed', `Server error ${res.statusCode}`);
+    else setTicketStatus(ticket.id, 'failed', 'Stopped before finishing (closed or connection lost)');
   });
   // Slot was reserved when the ticket was created — refuse parallel GETs that
   // used to stack ffmpeg processes and stall every other mobile download.
