@@ -67,6 +67,9 @@ function addDays(date: string, days: number): string {
   return new Date(Date.UTC(y, m - 1, d + days)).toISOString().slice(0, 10);
 }
 
+const STATUS_FILTERS = ['all', 'success', 'failed', 'started'] as const;
+type StatusFilter = (typeof STATUS_FILTERS)[number];
+
 const isDate = (v: unknown): v is string => typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v);
 
 // Dashboard (needs a session) — ?from=YYYY-MM-DD&to=YYYY-MM-DD, Poland dates, inclusive.
@@ -77,9 +80,12 @@ router.get('/stats', (req: Request, res: Response) => {
   const from = isDate(req.query.from) ? req.query.from : today;
   const to = isDate(req.query.to) && req.query.to >= from ? req.query.to : from;
   try {
+    const status = STATUS_FILTERS.includes(String(req.query.status) as StatusFilter)
+      ? (String(req.query.status) as StatusFilter)
+      : 'all';
     const data = getDownloadsInRange(warsawMidnight(from), warsawMidnight(addDays(to, 1)));
     res.setHeader('Cache-Control', 'no-store');
-    return res.send(renderDashboard(data, user, from, to, today));
+    return res.send(renderDashboard(data, user, from, to, today, status));
   } catch {
     return res.status(500).send('Error loading stats');
   }
@@ -195,7 +201,20 @@ function renderDashboard(
   from: string,
   to: string,
   today: string,
+  status: StatusFilter,
 ): string {
+  const visible = status === 'all' ? data.rows : data.rows.filter((d) => d.status === status);
+  const statusOptions = (
+    [
+      ['all', 'All'],
+      ['success', 'Success'],
+      ['failed', 'Failed'],
+      ['started', 'In progress'],
+    ] as Array<[StatusFilter, string]>
+  )
+    .map(([v, label]) => `<option value="${v}"${v === status ? ' selected' : ''}>${label}</option>`)
+    .join('');
+  const statusParam = status === 'all' ? '' : `&status=${status}`;
   const presets: Array<[string, string, string]> = [
     ['Today', today, today],
     ['Yesterday', addDays(today, -1), addDays(today, -1)],
@@ -207,7 +226,7 @@ function renderDashboard(
   const presetLinks = presets
     .map(([label, f, t]) => {
       const active = f === from && t === to;
-      return `<a href="/admin/stats?from=${f}&to=${t}" class="px-3 py-1.5 rounded-full text-sm border ${
+      return `<a href="/admin/stats?from=${f}&to=${t}${statusParam}" class="px-3 py-1.5 rounded-full text-sm border ${
         active ? 'bg-slate-900 text-white border-slate-900' : 'bg-white border-slate-300 hover:bg-slate-50'
       }">${label}</a>`;
     })
@@ -223,7 +242,7 @@ function renderDashboard(
     )
     .join('');
 
-  const rows = data.rows
+  const rows = visible
     .map(
       (d) => `
       <tr>
@@ -274,6 +293,9 @@ function renderDashboard(
         <label class="text-sm text-slate-500">To<br>
           <input type="date" name="to" value="${to}" class="mt-1 border border-slate-300 rounded-xl px-3 py-2 text-slate-900">
         </label>
+        <label class="text-sm text-slate-500">Status<br>
+          <select name="status" class="mt-1 border border-slate-300 rounded-xl px-3 py-2 text-slate-900 bg-white">${statusOptions}</select>
+        </label>
         <button class="px-5 py-2.5 bg-slate-900 hover:bg-black text-white rounded-xl font-medium">Show</button>
       </form>
       <div class="flex flex-wrap gap-2 mt-4">${presetLinks}</div>
@@ -298,7 +320,7 @@ function renderDashboard(
 
     <div class="bg-white border border-slate-200 shadow-sm rounded-3xl overflow-hidden">
       <div class="px-6 py-4 border-b border-slate-100">
-        <h2 class="font-semibold text-lg text-slate-900">All downloads <span class="text-sm text-slate-400 font-normal">(${data.rows.length.toLocaleString()}${data.rows.length < data.count ? ` of ${data.count.toLocaleString()} shown` : ''})</span></h2>
+        <h2 class="font-semibold text-lg text-slate-900">All downloads <span class="text-sm text-slate-400 font-normal">(${visible.length.toLocaleString()} shown)</span></h2>
       </div>
       <div class="overflow-x-auto">
         <table class="w-full text-sm">
@@ -315,7 +337,7 @@ function renderDashboard(
             </tr>
           </thead>
           <tbody class="divide-y divide-slate-100">
-            ${rows || '<tr><td colspan="8" class="py-10 text-center text-slate-400">No downloads in this period</td></tr>'}
+            ${rows || '<tr><td colspan="8" class="py-10 text-center text-slate-400">No downloads for this filter</td></tr>'}
           </tbody>
         </table>
       </div>
